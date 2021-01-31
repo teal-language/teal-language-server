@@ -1,0 +1,3 @@
+
+local x: number = "hello"
+
