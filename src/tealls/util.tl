@@ -1,4 +1,5 @@
 
+local json <const> = require("dkjson")
 local util <const> = {}
 
 function util.keys<K, V>(t: {K:V}): {K}
@@ -37,6 +38,7 @@ do
 end
 
 local function inspect(x: any): string
+   -- TODO upstream: using 'is' gives a warning about not being able to narrow this, which seems wrong?
    return type(x) == "string"
       and x as string
       or _inspect(x)
@@ -60,6 +62,13 @@ function util.assert<T>(val: T, msg: string): T
       error(msg)
    end
    return val
+end
+
+function util.json_nullable<T>(x: T): T
+   if x == nil then
+      return json.null as T
+   end
+   return x
 end
 
 return util

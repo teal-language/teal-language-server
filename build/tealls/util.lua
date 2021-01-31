@@ -1,4 +1,5 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local os = _tl_compat and _tl_compat.os or os; local pairs = _tl_compat and _tl_compat.pairs or pairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local table = _tl_compat and _tl_compat.table or table
+local json = require("dkjson")
 local util = {}
 
 function util.keys(t)
@@ -37,6 +38,7 @@ do
 end
 
 local function inspect(x)
+
    return type(x) == "string" and
    x or
    _inspect(x)
@@ -60,6 +62,13 @@ function util.assert(val, msg)
       error(msg)
    end
    return val
+end
+
+function util.json_nullable(x)
+   if x == nil then
+      return json.null
+   end
+   return x
 end
 
 return util

@@ -32,7 +32,7 @@ local function start()
          end
          local method <const> = data.method as lsp.Method.Name
          local params <const> = data.params as lsp.Method.Params
-         util.log("Method: ", data.method as string)
+         util.log("Method: ", method)
          if handlers[method] then
             util.log("   dispatching handler...")
             local ok: boolean

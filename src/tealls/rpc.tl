@@ -5,12 +5,20 @@ local util <const> = require("tealls.util")
 
 local rpc <const> = {}
 
-local keys <const>, map <const> = util.keys, util.map
+local keys <const>, map <const>, json_nullable <const>
+   = util.keys, util.map, util.json_nullable
 
 local contenttype: {string:boolean} = {
    ["application/vscode-jsonrpc; charset=utf8"] = true,
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
+
+--[[
+   TODO: look into non-blocking io
+     - luasocket: popular module, language servers can communicate over sockets instead of stdio, portable
+     - luv: no typedefs until interfaces (or whatever)
+     - cqueues: unix only
+]]
 
 local function read_line(): string
    local line = io.read("*l")
@@ -80,7 +88,7 @@ end
 function rpc.respond(id: number, t: {string:any})
    rpc.encode{
       jsonrpc = "2.0",
-      id = id or json.null as number,
+      id = json_nullable(id),
       result = t,
    }
 end
@@ -88,7 +96,7 @@ end
 function rpc.respond_error(id: number, name: lsp.ErrorName, msg: string, data: {string:any})
    rpc.encode{
       jsonrpc = "2.0",
-      id = id or json.null as number,
+      id = json_nullable(id),
       error = {
          code = lsp.error_code[name] or lsp.error_code.UnknownErrorCode,
          message = msg,

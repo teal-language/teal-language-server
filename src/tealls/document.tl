@@ -26,19 +26,23 @@ local record ParsedUri
    fragment: string
 end
 
-local function find_char(str: string, chars: string, pos: number): string, number, number
+local function find_patt(str: string, patt: string, pos: number): string, number, number
    pos = pos or 1
-   local patt <const> = chars:gsub(".", function(c: string): string return "%" .. c end)
-   return str:match("(()[" .. patt .. "]())", pos) as (string, number, number)
+   local s, e = str:find(patt, pos)
+   if s then
+      return str:sub(s, e), s, e
+   end
 end
 
-local function get_next_key_and_chars(char: string): string, string
-   if char == "/" then
-      return "path", "?#"
-   elseif char == "?" then
+local function get_next_key_and_patt(current: string): string, string
+   if current == "://" then
+      return "authority", "/"
+   elseif current == "/" then
+      return "path", "[?#]"
+   elseif current == "?" then
       return "query", "#"
-   elseif char == "#" then
-      return "fragment"
+   elseif current == "#" then
+      return "fragment", "$"
    end
 end
 
@@ -47,33 +51,40 @@ function document.parse_uri(uri: string): ParsedUri
    if not uri then return end
 
    -- This is not the most robust uri parser, but we can assume that clients are well behaved
+   -- and for the most part we only care about the path
    local parsed <const>: {string:string} = {}
    local last = 1
-   do
-      local s, e = uri:find("://", 1, true)
-      if s then
-         parsed.scheme = uri:sub(1, s - 1)
-         last = e + 1
-      else
-         return
+   local next_key = "scheme"
+   local end_patt = "://"
+
+   while end_patt do
+      local char <const>, s <const>, e <const> = find_patt(uri, end_patt, last)
+      parsed[next_key] = uri:sub(last, (s or 0) - 1)
+      util.log("   ", next_key, ": '", parsed[next_key], "'")
+
+      next_key, end_patt = get_next_key_and_patt(char)
+      last = (e or last) + (next_key == "path" and 0 or 1)
+   end
+
+   for k, v in pairs(parsed) do
+      if #v == 0 then
+         parsed[k] = nil
       end
    end
-   util.log("   scheme: '", parsed.scheme, "'")
 
-   local next_key = "authority"
-   local end_chars = "/?#"
-   while end_chars do
-      local char <const>, s <const>, e <const> = find_char(uri, end_chars, last)
-      if s then
-         parsed[next_key] = uri:sub(last, s - 1)
-         util.log("   ", next_key, ": ", parsed[next_key], "'")
-         last = e - 1
-         next_key, end_chars = get_next_key_and_chars(char)
-      else
-         parsed[next_key] = uri:sub(last)
-         util.log("   ", next_key, ": '", parsed[next_key], "'")
-         break
-      end
+   if parsed.authority and not parsed.path then
+      parsed.path = ""
+   end
+
+   -- scheme and path are required
+   if not (parsed.scheme and parsed.path) then
+      util.log("   missing scheme and/or path, returning nil")
+      return nil
+   end
+
+   if not parsed.authority and parsed.path:sub(1, 2) == "//" then
+      util.log("   path begins with '//' and authority is missing, returning nil")
+      return nil
    end
 
    return parsed as ParsedUri
@@ -85,12 +96,6 @@ function document.path_from_uri(uri: string): string
    return parsed.path
 end
 
---[[ TODO
-   We currently start from a fresh environment whenever type checking a document,
-   by maintaining a dependency graph and keeping a persistent environment (making
-   sure to load and unload modules as they get updated) we could probably speed this up
-]]
-
 local function make_diagnostic_from_error(err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
    return {
       range = {
@@ -100,11 +105,11 @@ local function make_diagnostic_from_error(err: tl.Error, severity: lsp.Severity)
          },
          ["end"] = {
             line = err.y - 1,
-            character = err.x, -- TODO: get the length of the token here
+            character = err.x + 2, -- TODO: get the length of the token here
          },
       },
       severity = lsp.severity[severity],
-      message = err.msg .. " ",
+      message = err.msg .. " ", -- TODO: neovim seems to cut off the last char?
    }
 end
 
@@ -113,6 +118,12 @@ local function insert_errors(diagnostics: {lsp.Diagnostic}, errs: {tl.Error}, se
       table.insert(diagnostics, make_diagnostic_from_error(err, severity))
    end
 end
+
+--[[ TODO
+   We currently start from a fresh environment whenever type checking a document,
+   by maintaining a dependency graph and keeping a persistent environment (making
+   sure to load and unload modules as they get updated) we could probably speed this up
+]]
 
 function document.type_check(uri: string)
    local name <const> = document.path_from_uri(uri)

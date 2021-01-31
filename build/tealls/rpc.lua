@@ -5,12 +5,20 @@ local util = require("tealls.util")
 
 local rpc = {}
 
-local keys, map = util.keys, util.map
+local keys, map, json_nullable =
+util.keys, util.map, util.json_nullable
 
 local contenttype = {
    ["application/vscode-jsonrpc; charset=utf8"] = true,
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
+
+
+
+
+
+
+
 
 local function read_line()
    local line = io.read("*l")
@@ -80,7 +88,7 @@ end
 function rpc.respond(id, t)
    rpc.encode({
       jsonrpc = "2.0",
-      id = id or json.null,
+      id = json_nullable(id),
       result = t,
    })
 end
@@ -88,7 +96,7 @@ end
 function rpc.respond_error(id, name, msg, data)
    rpc.encode({
       jsonrpc = "2.0",
-      id = id or json.null,
+      id = json_nullable(id),
       error = {
          code = lsp.error_code[name] or lsp.error_code.UnknownErrorCode,
          message = msg,

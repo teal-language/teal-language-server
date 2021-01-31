@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
 local tl = require("tl")
 local lsp = require("tealls.lsp")
 local methods = require("tealls.methods")
@@ -26,19 +26,23 @@ local ParsedUri = {}
 
 
 
-local function find_char(str, chars, pos)
+local function find_patt(str, patt, pos)
    pos = pos or 1
-   local patt = chars:gsub(".", function(c) return "%" .. c end)
-   return str:match("(()[" .. patt .. "]())", pos)
+   local s, e = str:find(patt, pos)
+   if s then
+      return str:sub(s, e), s, e
+   end
 end
 
-local function get_next_key_and_chars(char)
-   if char == "/" then
-      return "path", "?#"
-   elseif char == "?" then
+local function get_next_key_and_patt(current)
+   if current == "://" then
+      return "authority", "/"
+   elseif current == "/" then
+      return "path", "[?#]"
+   elseif current == "?" then
       return "query", "#"
-   elseif char == "#" then
-      return "fragment"
+   elseif current == "#" then
+      return "fragment", "$"
    end
 end
 
@@ -49,31 +53,28 @@ function document.parse_uri(uri)
 
    local parsed = {}
    local last = 1
-   do
-      local s, e = uri:find("://", 1, true)
-      if s then
-         parsed.scheme = uri:sub(1, s - 1)
-         last = e + 1
-      else
-         return
+   local next_key = "scheme"
+   local end_patt = "://"
+
+   while end_patt do
+      local char, s, e = find_patt(uri, end_patt, last)
+      parsed[next_key] = uri:sub(last, (s or 0) - 1)
+      util.log("   ", next_key, ": '", parsed[next_key], "'")
+
+      next_key, end_patt = get_next_key_and_patt(char)
+      last = (e or last) + (next_key == "path" and 0 or 1)
+   end
+
+   for k, v in pairs(parsed) do
+      if #v == 0 then
+         parsed[k] = nil
       end
    end
-   util.log("   scheme: '", parsed.scheme, "'")
 
-   local next_key = "authority"
-   local end_chars = "/?#"
-   while end_chars do
-      local char, s, e = find_char(uri, end_chars, last)
-      if s then
-         parsed[next_key] = uri:sub(last, s - 1)
-         util.log("   ", next_key, ": ", parsed[next_key], "'")
-         last = e - 1
-         next_key, end_chars = get_next_key_and_chars(char)
-      else
-         parsed[next_key] = uri:sub(last)
-         util.log("   ", next_key, ": '", parsed[next_key], "'")
-         break
-      end
+
+   if not (parsed.scheme and parsed.path) then
+      util.log("   missing scheme and/or path, returning nil")
+      return nil
    end
 
    return parsed
@@ -100,7 +101,7 @@ local function make_diagnostic_from_error(err, severity)
          },
          ["end"] = {
             line = err.y - 1,
-            character = err.x,
+            character = err.x + 2,
          },
       },
       severity = lsp.severity[severity],

@@ -32,7 +32,7 @@ local function start()
          end
          local method = data.method
          local params = data.params
-         util.log("Method: ", data.method)
+         util.log("Method: ", method)
          if handlers[method] then
             util.log("   dispatching handler...")
             local ok
