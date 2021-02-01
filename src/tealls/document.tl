@@ -7,6 +7,8 @@ local util <const> = require("tealls.util")
 local document <const> = {}
 
 --[[
+   uri spec:
+
    foo://example.com:8042/over/there?name=ferret#nose
    \_/   \______________/\_________/ \_________/ \__/
     |           |            |            |        |
@@ -55,15 +57,16 @@ function document.parse_uri(uri: string): ParsedUri
    local parsed <const>: {string:string} = {}
    local last = 1
    local next_key = "scheme"
-   local end_patt = "://"
+   local next_patt = "://"
 
-   while end_patt do
-      local char <const>, s <const>, e <const> = find_patt(uri, end_patt, last)
+   while next_patt do
+      local char <const>, s <const>, e <const> = find_patt(uri, next_patt, last)
       parsed[next_key] = uri:sub(last, (s or 0) - 1)
       util.log("   ", next_key, ": '", parsed[next_key], "'")
 
-      next_key, end_patt = get_next_key_and_patt(char)
-      last = (e or last) + (next_key == "path" and 0 or 1)
+      next_key, next_patt = get_next_key_and_patt(char)
+      last = (e or last)
+         + (next_key == "path" and 0 or 1)
    end
 
    for k, v in pairs(parsed) do
@@ -72,6 +75,7 @@ function document.parse_uri(uri: string): ParsedUri
       end
    end
 
+   -- if authority is present, path can be empty
    if parsed.authority and not parsed.path then
       parsed.path = ""
    end
@@ -82,17 +86,20 @@ function document.parse_uri(uri: string): ParsedUri
       return nil
    end
 
+   -- if authority is not present, path may not begin with '//'
    if not parsed.authority and parsed.path:sub(1, 2) == "//" then
       util.log("   path begins with '//' and authority is missing, returning nil")
       return nil
    end
+
+   util.log("   Parsed: ", parsed)
 
    return parsed as ParsedUri
 end
 
 function document.path_from_uri(uri: string): string
    local parsed <const> = document.parse_uri(uri)
-   assert(parsed.scheme == "file", "uri " .. tostring(uri) .. " is not a file")
+   util.assert(parsed.scheme == "file", "uri " .. tostring(uri) .. " is not a file")
    return parsed.path
 end
 

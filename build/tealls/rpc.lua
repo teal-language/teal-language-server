@@ -20,20 +20,20 @@ local contenttype = {
 
 
 
-local function read_line()
-   local line = io.read("*l")
+local function read_line(fh)
+   local line = (fh):read("*l")
    if not line then return end
    line = line:gsub("\r", "")
    return line
 end
 
-function rpc.decode()
+function rpc.decode(fh)
+   fh = fh or io.stdin
    util.log("Decoding rpc (doing blocking read)")
-   local line = read_line()
+   local line = read_line(fh)
    if not line then
       return nil, "eof"
    end
-   util.log("Got first line: ", line)
 
    local len
    while line and line ~= "" do
@@ -58,16 +58,16 @@ function rpc.decode()
       else
          return nil, "unexpected header: " .. line
       end
-      line = read_line()
+      line = read_line(fh)
    end
 
    if not len then
       return nil, "no Content-Length found"
    end
 
-   local body = io.read(len)
+   local body = (fh):read(len)
    body = body:gsub("\r", "")
-   util.log("Body: ", body)
+   util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then
       return nil, "Malformed json"

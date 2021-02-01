@@ -2,6 +2,9 @@
 -- The global server state
 
 return {
-   initialized: boolean = false,
+   name = "teal-language-server",
+   version = "dev",
+
+   initialized = false,
    root_dir: string = nil,
 }

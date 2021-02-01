@@ -16,24 +16,24 @@ local contenttype: {string:boolean} = {
 --[[
    TODO: look into non-blocking io
      - luasocket: popular module, language servers can communicate over sockets instead of stdio, portable
-     - luv: no typedefs until interfaces (or whatever)
-     - cqueues: unix only
+     - luv: no typedefs until interfaces (or whatever), maybe a little big? cross-platform
+     - cqueues: nice to use with coroutines, unix only
 ]]
 
-local function read_line(): string
-   local line = io.read("*l")
+local function read_line(fh: FILE): string
+   local line = (fh as FILE):read("*l")
    if not line then return end
    line = line:gsub("\r", "")
    return line
 end
 
-function rpc.decode(): {string:any}, string
+function rpc.decode(fh: FILE): {string:any}, string
+   fh = fh as FILE or io.stdin
    util.log("Decoding rpc (doing blocking read)")
-   local line = read_line()
+   local line = read_line(fh)
    if not line then
       return nil, "eof"
    end
-   util.log("Got first line: ", line)
 
    local len: number
    while line and line ~= "" do -- parse headers
@@ -58,16 +58,16 @@ function rpc.decode(): {string:any}, string
       else
          return nil, "unexpected header: " .. line
       end
-      line = read_line()
+      line = read_line(fh)
    end
 
    if not len then
       return nil, "no Content-Length found"
    end
 
-   local body = io.read(len)
+   local body = (fh as FILE):read(len)
    body = body:gsub("\r", "")
-   util.log("Body: ", body)
+   util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then
       return nil, "Malformed json"

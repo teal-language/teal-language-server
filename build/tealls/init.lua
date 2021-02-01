@@ -4,7 +4,6 @@ local rpc = require("tealls.rpc")
 local handlers = require("tealls.handlers")
 local util = require("tealls.util")
 
-
 local function assert_init()
    util.log("waiting for initialize request")
    local data = util.assert(rpc.decode())
@@ -42,6 +41,8 @@ local function start()
             if not ok then
                util.log("      error in handler for ", method, ": ", err)
             end
+         else
+            util.log("   ! no handler for ", method)
          end
       end
    end

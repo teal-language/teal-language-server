@@ -1,4 +1,8 @@
 
+-- Type describing the actual protocol
+-- most of these are adapted from the typescript types the spec gives at
+-- https://microsoft.github.io/language-server-protocol/specifications/specification-current/
+
 local record lsp
 
    enum ErrorName
@@ -17,6 +21,9 @@ local record lsp
 
    error_code: {ErrorName:number}
 
+   type JsonValue = string | number | boolean | JsonObject
+   type JsonObject = {string:JsonValue}
+
    type integer = number
    record Message
       id: integer | string
@@ -26,11 +33,11 @@ local record lsp
       params: {string:any} -- should be {any} | {string:any}
 
       -- Response
-      result: string | number | boolean | table
+      result: JsonValue
       record ResponseError
          code: integer
          message: string
-         data: string | number | boolean | table
+         data: JsonValue
       end
       error: ResponseError
    end
@@ -76,7 +83,7 @@ local record lsp
          "textDocument/publishDiagnostics"
       end
 
-      type Params = {number|string:any}
+      type Params = {number|string:JsonValue} -- should be JsonObject | {JsonValue}
       type Method = function(Params, number)
    end
 

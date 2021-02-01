@@ -3,7 +3,6 @@ local lsp <const> = require("tealls.lsp")
 local rpc <const> = require("tealls.rpc")
 local handlers <const> = require("tealls.handlers")
 local util <const> = require("tealls.util")
--- local server <const> = require("tealls.server")
 
 local function assert_init()
    util.log("waiting for initialize request")
@@ -42,6 +41,8 @@ local function start()
             if not ok then
                util.log("      error in handler for ", method, ": ", err)
             end
+         else
+            util.log("   ! no handler for ", method)
          end
       end
    end

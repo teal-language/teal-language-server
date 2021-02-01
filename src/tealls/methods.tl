@@ -1,4 +1,6 @@
 
+-- Methods that the server requests of the client
+
 local lsp <const> = require("tealls.lsp")
 local rpc <const> = require("tealls.rpc")
 

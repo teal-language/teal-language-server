@@ -1,4 +1,6 @@
 
+-- Handlers for client requests
+
 local lfs <const> = require("lfs")
 local lsp <const> = require("tealls.lsp")
 local server <const> = require("tealls.server")
@@ -13,9 +15,7 @@ local Method <const> = lsp.Method.Method
 local handlers <const>: {Name:Method} = {}
 
 handlers["initialize"] = function(params: Params, id: number)
-   if server.initialized then
-      error("Server was already initialized")
-   end
+   util.assert(not server.initialized, "Server was already initialized")
    server.initialized = true
 
    if params.rootUri then
@@ -25,7 +25,7 @@ handlers["initialize"] = function(params: Params, id: number)
    end
 
    util.log("root_dir: ", server.root_dir)
-   assert(lfs.chdir(server.root_dir), "unable to chdir into " .. server.root_dir)
+   util.assert(lfs.chdir(server.root_dir), "unable to chdir into " .. server.root_dir)
 
    util.log("responding to initialize...")
    rpc.respond(id, {
@@ -35,13 +35,13 @@ handlers["initialize"] = function(params: Params, id: number)
             openClose = true,
             change = 0,
             save = {
-               includeText = 0,
+               includeText = false,
             },
          },
       },
       serverInfo = {
-         name = "teal-language-server",
-         version = "dev",
+         name = server.name,
+         version = server.version,
       },
    })
 end
@@ -65,8 +65,8 @@ handlers["textDocument/didSave"] = type_check
 setmetatable(handlers, {
    __index = function(self: {Name:Method}, key: Name): Method
       util.log("   getting handler for ", key)
-      return rawget(self, key) and function(p: Params, id: number)
-         local f = rawget(self, key)
+      local f <const> = rawget(self, key)
+      return f and function(p: Params, id: number)
          util.log("   calling handler for ", key, "with")
          util.log("          id: ", id)
          util.log("      params: ", p)
