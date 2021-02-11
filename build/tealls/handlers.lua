@@ -38,16 +38,7 @@ handlers["initialize"] = function(params, id)
 
    util.log("responding to initialize...")
    rpc.respond(id, {
-      capabilities = {
-
-         textDocumentSync = {
-            openClose = true,
-            change = 0,
-            save = {
-               includeText = true,
-            },
-         },
-      },
+      capabilities = server.capabilities,
       serverInfo = {
          name = server.name,
          version = server.version,
@@ -70,6 +61,11 @@ handlers["textDocument/didClose"] = function(params)
    document.close(td.uri)
 end
 
+local function get_doc(params)
+   local td = params.textDocument
+   return document.get(td.uri)
+end
+
 handlers["textDocument/didSave"] = function(params)
    local td = params.textDocument
    local doc = document.get(td.uri)
@@ -81,6 +77,39 @@ handlers["textDocument/didSave"] = function(params)
    doc:type_check_and_publish_result()
 end
 
+handlers["textDocument/hover"] = function(params, id)
+   local doc = get_doc(params)
+   if not doc then
+      return
+   end
+   local pos = params.position
+   local tk = doc:token_at(pos)
+   if not tk then
+      rpc.respond(id, {
+         contents = { " No info found " },
+      })
+      return
+   end
+   local info = doc:type_information_at(pos)
+   if not info then
+      rpc.respond(id, {
+         contents = { tk.tk .. ":", " No info found " },
+         range = {
+            start = lsp.position(tk.y - 1, tk.x - 1),
+            ["end"] = lsp.position(tk.y - 1, tk.x + #tk.tk),
+         },
+      })
+      return
+   end
+   local type_str = doc:show_type(info)
+   rpc.respond(id, {
+      contents = { tk.tk .. ":", type_str },
+      range = {
+         start = lsp.position(tk.y - 1, tk.x - 1),
+         ["end"] = lsp.position(tk.y - 1, tk.x + #tk.tk),
+      },
+   })
+end
 
 
 setmetatable(handlers, {

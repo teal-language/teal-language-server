@@ -15,6 +15,18 @@ local server = {
    root_dir = nil,
 
    config = nil,
+
+   capabilities = {
+
+      textDocumentSync = {
+         openClose = true,
+         change = 0,
+         save = {
+            includeText = true,
+         },
+      },
+      hoverProvider = true,
+   },
 }
 
 local init_path = package.path

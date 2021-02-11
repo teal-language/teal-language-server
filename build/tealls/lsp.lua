@@ -98,6 +98,7 @@ local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Locati
 
 
 
+
 lsp.error_code = {
    InternalError = -32603,
    InvalidParams = -32602,
@@ -118,5 +119,12 @@ lsp.severity = {
    Information = 3,
    Hint = 4,
 }
+
+function lsp.position(y, x)
+   return {
+      character = x,
+      line = y,
+   }
+end
 
 return lsp

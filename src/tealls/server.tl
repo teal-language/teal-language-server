@@ -15,6 +15,18 @@ local server <const> = {
    root_dir: string = nil,
 
    config: config.Config = nil,
+
+   capabilities = {
+      -- we basically do the bare minimum
+      textDocumentSync = {
+         openClose = true,
+         change = 0,
+         save = {
+            includeText = true,
+         },
+      },
+      hoverProvider = true,
+   },
 }
 
 local init_path <const> = package.path

@@ -38,16 +38,7 @@ handlers["initialize"] = function(params: Params, id: number)
 
    util.log("responding to initialize...")
    rpc.respond(id, {
-      capabilities = {
-         -- we basically do the bare minimum
-         textDocumentSync = {
-            openClose = true,
-            change = 0,
-            save = {
-               includeText = true,
-            },
-         },
-      },
+      capabilities = server.capabilities,
       serverInfo = {
          name = server.name,
          version = server.version,
@@ -70,6 +61,11 @@ handlers["textDocument/didClose"] = function(params: Params)
    document.close(td.uri)
 end
 
+local function get_doc(params: Params): document.Document
+   local td <const> = params.textDocument as lsp.TextDocument
+   return document.get(td.uri)
+end
+
 handlers["textDocument/didSave"] = function(params: Params)
    local td <const> = params.textDocument as lsp.TextDocument
    local doc <const> = document.get(td.uri)
@@ -81,6 +77,39 @@ handlers["textDocument/didSave"] = function(params: Params)
    doc:type_check_and_publish_result()
 end
 
+handlers["textDocument/hover"] = function(params: Params, id: number)
+   local doc <const> = get_doc(params)
+   if not doc then
+      return
+   end
+   local pos <const> = params.position as lsp.Position
+   local tk <const> = doc:token_at(pos)
+   if not tk then
+      rpc.respond(id, {
+         contents = { " No info found " }
+      })
+      return
+   end
+   local info <const> = doc:type_information_at(pos)
+   if not info then
+      rpc.respond(id, {
+         contents = { tk.tk .. ":", " No info found " },
+         range = {
+            start = lsp.position(tk.y - 1, tk.x - 1),
+            ["end"] = lsp.position(tk.y - 1, tk.x + #tk.tk),
+         },
+      })
+      return
+   end
+   local type_str <const> = doc:show_type(info)
+   rpc.respond(id, {
+      contents = { tk.tk .. ":", type_str },
+      range = {
+         start = lsp.position(tk.y - 1, tk.x - 1),
+         ["end"] = lsp.position(tk.y - 1, tk.x + #tk.tk),
+      },
+   })
+end
 
 -- Wrap some logs around each handler for debugging
 setmetatable(handlers, {

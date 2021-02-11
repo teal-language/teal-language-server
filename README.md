@@ -11,5 +11,6 @@ Currently the server only implements:
  - `textDocument/didOpen`
  - `textDocument/didSave`
  - `textDocument/didClose`
+ - `textDocument/hover`
 
 And just runs a simple type check with no configuration options

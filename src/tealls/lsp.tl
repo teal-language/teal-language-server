@@ -82,6 +82,7 @@ local record lsp
          "textDocument/didChange"
          "textDocument/didSave"
          "textDocument/didClose"
+         "textDocument/hover"
 
          "textDocument/publishDiagnostics"
       end
@@ -118,6 +119,13 @@ lsp.severity = {
    Information = 3,
    Hint = 4,
 }
+
+function lsp.position(y: lsp.uinteger, x: lsp.uinteger): lsp.Position
+   return {
+      character = x,
+      line = y,
+   }
+end
 
 return lsp
 
