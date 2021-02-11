@@ -2,127 +2,120 @@
 local tl <const> = require("tl")
 local lsp <const> = require("tealls.lsp")
 local methods <const> = require("tealls.methods")
+local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
 
+-- tl.Token nor tl.Node not exposed
+local record Token
+   x: number
+   y: number
+   tk: string
+end
+local type Node = any
+
+local record Document
+   uri: uri.ParsedUri
+   text: string
+
+   tokens: {Token}
+   syntax_errors: {Token}
+
+   ast: Node
+   result: tl.Result
+
+end
+;(Document as {string:any}).__index = function(self: Document, key: string): any
+   if key == "tokens" or key == "syntax_errors" then
+      local tks, errs = tl.lex(self.text) as ({Token}, {Token})
+      self.tokens = tks
+      self.syntax_errors = errs or {}
+   elseif key == "ast" then
+      local _: any
+      _, self.ast = (tl.parse_program as function({Token}): (number, Node))(self.tokens)
+   elseif key == "result" then
+      local res <const> = {
+         syntax_errors = {},
+         type_errors = {},
+         unknowns = {},
+         warnings = {},
+         dependencies = {},
+      }
+      ;(tl.type_check as function(Node, tl.TypeCheckOptions))(self.ast, {
+         filename = self.uri.path,
+         result = res,
+      })
+      self.result = res
+   end
+   return rawget(self as {string:any}, key)
+      or rawget(Document as {string:any}, key)
+end
+
+local cache <const>: {string:Document} = {}
 local document <const> = {}
 
---[[
-   uri spec:
-
-   foo://example.com:8042/over/there?name=ferret#nose
-   \_/   \______________/\_________/ \_________/ \__/
-    |           |            |            |        |
- scheme     authority       path        query   fragment
-    |   _____________________|__
-   / \ /                        \
-   urn:example:animal:ferret:nose
-
-   see http://tools.ietf.org/html/rfc3986
-]]
-
-local record ParsedUri
-   scheme: string
-   authority: string
-   path: string
-   query: string
-   fragment: string
+function document.open(iden: string | uri.ParsedUri, content: string): Document
+   local d <const> = setmetatable({
+      uri = iden is string and uri.parse(iden) or iden,
+      text = content,
+   } as Document, Document as metatable<Document>)
+   cache[d.uri.path] = d
+   return d
 end
 
-local function find_patt(str: string, patt: string, pos: number): string, number, number
-   pos = pos or 1
-   local s, e = str:find(patt, pos)
-   if s then
-      return str:sub(s, e), s, e
-   end
+function document.close(iden: string | uri.ParsedUri)
+   local u <const> = iden is string and uri.parse(iden) or iden
+   cache[u.path] = nil
 end
 
-local function get_next_key_and_patt(current: string): string, string
-   if current == "://" then
-      return "authority", "/"
-   elseif current == "/" then
-      return "path", "[?#]"
-   elseif current == "?" then
-      return "query", "#"
-   elseif current == "#" then
-      return "fragment", "$"
-   end
+function document.get(iden: string | uri.ParsedUri): Document
+   local u <const> = iden is string and uri.parse(iden) or iden
+   return cache[u.path]
 end
 
-function document.parse_uri(uri: string): ParsedUri
-   util.log("Parsing uri: ", uri)
-   if not uri then return end
-
-   -- This is not the most robust uri parser, but we can assume that clients are well behaved
-   -- and for the most part we only care about the path
-   local parsed <const>: {string:string} = {}
-   local last = 1
-   local next_key = "scheme"
-   local next_patt = "://"
-
-   while next_patt do
-      local char <const>, s <const>, e <const> = find_patt(uri, next_patt, last)
-      parsed[next_key] = uri:sub(last, (s or 0) - 1)
-      util.log("   ", next_key, ": '", parsed[next_key], "'")
-
-      next_key, next_patt = get_next_key_and_patt(char)
-      last = (e or last)
-         + (next_key == "path" and 0 or 1)
-   end
-
-   for k, v in pairs(parsed) do
-      if #v == 0 then
-         parsed[k] = nil
-      end
-   end
-
-   -- if authority is present, path can be empty
-   if parsed.authority and not parsed.path then
-      parsed.path = ""
-   end
-
-   -- scheme and path are required
-   if not (parsed.scheme and parsed.path) then
-      util.log("   missing scheme and/or path, returning nil")
-      return nil
-   end
-
-   -- if authority is not present, path may not begin with '//'
-   if not parsed.authority and parsed.path:sub(1, 2) == "//" then
-      util.log("   path begins with '//' and authority is missing, returning nil")
-      return nil
-   end
-
-   util.log("   Parsed: ", parsed)
-
-   return parsed as ParsedUri
+function Document:replace_text(text: string)
+   self.text = text
+   self.tokens = nil
+   self.ast = nil
+   self.result = nil
 end
 
-function document.path_from_uri(uri: string): string
-   local parsed <const> = document.parse_uri(uri)
-   util.assert(parsed.scheme == "file", "uri " .. tostring(uri) .. " is not a file")
-   return parsed.path
+local function in_range(n: number, base: number, length: number): boolean
+   return base <= n and n < base + length
 end
 
-local function make_diagnostic_from_error(err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
+local function find_token_at(tks: {Token}, y: number, x: number): Token
+   local _, tk <const> = util.binary_search(tks, function(t: Token): number
+      return t.y > y and -1
+         or t.y < y and 1
+         or in_range(x, t.x, #t.tk) and 0
+         or t.x > x and -1
+         or 1
+   end)
+   return tk
+end
+
+local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
+   local x <const>, y <const> = err.x, err.y
+   local err_tk <const> = find_token_at(tks, y, x)
    return {
       range = {
          start = {
-            line = err.y - 1,
-            character = err.x - 1,
+            line = y - 1,
+            character = x - 1,
          },
          ["end"] = {
-            line = err.y - 1,
-            character = err.x + 2, -- TODO: get the length of the token here
+            line = y - 1,
+            character = (err_tk and x + #err_tk.tk - 1) or x,
          },
       },
       severity = lsp.severity[severity],
-      message = err.msg .. " ", -- TODO: neovim seems to cut off the last char?
+      message = err.msg,
    }
 end
 
-local function insert_errors(diagnostics: {lsp.Diagnostic}, errs: {tl.Error}, severity: lsp.Severity)
-   for _, err in ipairs(errs) do
-      table.insert(diagnostics, make_diagnostic_from_error(err, severity))
+local function insert_errs(diags: {lsp.Diagnostic}, tks: {Token}, errs: {tl.Error}, sev: lsp.Severity)
+   for _, err in ipairs(errs or {}) do
+      table.insert(diags, make_diagnostic_from_error(tks, err, sev))
    end
 end
 
@@ -132,23 +125,21 @@ end
    sure to load and unload modules as they get updated) we could probably speed this up
 ]]
 
-function document.type_check(uri: string)
-   local name <const> = document.path_from_uri(uri)
-   util.log("type checking: ", name)
-   local result <const>, err <const> = tl.process(name)
+function Document:type_check_and_publish_result()
+   local result <const> = self.result
    if not result then
-      util.log("   error type checking ", name, ": ", err)
+      util.log("unable to get result of document ", self.uri.path)
       return
    end
-   local diagnostics: {lsp.Diagnostic} = {}
+   local diags <const>: {lsp.Diagnostic} = {}
    if #result.syntax_errors > 0 then
-      insert_errors(diagnostics, result.syntax_errors, "Error")
+      insert_errs(diags, self.tokens, result.syntax_errors, "Error")
    else
-      insert_errors(diagnostics, result.warnings, "Warning")
-      insert_errors(diagnostics, result.unknowns, "Error")
-      insert_errors(diagnostics, result.type_errors, "Error")
+      insert_errs(diags, self.tokens, result.warnings, "Warning")
+      insert_errs(diags, self.tokens, result.unknowns, "Error")
+      insert_errs(diags, self.tokens, result.type_errors, "Error")
    end
-   methods.publish_diagnostics(uri, diagnostics)
+   methods.publish_diagnostics(uri.tostring(self.uri), diags)
 end
 
 return document

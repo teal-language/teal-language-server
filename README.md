@@ -8,7 +8,8 @@ Development of this could require an experimental branch of Teal itself, the cli
 # teal-language-server
 
 Currently the server only implements:
- - `textDocument/didSave`
  - `textDocument/didOpen`
+ - `textDocument/didSave`
+ - `textDocument/didClose`
 
 And just runs a simple type check with no configuration options

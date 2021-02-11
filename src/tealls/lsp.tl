@@ -25,6 +25,8 @@ local record lsp
    type JsonObject = {string:JsonValue}
 
    type integer = number
+   type uinteger = number
+
    record Message
       id: integer | string
 
@@ -44,8 +46,8 @@ local record lsp
 
    record Position
       -- Both of these are 0 based
-      line: integer
-      character: integer
+      line: uinteger
+      character: uinteger
    end
 
    record Range
@@ -75,6 +77,7 @@ local record lsp
    record Method
       enum Name
          "initialize"
+         "initialized"
          "textDocument/didOpen"
          "textDocument/didChange"
          "textDocument/didSave"

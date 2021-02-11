@@ -59,7 +59,7 @@ end
 function util.assert<T>(val: T, msg: string): T
    if not val then
       util.log("ASSERTION FAILED: ", msg)
-      error(msg)
+      error(msg, 2)
    end
    return val
 end
@@ -69,6 +69,34 @@ function util.json_nullable<T>(x: T): T
       return json.null as T
    end
    return x
+end
+
+-- Binary search a list
+-- Predicate return vals
+--      < 0: result is before current guess
+--      > 0: result is after current guess
+--      = 0: result is current guess, stop searching
+-- Returns the index of the found object and the found object
+function util.binary_search<T>(list: {T}, predicate: function(T): number): number, T
+   if #list < 2 then
+      return 1
+   end
+   local max_steps = math.ceil(math.log(#list, 2)) + 2
+   local guess = #list // 2
+   local factor = #list // 4
+   for _ = 1, max_steps do
+      local res <const> = predicate(list[guess])
+      if res > 0 then
+         guess = guess + factor
+      elseif res < 0 then
+         guess = guess - factor
+      else
+         return guess, list[guess]
+      end
+      guess = math.min(math.max(guess, 1), #list)
+      factor = math.max(factor // 2, 1)
+   end
+   return guess, list[guess]
 end
 
 return util

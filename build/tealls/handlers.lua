@@ -6,6 +6,7 @@ local lsp = require("tealls.lsp")
 local server = require("tealls.server")
 local rpc = require("tealls.rpc")
 local document = require("tealls.document")
+local uri = require("tealls.uri")
 local util = require("tealls.util")
 
 local Name = lsp.Method.Name
@@ -19,7 +20,7 @@ handlers["initialize"] = function(params, id)
    server.initialized = true
 
    if params.rootUri then
-      server.root_dir = document.path_from_uri(params.rootUri)
+      server.root_dir = uri.path_from_uri(params.rootUri)
    else
       server.root_dir = params.rootPath
    end
@@ -35,7 +36,7 @@ handlers["initialize"] = function(params, id)
             openClose = true,
             change = 0,
             save = {
-               includeText = false,
+               includeText = true,
             },
          },
       },
@@ -46,19 +47,30 @@ handlers["initialize"] = function(params, id)
    })
 end
 
-
-local function type_check(params)
-   local td = params.textDocument
-   document.type_check(td.uri)
+handlers["initialized"] = function()
+   util.log("Initialized!")
 end
 
-handlers["textDocument/didOpen"] = type_check
-handlers["textDocument/didSave"] = type_check
+handlers["textDocument/didOpen"] = function(params)
+   local td = params.textDocument
+   document.open(td.uri, params.text)
+end
 
+handlers["textDocument/didClose"] = function(params)
+   local td = params.textDocument
+   document.close(td.uri)
+end
 
-
-
-
+handlers["textDocument/didSave"] = function(params)
+   local td = params.textDocument
+   local doc = document.get(td.uri)
+   if not doc then
+      util.log("Unable to find document: ", td.uri)
+      return
+   end
+   doc:replace_text(params.text)
+   doc:type_check_and_publish_result()
+end
 
 
 

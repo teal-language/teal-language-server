@@ -6,6 +6,7 @@ local lsp <const> = require("tealls.lsp")
 local server <const> = require("tealls.server")
 local rpc <const> = require("tealls.rpc")
 local document <const> = require("tealls.document")
+local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
 
 local Name <const> = lsp.Method.Name
@@ -19,7 +20,7 @@ handlers["initialize"] = function(params: Params, id: number)
    server.initialized = true
 
    if params.rootUri then
-      server.root_dir = document.path_from_uri(params.rootUri as string)
+      server.root_dir = uri.path_from_uri(params.rootUri as string)
    else
       server.root_dir = params.rootPath as string
    end
@@ -35,7 +36,7 @@ handlers["initialize"] = function(params: Params, id: number)
             openClose = true,
             change = 0,
             save = {
-               includeText = false,
+               includeText = true,
             },
          },
       },
@@ -46,20 +47,31 @@ handlers["initialize"] = function(params: Params, id: number)
    })
 end
 
--- Being able to subtype params here would be real nice
-local function type_check(params: Params)
-   local td <const> = params.textDocument as lsp.TextDocument
-   document.type_check(td.uri)
+handlers["initialized"] = function()
+   util.log("Initialized!")
 end
 
-handlers["textDocument/didOpen"] = type_check
-handlers["textDocument/didSave"] = type_check
+handlers["textDocument/didOpen"] = function(params: Params)
+   local td <const> = params.textDocument as lsp.TextDocument
+   document.open(td.uri, params.text as string)
+end
 
--- handlers["textDocument/didChange"] = function(params: Params, id: number)
--- end
+handlers["textDocument/didClose"] = function(params: Params)
+   local td <const> = params.textDocument as lsp.TextDocument
+   document.close(td.uri)
+end
 
--- handlers["textDocument/didClose"] = function(params: Params, id: number)
--- end
+handlers["textDocument/didSave"] = function(params: Params)
+   local td <const> = params.textDocument as lsp.TextDocument
+   local doc <const> = document.get(td.uri)
+   if not doc then
+      util.log("Unable to find document: ", td.uri)
+      return
+   end
+   doc:replace_text(params.text as string)
+   doc:type_check_and_publish_result()
+end
+
 
 -- Wrap some logs around each handler for debugging
 setmetatable(handlers, {

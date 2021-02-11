@@ -37,7 +37,7 @@ local function start()
             local ok: boolean
             ok, err = xpcall(function()
                handlers[method](params, data.id as number)
-            end, debug.traceback) as (boolean, string)
+            end, debug.traceback as function) as (boolean, string)
             if not ok then
                util.log("      error in handler for ", method, ": ", err)
             end
