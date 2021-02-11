@@ -1,5 +1,6 @@
 
 local tl <const> = require("tl")
+local server <const> = require("tealls.server")
 local lsp <const> = require("tealls.lsp")
 local methods <const> = require("tealls.methods")
 local uri <const> = require("tealls.uri")
@@ -43,6 +44,7 @@ end
       ;(tl.type_check as function(Node, tl.TypeCheckOptions))(self.ast, {
          filename = self.uri.path,
          result = res,
+         env = server:get_env(),
       })
       self.result = res
    end

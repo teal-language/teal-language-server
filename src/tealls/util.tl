@@ -44,7 +44,7 @@ local function inspect(x: any): string
       or _inspect(x)
 end
 
-local logfile <const> = "teal-language-server.log"
+local logfile <const> = "/tmp/teal-language-server.log"
 function util.log(...: any)
    local fh <const> = assert(io.open(logfile, "a"))
    fh:write("[", os.date("%X"), "] ")

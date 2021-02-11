@@ -2,6 +2,7 @@
 -- Handlers for client requests
 
 local lfs <const> = require("lfs")
+local config <const> = require("teal-cli.config")
 local lsp <const> = require("tealls.lsp")
 local server <const> = require("tealls.server")
 local rpc <const> = require("tealls.rpc")
@@ -28,6 +29,13 @@ handlers["initialize"] = function(params: Params, id: number)
    util.log("root_dir: ", server.root_dir)
    util.assert(lfs.chdir(server.root_dir), "unable to chdir into " .. server.root_dir)
 
+   -- just search in the root as its the client's responsibility to find the root
+   local cfg, errs = config.load("tlconfig.lua")
+   if not cfg then
+      util.log("unable to load config ", errs)
+   end
+   server.config = cfg
+
    util.log("responding to initialize...")
    rpc.respond(id, {
       capabilities = {
@@ -53,7 +61,8 @@ end
 
 handlers["textDocument/didOpen"] = function(params: Params)
    local td <const> = params.textDocument as lsp.TextDocument
-   document.open(td.uri, params.text as string)
+   document.open(td.uri, td.text)
+      :type_check_and_publish_result()
 end
 
 handlers["textDocument/didClose"] = function(params: Params)

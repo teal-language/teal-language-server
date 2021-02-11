@@ -1,5 +1,6 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local table = _tl_compat and _tl_compat.table or table
 local tl = require("tl")
+local server = require("tealls.server")
 local lsp = require("tealls.lsp")
 local methods = require("tealls.methods")
 local uri = require("tealls.uri")
@@ -43,6 +44,7 @@ local Document = {};
       (tl.type_check)(self.ast, {
          filename = self.uri.path,
          result = res,
+         env = server:get_env(),
       })
       self.result = res
    end

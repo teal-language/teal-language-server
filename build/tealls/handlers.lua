@@ -2,6 +2,7 @@
 
 
 local lfs = require("lfs")
+local config = require("teal-cli.config")
 local lsp = require("tealls.lsp")
 local server = require("tealls.server")
 local rpc = require("tealls.rpc")
@@ -28,6 +29,13 @@ handlers["initialize"] = function(params, id)
    util.log("root_dir: ", server.root_dir)
    util.assert(lfs.chdir(server.root_dir), "unable to chdir into " .. server.root_dir)
 
+
+   local cfg, errs = config.load("tlconfig.lua")
+   if not cfg then
+      util.log("unable to load config ", errs)
+   end
+   server.config = cfg
+
    util.log("responding to initialize...")
    rpc.respond(id, {
       capabilities = {
@@ -53,7 +61,8 @@ end
 
 handlers["textDocument/didOpen"] = function(params)
    local td = params.textDocument
-   document.open(td.uri, params.text)
+   document.open(td.uri, td.text):
+   type_check_and_publish_result()
 end
 
 handlers["textDocument/didClose"] = function(params)
