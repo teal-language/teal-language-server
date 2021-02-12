@@ -21,7 +21,7 @@ local contenttype = {
 
 
 local function read_line(fh)
-   local line = (fh):read("*l")
+   local line = fh:read("*l")
    if not line then return end
    line = line:gsub("\r", "")
    return line
@@ -65,7 +65,7 @@ function rpc.decode(fh)
       return nil, "no Content-Length found"
    end
 
-   local body = (fh):read(len)
+   local body = fh:read(len)
    body = body:gsub("\r", "")
    util.log("   Body: ", body)
    local data = json.decode(body)

@@ -14,7 +14,12 @@ local Token = {}
 
 local Node = {}
 
-local Document = {};
+local Document = {}
+
+
+
+
+local Cache = {}
 
 
 
@@ -27,36 +32,82 @@ local Document = {};
 
 
 
-(Document).__index = function(self, key)
-   if key == "tokens" or key == "syntax_errors" then
-      local tks, errs = tl.lex(self.text)
-      self.tokens = tks
-      self.syntax_errors = errs or {}
-   elseif key == "ast" then
+local private_cache = setmetatable({}, {
+   __index = function(self, key)
+      rawset(self, key, {})
+      return rawget(self, key)
+   end,
+})
+
+function Document:get_tokens()
+   local cache = private_cache[self]
+   if not cache.tokens then
+      cache.tokens, cache.err_tokens = tl.lex(self.text)
+      if not cache.err_tokens then
+         cache.err_tokens = {}
+      end
+   end
+   return cache.tokens, cache.err_tokens
+end
+
+local parse_prog = tl.parse_program
+function Document:get_ast()
+   local tks, err_tks = self:get_tokens()
+   if #err_tks > 0 then
+      return
+   end
+
+   local cache = private_cache[self]
+   if not cache.ast then
       local _
-      _, self.ast = (tl.parse_program)(self.tokens)
-   elseif key == "result" then
-      local res = {
+      cache.parse_errors = {}
+      _, cache.ast = parse_prog(tks, cache.parse_errors)
+   end
+   return cache.ast, cache.parse_errors
+end
+
+local type_check = tl.type_check
+function Document:get_result()
+   local ast, errs = self:get_ast()
+   if #errs > 0 then
+      return nil
+   end
+   local cache = private_cache[self]
+   if not cache.result then
+      cache.result = {
          syntax_errors = {},
          type_errors = {},
          unknowns = {},
          warnings = {},
          env = server:get_env(),
       }
-      res.symbol_list = select(4, (tl.type_check)(self.ast, {
+      local symbols = select(4, type_check(ast, {
          filename = self.uri.path,
-         result = res,
-         env = res.env,
+         result = cache.result,
+         env = cache.result.env,
       }))
-      self.result = res
-   elseif key == "type_report" or key == "type_report_env" then
-      local res = self.result
-      if res then
-         self.type_report, self.type_report_env = tl.get_types(res)
-      end
+      cache.result.symbol_list = symbols
    end
-   return rawget(self, key) or
-   rawget(Document, key)
+   return cache.result
+end
+
+function Document:get_type_report()
+   local result = self:get_result()
+   if not result then
+      return
+   end
+
+   local cache = private_cache[self]
+   if not cache.type_report then
+      cache.type_report, cache.type_report_env = tl.get_types(result)
+   end
+
+   return cache.type_report, cache.type_report_env
+end
+
+function Document:update_text(text)
+   private_cache[self] = nil
+   self.text = text
 end
 
 local cache = {}
@@ -64,32 +115,21 @@ local document = {
    Document = Document,
 }
 
-function document.open(iden, content)
+function document.open(u, content)
    local d = setmetatable({
-      uri = type(iden) == "string" and uri.parse(iden) or iden,
+      uri = u,
       text = content,
-   }, Document)
+   }, { __index = Document })
    cache[d.uri.path] = d
    return d
 end
 
-function document.close(iden)
-   local u = type(iden) == "string" and uri.parse(iden) or iden
+function document.close(u)
    cache[u.path] = nil
 end
 
-function document.get(iden)
-   local u = type(iden) == "string" and uri.parse(iden) or iden
+function document.get(u)
    return cache[u.path]
-end
-
-function Document:replace_text(text)
-   self.text = text
-   self.tokens = nil
-   self.ast = nil
-   self.result = nil
-   self.type_report = nil
-   self.type_report_env = nil
 end
 
 local function in_range(n, base, length)
@@ -125,9 +165,11 @@ local function make_diagnostic_from_error(tks, err, severity)
    }
 end
 
-local function insert_errs(diags, tks, errs, sev)
+local function insert_errs(fname, diags, tks, errs, sev)
    for _, err in ipairs(errs or {}) do
-      table.insert(diags, make_diagnostic_from_error(tks, err, sev))
+      if fname == err.filename then
+         table.insert(diags, make_diagnostic_from_error(tks, err, sev))
+      end
    end
 end
 
@@ -137,32 +179,53 @@ end
 
 
 
-function Document:type_check_and_publish_result()
-   local result = self.result
-   if not result then
-      util.log("unable to get result of document ", self.uri.path)
+function Document:process_and_publish_results()
+   local tks, err_tks = self:get_tokens()
+   local uri_str = uri.tostring(self.uri)
+   if #err_tks > 0 then
+      methods.publish_diagnostics(uri_str, util.imap(err_tks, function(t)
+         return {
+            range = {
+               start = lsp.position(t.y - 1, t.x - 1),
+               ["end"] = lsp.position(t.y - 1, t.x - 1 + #t.tk),
+            },
+            severity = lsp.severity.Error,
+            message = "Unexpected token",
+         }
+      end))
       return
    end
+
+   local _, parse_errs = self:get_ast()
+   if #parse_errs > 0 then
+      methods.publish_diagnostics(uri_str, util.imap(parse_errs, function(e)
+         return make_diagnostic_from_error(tks, e, "Error")
+      end))
+      return
+   end
+
    local diags = {}
+   local fname = self.uri.path
+   local result = self:get_result()
    if #result.syntax_errors > 0 then
-      insert_errs(diags, self.tokens, result.syntax_errors, "Error")
+      insert_errs(fname, diags, tks, result.syntax_errors, "Error")
    else
-      insert_errs(diags, self.tokens, result.warnings, "Warning")
-      insert_errs(diags, self.tokens, result.unknowns, "Error")
-      insert_errs(diags, self.tokens, result.type_errors, "Error")
+      insert_errs(fname, diags, tks, result.warnings, "Warning")
+      insert_errs(fname, diags, tks, result.unknowns, "Error")
+      insert_errs(fname, diags, tks, result.type_errors, "Error")
    end
    methods.publish_diagnostics(uri.tostring(self.uri), diags)
 end
 
 function Document:type_information_at(where)
    util.log("getting type report...")
-   local tr = self.type_report
+   local tr = self:get_type_report()
    if not tr then
       util.log("   couldn't get type report")
       return
    end
    util.log("   got type report")
-   local _, tk = find_token_at(self.tokens, where.line + 1, where.character + 1)
+   local _, tk = find_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
    end
@@ -181,6 +244,7 @@ local function ti(list, ...)
       table.insert(list, (select(i, ...)))
    end
 end
+
 function Document:show_type(info, depth)
    if not info then return "???" end
    depth = depth or 1
@@ -194,10 +258,12 @@ function Document:show_type(info, depth)
       ti(out, ...)
    end
 
+   local tr = self:get_type_report()
+
    local function show_record_field(name, field_id)
       local field = {}
       ti(field, indent(depth))
-      local field_type = self.type_report.types[field_id]
+      local field_type = tr.types[field_id]
       if field_type.str:match("^type ") then
          ti(field, "type ", name, " = ", (self:show_type(field_type, depth + 1):gsub("^type ", "")))
       else
@@ -228,7 +294,7 @@ function Document:show_type(info, depth)
    end
 
    if info.ref then
-      return info.str .. " => " .. self:show_type(self.type_report.types[info.ref], depth + 1)
+      return info.str .. " => " .. self:show_type(tr.types[info.ref], depth + 1)
    elseif info.str == "type record" or info.str == "record" then
       ins(info.str)
       if not info.fields then
@@ -250,6 +316,7 @@ function Document:show_type(info, depth)
       else
          ins(indent(depth))
          ins("--???")
+         ins("\n")
       end
       ins(indent(depth - 1))
       ins("end")
@@ -260,7 +327,7 @@ function Document:show_type(info, depth)
 end
 
 function Document:token_at(where)
-   local _, tk = find_token_at(self.tokens, where.line + 1, where.character + 1)
+   local _, tk = find_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    return tk
 end
 

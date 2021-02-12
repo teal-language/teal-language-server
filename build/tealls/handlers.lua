@@ -52,29 +52,29 @@ end
 
 handlers["textDocument/didOpen"] = function(params)
    local td = params.textDocument
-   document.open(td.uri, td.text):
-   type_check_and_publish_result()
+   document.open(uri.parse(td.uri), td.text):
+   process_and_publish_results()
 end
 
 handlers["textDocument/didClose"] = function(params)
    local td = params.textDocument
-   document.close(td.uri)
+   document.close(uri.parse(td.uri))
 end
 
 local function get_doc(params)
    local td = params.textDocument
-   return document.get(td.uri)
+   return document.get(uri.parse(td.uri))
 end
 
 handlers["textDocument/didSave"] = function(params)
    local td = params.textDocument
-   local doc = document.get(td.uri)
+   local doc = document.get(uri.parse(td.uri))
    if not doc then
       util.log("Unable to find document: ", td.uri)
       return
    end
-   doc:replace_text(params.text)
-   doc:type_check_and_publish_result()
+   doc:update_text(params.text)
+   doc:process_and_publish_results()
 end
 
 handlers["textDocument/hover"] = function(params, id)

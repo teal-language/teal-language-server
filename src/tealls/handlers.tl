@@ -52,29 +52,29 @@ end
 
 handlers["textDocument/didOpen"] = function(params: Params)
    local td <const> = params.textDocument as lsp.TextDocument
-   document.open(td.uri, td.text)
-      :type_check_and_publish_result()
+   document.open(uri.parse(td.uri), td.text)
+      :process_and_publish_results()
 end
 
 handlers["textDocument/didClose"] = function(params: Params)
    local td <const> = params.textDocument as lsp.TextDocument
-   document.close(td.uri)
+   document.close(uri.parse(td.uri))
 end
 
 local function get_doc(params: Params): document.Document
    local td <const> = params.textDocument as lsp.TextDocument
-   return document.get(td.uri)
+   return document.get(uri.parse(td.uri))
 end
 
 handlers["textDocument/didSave"] = function(params: Params)
    local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = document.get(td.uri)
+   local doc <const> = document.get(uri.parse(td.uri))
    if not doc then
       util.log("Unable to find document: ", td.uri)
       return
    end
-   doc:replace_text(params.text as string)
-   doc:type_check_and_publish_result()
+   doc:update_text(params.text as string)
+   doc:process_and_publish_results()
 end
 
 handlers["textDocument/hover"] = function(params: Params, id: number)

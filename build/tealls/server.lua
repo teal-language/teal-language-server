@@ -7,6 +7,9 @@ local tl = require("tl")
 local config = require("teal-cli.config")
 local common = require("teal-cli.tlcommon")
 
+local init_path = package.path
+local init_cpath = package.cpath
+
 local server = {
    name = "teal-language-server",
    version = "dev",
@@ -28,9 +31,6 @@ local server = {
       hoverProvider = true,
    },
 }
-
-local init_path = package.path
-local init_cpath = package.cpath
 
 function server:get_env()
    if not self.config then

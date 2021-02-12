@@ -21,14 +21,14 @@ local contenttype: {string:boolean} = {
 ]]
 
 local function read_line(fh: FILE): string
-   local line = (fh as FILE):read("*l")
+   local line = fh:read("*l")
    if not line then return end
    line = line:gsub("\r", "")
    return line
 end
 
 function rpc.decode(fh: FILE): {string:any}, string
-   fh = fh as FILE or io.stdin
+   fh = fh or io.stdin
    util.log("Decoding rpc (doing blocking read)")
    local line = read_line(fh)
    if not line then
@@ -65,7 +65,7 @@ function rpc.decode(fh: FILE): {string:any}, string
       return nil, "no Content-Length found"
    end
 
-   local body = (fh as FILE):read(len)
+   local body = fh:read(len)
    body = body:gsub("\r", "")
    util.log("   Body: ", body)
    local data = json.decode(body)
