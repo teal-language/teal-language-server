@@ -112,18 +112,18 @@ handlers["textDocument/hover"] = function(params: Params, id: number)
 end
 
 -- Wrap some logs around each handler for debugging
-setmetatable(handlers, {
-   __index = function(self: {Name:Method}, key: Name): Method
+return setmetatable({}, {
+   __index = function(_self: {Name:Method}, key: Name): Method
       util.log("   getting handler for ", key)
-      local f <const> = rawget(self, key)
+      local f <const> = rawget(handlers, key)
       return f and function(p: Params, id: number)
-         util.log("   calling handler for ", key, "with")
+         util.log("   calling handler for '", key, "' with")
          util.log("          id: ", id)
          util.log("      params: ", p)
          f(p, id)
          util.log("   done handler for ", key)
       end
    end
-})
+}) as {Name:Method}
 
-return handlers
+-- return handlers

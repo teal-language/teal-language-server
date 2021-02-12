@@ -112,12 +112,12 @@ handlers["textDocument/hover"] = function(params, id)
 end
 
 
-setmetatable(handlers, {
-   __index = function(self, key)
+return setmetatable({}, {
+   __index = function(_self, key)
       util.log("   getting handler for ", key)
-      local f = rawget(self, key)
+      local f = rawget(handlers, key)
       return f and function(p, id)
-         util.log("   calling handler for ", key, "with")
+         util.log("   calling handler for '", key, "' with")
          util.log("          id: ", id)
          util.log("      params: ", p)
          f(p, id)
@@ -125,5 +125,3 @@ setmetatable(handlers, {
       end
    end,
 })
-
-return handlers
