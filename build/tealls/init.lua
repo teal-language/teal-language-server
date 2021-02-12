@@ -1,8 +1,20 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall
 local lsp = require("tealls.lsp")
 local rpc = require("tealls.rpc")
 local handlers = require("tealls.handlers")
 local util = require("tealls.util")
+
+local args = {}
+
+
+for _, v in ipairs({ ... }) do
+   local lhs, rhs = v:match("^[^=]+=[^=]+$")
+   if lhs and rhs then
+      args[lhs:lower()] = rhs:lower()
+   end
+end
+
+util.set_logging(args["logging"] == "enable")
 
 local function assert_init()
    util.log("waiting for initialize request")

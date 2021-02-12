@@ -44,16 +44,23 @@ local function inspect(x: any): string
       or _inspect(x)
 end
 
+local logging_enabled = false
+function util.set_logging(to: boolean)
+   logging_enabled = to
+end
+
 local logfile <const> = "/tmp/teal-language-server.log"
 function util.log(...: any)
-   local fh <const> = assert(io.open(logfile, "a"))
-   fh:write("[", os.date("%X"), "] ")
-   for i = 1, select("#", ...) do
-      local x <const> = select(i, ...)
-      fh:write(inspect(x))
+   if logging_enabled then
+      local fh <const> = assert(io.open(logfile, "a"))
+      fh:write("[", os.date("%X"), "] ")
+      for i = 1, select("#", ...) do
+         local x <const> = select(i, ...)
+         fh:write(inspect(x))
+      end
+      fh:write("\n")
+      fh:close()
    end
-   fh:write("\n")
-   fh:close()
 end
 
 function util.assert<T>(val: T, msg: string): T

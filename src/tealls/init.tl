@@ -4,6 +4,18 @@ local rpc <const> = require("tealls.rpc")
 local handlers <const> = require("tealls.handlers")
 local util <const> = require("tealls.util")
 
+local args <const>: {string:string} = {}
+-- very simple arg parsing
+-- just match args that look like "foo=bar" and put them in a map
+for _, v in ipairs{...} do
+   local lhs <const>, rhs <const> = v:match("^[^=]+=[^=]+$")
+   if lhs and rhs then
+      args[lhs:lower()] = rhs:lower()
+   end
+end
+
+util.set_logging(args["logging"] == "enable")
+
 local function assert_init()
    util.log("waiting for initialize request")
    local data = util.assert(rpc.decode())
