@@ -3,7 +3,19 @@
 
 
 
-local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, }
+local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -118,6 +130,12 @@ lsp.severity = {
    Warning = 2,
    Information = 3,
    Hint = 4,
+}
+
+lsp.sync_kind = {
+   None = 0,
+   Full = 1,
+   Incremental = 2,
 }
 
 function lsp.position(y, x)

@@ -14,7 +14,9 @@ for _, v in ipairs({ ... }) do
    end
 end
 
-util.set_logging(args["logging"] == "enable")
+
+util.set_logging(true)
+util.log("args: ", args)
 
 local function assert_init()
    util.log("waiting for initialize request")

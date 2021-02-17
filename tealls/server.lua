@@ -4,8 +4,9 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 
 local tl = require("tl")
-local config = require("teal-cli.config")
-local common = require("teal-cli.tlcommon")
+local config = require("charon.config")
+local common = require("charon.tlcommon")
+local lsp = require("tealls.lsp")
 
 local init_path = package.path
 local init_cpath = package.cpath
@@ -23,7 +24,7 @@ local server = {
 
       textDocumentSync = {
          openClose = true,
-         change = 0,
+         change = lsp.sync_kind.Full,
          save = {
             includeText = true,
          },

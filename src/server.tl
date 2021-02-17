@@ -4,8 +4,9 @@
 -- and the environment for type checking
 
 local tl <const> = require("tl")
-local config <const> = require("teal-cli.config")
-local common <const> = require("teal-cli.tlcommon")
+local config <const> = require("charon.config")
+local common <const> = require("charon.tlcommon")
+local lsp <const> = require("tealls.lsp")
 
 local init_path <const> = package.path
 local init_cpath <const> = package.cpath
@@ -23,7 +24,7 @@ local server <const> = {
       -- we basically do the bare minimum
       textDocumentSync = {
          openClose = true,
-         change = 0,
+         change = lsp.sync_kind.Full,
          save = {
             includeText = true,
          },

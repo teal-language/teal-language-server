@@ -2,7 +2,7 @@
 -- Handlers for client requests
 
 local lfs <const> = require("lfs")
-local config <const> = require("teal-cli.config")
+local config <const> = require("charon.config")
 local lsp <const> = require("tealls.lsp")
 local server <const> = require("tealls.server")
 local rpc <const> = require("tealls.rpc")

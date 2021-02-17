@@ -2,7 +2,7 @@
 
 
 local lfs = require("lfs")
-local config = require("teal-cli.config")
+local config = require("charon.config")
 local lsp = require("tealls.lsp")
 local server = require("tealls.server")
 local rpc = require("tealls.rpc")

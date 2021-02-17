@@ -97,6 +97,18 @@ local record lsp
       text: string
       languageId: string
    end
+
+   enum TextDocumentSyncKind
+      "None"
+      "Full"
+      "Incremental"
+   end
+   sync_kind: {TextDocumentSyncKind:integer}
+
+   record TextDocumentContentChangeEvent
+      range: Range
+      text: string
+   end
 end
 
 lsp.error_code = {
@@ -118,6 +130,12 @@ lsp.severity = {
    Warning = 2,
    Information = 3,
    Hint = 4,
+}
+
+lsp.sync_kind = {
+   None = 0,
+   Full = 1,
+   Incremental = 2,
 }
 
 function lsp.position(y: lsp.uinteger, x: lsp.uinteger): lsp.Position
