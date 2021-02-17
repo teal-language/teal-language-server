@@ -21,7 +21,7 @@ local record lsp
 
    error_code: {ErrorName:number}
 
-   type JsonValue = string | number | boolean | JsonObject
+   type JsonValue = string | number | boolean | JsonObject -- should also have {JsonValue}
    type JsonObject = {string:JsonValue}
 
    type integer = number
@@ -109,6 +109,14 @@ local record lsp
       range: Range
       text: string
    end
+
+   enum CompletionTriggerKind
+      "Invoked"
+      "TriggerCharacter"
+      "TriggerForIncompleteCompletions"
+   end
+   completion_trigger_kind: {CompletionTriggerKind:integer}
+
 end
 
 lsp.error_code = {
@@ -136,6 +144,12 @@ lsp.sync_kind = {
    None = 0,
    Full = 1,
    Incremental = 2,
+}
+
+lsp.completion_trigger_kind = {
+   Invoked = 1,
+   TriggerCharacter = 2,
+   TriggerForIncompleteCompletions = 3,
 }
 
 function lsp.position(y: lsp.uinteger, x: lsp.uinteger): lsp.Position

@@ -111,6 +111,14 @@ local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Locati
 
 
 
+
+
+
+
+
+
+
+
 lsp.error_code = {
    InternalError = -32603,
    InvalidParams = -32602,
@@ -136,6 +144,12 @@ lsp.sync_kind = {
    None = 0,
    Full = 1,
    Incremental = 2,
+}
+
+lsp.completion_trigger_kind = {
+   Invoked = 1,
+   TriggerCharacter = 2,
+   TriggerForIncompleteCompletions = 3,
 }
 
 function lsp.position(y, x)
