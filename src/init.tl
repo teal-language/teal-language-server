@@ -7,6 +7,7 @@ local util <const> = require("tealls.util")
 local args <const>: {string:string} = {}
 -- very simple arg parsing
 -- just match args that look like "foo=bar" and put them in a map
+-- we don't need more than this since it will mostly be editor plugins using these anyway
 for _, v in ipairs{...} do
    local lhs <const>, rhs <const> = v:match("^[^=]+=[^=]+$")
    if lhs and rhs then
@@ -14,7 +15,8 @@ for _, v in ipairs{...} do
    end
 end
 
-util.set_logging(args["logging"] == "on")
+-- util.set_logging(args["logging"] == "on")
+util.set_logging(true)
 util.log("args: ", args)
 
 local function assert_init()
@@ -32,7 +34,7 @@ local function start()
    util.log("initialized!")
 
    while true do
-      local data, err = rpc.decode()
+      local data <const>, err = rpc.decode()
       if not data then
          util.log("Error: ", err)
          error(err)

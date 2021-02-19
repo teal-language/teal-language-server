@@ -2,7 +2,7 @@
 
 
 local lfs = require("lfs")
-local config = require("charon.config")
+local config = require("cyan.config")
 local lsp = require("tealls.lsp")
 local server = require("tealls.server")
 local rpc = require("tealls.rpc")
@@ -29,8 +29,7 @@ handlers["initialize"] = function(params, id)
    util.log("root_dir: ", server.root_dir)
    util.assert(lfs.chdir(server.root_dir), "unable to chdir into " .. server.root_dir)
 
-
-   local cfg, errs = config.load("tlconfig.lua")
+   local cfg, errs = config.load()
    if not cfg then
       util.log("unable to load config ", errs)
    end

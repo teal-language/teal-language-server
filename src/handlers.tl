@@ -2,7 +2,7 @@
 -- Handlers for client requests
 
 local lfs <const> = require("lfs")
-local config <const> = require("charon.config")
+local config <const> = require("cyan.config")
 local lsp <const> = require("tealls.lsp")
 local server <const> = require("tealls.server")
 local rpc <const> = require("tealls.rpc")
@@ -29,8 +29,7 @@ handlers["initialize"] = function(params: Params, id: number)
    util.log("root_dir: ", server.root_dir)
    util.assert(lfs.chdir(server.root_dir), "unable to chdir into " .. server.root_dir)
 
-   -- just search in the root as its the client's responsibility to find the root
-   local cfg, errs = config.load("tlconfig.lua")
+   local cfg, errs = config.load()
    if not cfg then
       util.log("unable to load config ", errs)
    end

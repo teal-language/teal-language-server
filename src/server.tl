@@ -4,8 +4,8 @@
 -- and the environment for type checking
 
 local tl <const> = require("tl")
-local config <const> = require("charon.config")
-local common <const> = require("charon.tlcommon")
+local config <const> = require("cyan.config")
+local common <const> = require("cyan.tlcommon")
 local lsp <const> = require("tealls.lsp")
 
 local init_path <const> = package.path
@@ -36,7 +36,7 @@ local server <const> = {
    },
 }
 
-function server:get_env(): tl.Env
+function server:get_env(): tl.Env, string
    if not self.config then
       return nil
    end
@@ -46,7 +46,7 @@ function server:get_env(): tl.Env
    package.cpath = init_cpath
 
    -- TODO: maintain some sort of persistent environment
-   return common.apply_config_to_environment(self.config)
+   return common.init_env_from_cfg(self.config)
 end
 
 return server

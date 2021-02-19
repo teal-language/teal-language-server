@@ -4,8 +4,8 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 
 local tl = require("tl")
-local config = require("charon.config")
-local common = require("charon.tlcommon")
+local config = require("cyan.config")
+local common = require("cyan.tlcommon")
 local lsp = require("tealls.lsp")
 
 local init_path = package.path
@@ -46,7 +46,7 @@ function server:get_env()
    package.cpath = init_cpath
 
 
-   return common.apply_config_to_environment(self.config)
+   return common.init_env_from_cfg(self.config)
 end
 
 return server

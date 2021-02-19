@@ -7,6 +7,7 @@ local util = require("tealls.util")
 local args = {}
 
 
+
 for _, v in ipairs({ ... }) do
    local lhs, rhs = v:match("^[^=]+=[^=]+$")
    if lhs and rhs then
@@ -14,7 +15,8 @@ for _, v in ipairs({ ... }) do
    end
 end
 
-util.set_logging(args["logging"] == "on")
+
+util.set_logging(true)
 util.log("args: ", args)
 
 local function assert_init()
