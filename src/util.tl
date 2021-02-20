@@ -44,7 +44,7 @@ local function inspect(x: any): string
       or _inspect(x)
 end
 
-local logging_enabled = false
+local logging_enabled = true
 function util.set_logging(to: boolean)
    logging_enabled = to
 end

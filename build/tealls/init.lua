@@ -8,15 +8,14 @@ local args = {}
 
 
 
-for _, v in ipairs({ ... }) do
-   local lhs, rhs = v:match("^[^=]+=[^=]+$")
+for _, v in ipairs(arg) do
+   local lhs, rhs = v:match("^([^=]-)=([^=]+)$")
    if lhs and rhs then
       args[lhs:lower()] = rhs:lower()
    end
 end
 
-
-util.set_logging(true)
+util.set_logging(args["logging"] == "on")
 util.log("args: ", args)
 
 local function assert_init()
