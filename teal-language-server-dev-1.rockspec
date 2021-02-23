@@ -12,6 +12,7 @@ description = {
    issues_url = "https://github.com/teal-language/cyan/issues",
 }
 dependencies = {
+   "dkjson",
    "luafilesystem",
    "cyan",
 }
