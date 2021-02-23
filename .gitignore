@@ -1,1 +1,5 @@
 teal-language-server.log
+/luarocks
+/lua
+/lua_modules
+/.luarocks

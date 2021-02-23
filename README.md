@@ -5,6 +5,10 @@ Development of this could require an experimental branch of Teal itself, the cli
 
 [![Join the chat at https://gitter.im/dotnet/coreclr](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/teal-language/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
+```
+luarocks install --dev teal-language-server
+```
+
 # teal-language-server
 
 Currently the server only implements:
@@ -14,3 +18,28 @@ Currently the server only implements:
  - `textDocument/hover`
 
 And just runs a simple type check with no configuration options
+
+# Setup
+
+### NeoVim 0.5
+
+Install the [lspconfig plugin](https://github.com/neovim/nvim-lspconfig) and put the following in your `init.vim` or `init.lua`
+```lua
+local lspconfig = require("lspconfig")
+local configs = require("lspconfig/configs") -- Make sure this is a slash (as theres some metamagic happening behind the scenes)
+if not lspconfig.teal then
+   configs.teal = {
+      default_config = {
+         cmd = {
+            "teal-language-server",
+            -- "logging=on", use this to enable logging in /tmp/teal-language-server.log
+         },
+         filetypes = { "teal" };
+         root_dir = lspconfig.util.root_pattern("tlconfig.lua", ".git"),
+         settings = {};
+      },
+   }
+end
+lspconfig.teal.setup{}
+
+```
