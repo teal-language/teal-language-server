@@ -47,7 +47,6 @@ local function start()
          local params = data.params
          util.log("Method: ", method)
          if handlers[method] then
-            util.log("   dispatching handler...")
             local ok
             ok, err = xpcall(function()
                handlers[method](params, data.id)

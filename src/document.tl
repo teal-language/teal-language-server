@@ -132,23 +132,11 @@ function document.get(u: uri.ParsedUri): Document
    return cache[u.path]
 end
 
-local function in_range(n: number, base: number, length: number): boolean
-   return base <= n and n < base + length
-end
-
-local function find_token_at(tks: {Token}, y: number, x: number): number, Token
-   return util.binary_search(tks, function(t: Token): number
-      return t.y > y and -1
-         or t.y < y and 1
-         or in_range(x, t.x, #t.tk) and 0
-         or t.x > x and -1
-         or 1
-   end)
-end
+local get_token_at <const> = tl.get_token_at as function({Token}, number, number): string
 
 local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
    local x <const>, y <const> = err.x, err.y
-   local _, err_tk <const> = find_token_at(tks, y, x)
+   local err_tk <const> = get_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -157,7 +145,7 @@ local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity:
          },
          ["end"] = {
             line = y - 1,
-            character = (err_tk and x + #err_tk.tk - 1) or x,
+            character = (err_tk and x + #err_tk - 1) or x,
          },
       },
       severity = lsp.severity[severity],
@@ -225,15 +213,15 @@ function Document:type_information_at(where: lsp.Position): tl.TypeInfo
       return
    end
    util.log("   got type report")
-   local _, tk <const> = find_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+   local tk <const> = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
    end
-   util.log("found token: ", tk.tk)
+   util.log("found token: ", tk)
    local symbols <const> = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
-   local type_id <const> = symbols[tk.tk]
+   local type_id <const> = symbols[tk]
 
-   return tr.types[type_id] or tr.types[tr.globals[tk.tk]]
+   return tr.types[type_id] or tr.types[tr.globals[tk]]
 end
 
 local function indent(n: number): string
@@ -326,9 +314,8 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
    end
 end
 
-function Document:token_at(where: lsp.Position): Token
-   local _, tk <const> = find_token_at(self:get_tokens(), where.line + 1, where.character + 1)
-   return tk
+function Document:token_at(where: lsp.Position): string
+   return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
 end
 
 return document

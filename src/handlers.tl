@@ -92,20 +92,20 @@ handlers["textDocument/hover"] = function(params: Params, id: number)
    local info <const> = doc:type_information_at(pos)
    if not info then
       rpc.respond(id, {
-         contents = { tk.tk .. ":", " No info found " },
+         contents = { tk .. ":", " No info found " },
          range = {
-            start = lsp.position(tk.y - 1, tk.x - 1),
-            ["end"] = lsp.position(tk.y - 1, tk.x + #tk.tk),
+            start = lsp.position(pos.line, pos.character),
+            ["end"] = lsp.position(pos.line, pos.character + #tk),
          },
       })
       return
    end
    local type_str <const> = doc:show_type(info)
    rpc.respond(id, {
-      contents = { tk.tk .. ":", type_str },
+      contents = { tk .. ":", type_str },
       range = {
-         start = lsp.position(tk.y - 1, tk.x - 1),
-         ["end"] = lsp.position(tk.y - 1, tk.x + #tk.tk),
+         start = lsp.position(pos.line, pos.character),
+         ["end"] = lsp.position(pos.line, pos.character + #tk),
       },
    })
 end

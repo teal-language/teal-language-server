@@ -132,23 +132,11 @@ function document.get(u)
    return cache[u.path]
 end
 
-local function in_range(n, base, length)
-   return base <= n and n < base + length
-end
-
-local function find_token_at(tks, y, x)
-   return util.binary_search(tks, function(t)
-      return t.y > y and -1 or
-      t.y < y and 1 or
-      in_range(x, t.x, #t.tk) and 0 or
-      t.x > x and -1 or
-      1
-   end)
-end
+local get_token_at = tl.get_token_at
 
 local function make_diagnostic_from_error(tks, err, severity)
    local x, y = err.x, err.y
-   local _, err_tk = find_token_at(tks, y, x)
+   local err_tk = get_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -157,7 +145,7 @@ local function make_diagnostic_from_error(tks, err, severity)
          },
          ["end"] = {
             line = y - 1,
-            character = (err_tk and x + #err_tk.tk - 1) or x,
+            character = (err_tk and x + #err_tk - 1) or x,
          },
       },
       severity = lsp.severity[severity],
@@ -225,15 +213,15 @@ function Document:type_information_at(where)
       return
    end
    util.log("   got type report")
-   local _, tk = find_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+   local tk = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
    end
-   util.log("found token: ", tk.tk)
+   util.log("found token: ", tk)
    local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
-   local type_id = symbols[tk.tk]
+   local type_id = symbols[tk]
 
-   return tr.types[type_id] or tr.types[tr.globals[tk.tk]]
+   return tr.types[type_id] or tr.types[tr.globals[tk]]
 end
 
 local function indent(n)
@@ -327,8 +315,7 @@ function Document:show_type(info, depth)
 end
 
 function Document:token_at(where)
-   local _, tk = find_token_at(self:get_tokens(), where.line + 1, where.character + 1)
-   return tk
+   return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
 end
 
 return document

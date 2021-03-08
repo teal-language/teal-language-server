@@ -47,7 +47,6 @@ local function start()
          local params <const> = data.params as lsp.Method.Params
          util.log("Method: ", method)
          if handlers[method] then
-            util.log("   dispatching handler...")
             local ok: boolean
             ok, err = xpcall(function()
                handlers[method](params, data.id as number)
