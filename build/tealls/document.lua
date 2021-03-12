@@ -6,6 +6,10 @@ local methods = require("tealls.methods")
 local uri = require("tealls.uri")
 local util = require("tealls.util")
 
+local cyanutils = require("cyan.util")
+local filter, set =
+cyanutils.tab.filter, cyanutils.tab.set
+
 
 local Token = {}
 
@@ -74,19 +78,10 @@ function Document:get_result()
    end
    local cache = private_cache[self]
    if not cache.result then
-      cache.result = {
-         syntax_errors = {},
-         type_errors = {},
-         unknowns = {},
-         warnings = {},
-         env = server:get_env(),
-      }
-      local symbols = select(4, type_check(ast, {
+      cache.result = type_check(ast, {
          filename = self.uri.path,
-         result = cache.result,
-         env = cache.result.env,
-      }))
-      cache.result.symbol_list = symbols
+         env = server:get_env(),
+      })
    end
    return cache.result
 end
@@ -195,29 +190,29 @@ function Document:process_and_publish_results()
    local diags = {}
    local fname = self.uri.path
    local result = self:get_result()
-   if #result.syntax_errors > 0 then
-      insert_errs(fname, diags, tks, result.syntax_errors, "Error")
-   else
-      insert_errs(fname, diags, tks, result.warnings, "Warning")
-      insert_errs(fname, diags, tks, result.unknowns, "Error")
-      insert_errs(fname, diags, tks, result.type_errors, "Error")
-   end
+   local disabled_warnings = set(server.config.disable_warnings or {})
+   local warning_errors = set(server.config.warning_error or {})
+   local enabled_warnings = filter(result.warnings, function(e)
+      return not disabled_warnings[e.tag]
+   end)
+   local werrors, warnings = filter(enabled_warnings, function(e)
+      return warning_errors[e.tag]
+   end)
+   insert_errs(fname, diags, tks, warnings, "Warning")
+   insert_errs(fname, diags, tks, werrors, "Error")
+   insert_errs(fname, diags, tks, result.type_errors, "Error")
    methods.publish_diagnostics(uri.tostring(self.uri), diags)
 end
 
 function Document:type_information_at(where)
-   util.log("getting type report...")
    local tr = self:get_type_report()
    if not tr then
-      util.log("   couldn't get type report")
       return
    end
-   util.log("   got type report")
    local tk = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
    end
-   util.log("found token: ", tk)
    local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
    local type_id = symbols[tk]
 

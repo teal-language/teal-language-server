@@ -6,6 +6,10 @@ local methods <const> = require("tealls.methods")
 local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
 
+local cyanutils <const> = require("cyan.util")
+local filter <const>, set <const>
+   = cyanutils.tab.filter, cyanutils.tab.set
+
 -- tl.Token nor tl.Node not exposed :((((
 local record Token
    x: number
@@ -66,27 +70,18 @@ function Document:get_ast(): Node, {tl.Error}
    return cache.ast, cache.parse_errors
 end
 
-local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): {tl.Error}, {tl.Error}, any, {tl.Symbol}
-function Document:get_result(): tl.Result, {tl.Symbol}
+local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): tl.Result
+function Document:get_result(): tl.Result
    local ast, errs = self:get_ast()
    if #errs > 0 then
       return nil
    end
    local cache = private_cache[self]
    if not cache.result then
-      cache.result = {
-         syntax_errors = {},
-         type_errors = {},
-         unknowns = {},
-         warnings = {},
-         env = server:get_env(),
-      }
-      local symbols = select(4, type_check(ast, {
+      cache.result = type_check(ast, {
          filename = self.uri.path,
-         result = cache.result,
-         env = cache.result.env,
-      })) as {tl.Symbol}
-      cache.result.symbol_list = symbols
+         env = server:get_env(),
+      })
    end
    return cache.result
 end
@@ -195,29 +190,29 @@ function Document:process_and_publish_results()
    local diags <const>: {lsp.Diagnostic} = {}
    local fname <const> = self.uri.path
    local result = self:get_result()
-   if #result.syntax_errors > 0 then
-      insert_errs(fname, diags, tks, result.syntax_errors, "Error")
-   else
-      insert_errs(fname, diags, tks, result.warnings, "Warning")
-      insert_errs(fname, diags, tks, result.unknowns, "Error")
-      insert_errs(fname, diags, tks, result.type_errors, "Error")
-   end
+   local disabled_warnings <const> = set(server.config.disable_warnings or {})
+   local warning_errors <const> = set(server.config.warning_error or {})
+   local enabled_warnings <const> = filter(result.warnings, function(e: tl.Error): boolean
+      return not disabled_warnings[e.tag]
+   end)
+   local werrors <const>, warnings <const> = filter(enabled_warnings, function(e: tl.Error): boolean
+      return warning_errors[e.tag]
+   end)
+   insert_errs(fname, diags, tks, warnings, "Warning")
+   insert_errs(fname, diags, tks, werrors, "Error")
+   insert_errs(fname, diags, tks, result.type_errors, "Error")
    methods.publish_diagnostics(uri.tostring(self.uri), diags)
 end
 
 function Document:type_information_at(where: lsp.Position): tl.TypeInfo
-   util.log("getting type report...")
    local tr <const> = self:get_type_report()
    if not tr then
-      util.log("   couldn't get type report")
       return
    end
-   util.log("   got type report")
    local tk <const> = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
    end
-   util.log("found token: ", tk)
    local symbols <const> = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
    local type_id <const> = symbols[tk]
 
