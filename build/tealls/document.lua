@@ -1,5 +1,6 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
 local tl = require("tl")
+local fs = require("cyan.fs")
 local server = require("tealls.server")
 local lsp = require("tealls.lsp")
 local methods = require("tealls.methods")
@@ -43,6 +44,10 @@ local private_cache = setmetatable({}, {
    end,
 })
 
+local function is_lua(fname)
+   return select(2, fs.extension_split(fname)) == ".lua"
+end
+
 function Document:get_tokens()
    local cache = private_cache[self]
    if not cache.tokens then
@@ -79,6 +84,7 @@ function Document:get_result()
    local cache = private_cache[self]
    if not cache.result then
       cache.result = type_check(ast, {
+         lax = is_lua(self.uri.path),
          filename = self.uri.path,
          env = server:get_env(),
       })
@@ -193,7 +199,13 @@ function Document:process_and_publish_results()
    local disabled_warnings = set(server.config.disable_warnings or {})
    local warning_errors = set(server.config.warning_error or {})
    local enabled_warnings = filter(result.warnings, function(e)
-      return not disabled_warnings[e.tag]
+      if is_lua(self.uri.path) then
+         return not (disabled_warnings[e.tag] or
+         e.msg:find("unknown variable"))
+      else
+         return not disabled_warnings[e.tag]
+      end
+      return
    end)
    local werrors, warnings = filter(enabled_warnings, function(e)
       return warning_errors[e.tag]
@@ -261,18 +273,18 @@ function Document:show_type(info, depth)
          ins("--???\n")
          return
       end
-      local fs = {}
+      local f = {}
       for name, field_id in pairs(fields) do
-         ti(fs, show_record_field(name, field_id))
+         ti(f, show_record_field(name, field_id))
       end
       local function get_name(s)
          return (s:match("^%s*type ([^=]+)") or s:match("^%s*([^:]+)")):lower()
       end
-      table.sort(fs, function(a, b)
+      table.sort(f, function(a, b)
          return get_name(a) < get_name(b)
       end)
-      for _, f in ipairs(fs) do
-         ins(f)
+      for _, field in ipairs(f) do
+         ins(field)
       end
    end
 

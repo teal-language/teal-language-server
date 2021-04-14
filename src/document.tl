@@ -1,5 +1,6 @@
 
 local tl <const> = require("tl")
+local fs <const> = require("cyan.fs")
 local server <const> = require("tealls.server")
 local lsp <const> = require("tealls.lsp")
 local methods <const> = require("tealls.methods")
@@ -12,8 +13,8 @@ local filter <const>, set <const>
 
 -- tl.Token nor tl.Node not exposed :((((
 local record Token
-   x: number
-   y: number
+   x: integer
+   y: integer
    tk: string
 end
 local type Node = any
@@ -42,6 +43,10 @@ local private_cache <const>: {Document:Cache} = setmetatable({}, {
       return rawget(self, key)
    end
 })
+
+local function is_lua(fname: string): boolean
+   return select(2, fs.extension_split(fname)) == ".lua"
+end
 
 function Document:get_tokens(): {Token}, {Token}
    local cache = private_cache[self]
@@ -79,6 +84,7 @@ function Document:get_result(): tl.Result
    local cache = private_cache[self]
    if not cache.result then
       cache.result = type_check(ast, {
+         lax = is_lua(self.uri.path),
          filename = self.uri.path,
          env = server:get_env(),
       })
@@ -193,7 +199,13 @@ function Document:process_and_publish_results()
    local disabled_warnings <const> = set(server.config.disable_warnings or {})
    local warning_errors <const> = set(server.config.warning_error or {})
    local enabled_warnings <const> = filter(result.warnings, function(e: tl.Error): boolean
-      return not disabled_warnings[e.tag]
+      if is_lua(self.uri.path) then
+         return not (disabled_warnings[e.tag]
+            or e.msg:find("unknown variable") as boolean)
+      else
+         return not disabled_warnings[e.tag]
+      end
+      return
    end)
    local werrors <const>, warnings <const> = filter(enabled_warnings, function(e: tl.Error): boolean
       return warning_errors[e.tag]
@@ -243,7 +255,7 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
 
    local tr = self:get_type_report()
 
-   local function show_record_field(name: string, field_id: number): string
+   local function show_record_field(name: string, field_id: integer): string
       local field <const> = {}
       ti(field, indent(depth))
       local field_type <const> = tr.types[field_id]
@@ -256,23 +268,23 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
       return table.concat(field)
    end
 
-   local function show_record_fields(fields: {string:number})
+   local function show_record_fields(fields: {string:integer})
       if not fields then
          ins("--???\n")
          return
       end
-      local fs <const> = {}
+      local f <const> = {}
       for name, field_id in pairs(fields) do
-         ti(fs, show_record_field(name, field_id))
+         ti(f, show_record_field(name, field_id))
       end
       local function get_name(s: string): string
          return (s:match("^%s*type ([^=]+)") or s:match("^%s*([^:]+)")):lower()
       end
-      table.sort(fs, function(a: string, b: string): boolean
+      table.sort(f, function(a: string, b: string): boolean
          return get_name(a) < get_name(b)
       end)
-      for _, f in ipairs(fs) do
-         ins(f)
+      for _, field in ipairs(f) do
+         ins(field)
       end
    end
 

@@ -24,8 +24,7 @@ local record lsp
    type JsonValue = string | number | boolean | JsonObject -- should also have {JsonValue}
    type JsonObject = {string:JsonValue}
 
-   type integer = number
-   type uinteger = number
+   type uinteger = integer
 
    record Message
       id: integer | string
