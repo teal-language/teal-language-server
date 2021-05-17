@@ -46,7 +46,7 @@ function server:get_env(): tl.Env, string
    package.cpath = init_cpath
 
    -- TODO: maintain some sort of persistent environment
-   return common.init_env_from_cfg(self.config)
+   return common.init_env_from_config(self.config)
 end
 
 return server

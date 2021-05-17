@@ -46,7 +46,7 @@ function server:get_env()
    package.cpath = init_cpath
 
 
-   return common.init_env_from_cfg(self.config)
+   return common.init_env_from_config(self.config)
 end
 
 return server
