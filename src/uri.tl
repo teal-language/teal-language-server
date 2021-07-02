@@ -27,7 +27,7 @@ local uri <const> = {
    ParsedUri = ParsedUri,
 }
 
-local function find_patt(str: string, patt: string, pos: number): string, number, number
+local function find_patt(str: string, patt: string, pos: integer): string, integer, integer
    pos = pos or 1
    local s, e = str:find(patt, pos)
    if s then

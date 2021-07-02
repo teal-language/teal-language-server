@@ -35,7 +35,7 @@ function rpc.decode(fh: FILE): {string:any}, string
       return nil, "eof"
    end
 
-   local len: number
+   local len: integer
    while line and line ~= "" do -- parse headers
       local key, val = line:match("^([^:]+): (.+)$")
       if not (key and val) then
@@ -43,7 +43,7 @@ function rpc.decode(fh: FILE): {string:any}, string
       end
       util.log("   Header: ", key, " ", val)
       if key == "Content-Length" then
-         len = tonumber(val)
+         len = tonumber(val) as integer
       elseif key == "Content-Type" then
          if not contenttype[val] then
             local function quote(s: string): string
@@ -85,7 +85,7 @@ function rpc.encode(t: {string:any})
    io.flush()
 end
 
-function rpc.respond(id: number, t: {string:any})
+function rpc.respond(id: integer, t: {string:any})
    rpc.encode{
       jsonrpc = "2.0",
       id = json_nullable(id),
@@ -93,7 +93,7 @@ function rpc.respond(id: number, t: {string:any})
    }
 end
 
-function rpc.respond_error(id: number, name: lsp.ErrorName, msg: string, data: {string:any})
+function rpc.respond_error(id: integer, name: lsp.ErrorName, msg: string, data: {string:any})
    rpc.encode{
       jsonrpc = "2.0",
       id = json_nullable(id),

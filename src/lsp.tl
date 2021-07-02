@@ -19,7 +19,7 @@ local record lsp
       "RequestCancelled"
    end
 
-   error_code: {ErrorName:number}
+   error_code: {ErrorName:integer}
 
    type JsonValue = string | number | boolean | JsonObject -- should also have {JsonValue}
    type JsonObject = {string:JsonValue}
@@ -87,8 +87,8 @@ local record lsp
          "textDocument/publishDiagnostics"
       end
 
-      type Params = {number|string:JsonValue} -- should be JsonObject | {JsonValue}
-      type Method = function(Params, number)
+      type Params = {integer|string:JsonValue} -- should be JsonObject | {JsonValue}
+      type Method = function(Params, integer)
    end
 
    record TextDocument

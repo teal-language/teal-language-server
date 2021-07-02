@@ -18,7 +18,7 @@ function util.map<K, V, T>(t: {K:V}, fn: function(V): T): {K:T}
    return new
 end
 
-function util.imap<V, T>(t: {V}, fn: function(V): (T), start: number, finish: number): {T}
+function util.imap<V, T>(t: {V}, fn: function(V): (T), start: integer, finish: integer): {T}
    local new: {T} = {}
    for i = start or 1, finish or #t do
       new[i] = fn(t[i])
@@ -84,7 +84,7 @@ end
 --      > 0: result is after current guess
 --      = 0: result is current guess, stop searching
 -- Returns the index of the found object and the found object
-function util.binary_search<T>(list: {T}, predicate: function(T): number): number, T
+function util.binary_search<T>(list: {T}, predicate: function(T): integer): integer, T
    if #list < 2 then
       return 1
    end

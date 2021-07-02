@@ -23,7 +23,7 @@ local function assert_init()
    local data = util.assert(rpc.decode())
    util.assert(data.method, "No method in initial request")
    util.assert(data.method == "initialize", "Initial method was not 'initialize'")
-   handlers["initialize"](data.params as lsp.Method.Params, data.id as number)
+   handlers["initialize"](data.params as lsp.Method.Params, data.id as integer)
 end
 
 local function start()
@@ -49,7 +49,7 @@ local function start()
          if handlers[method] then
             local ok: boolean
             ok, err = xpcall(function()
-               handlers[method](params, data.id as number)
+               handlers[method](params, data.id as integer)
             end, debug.traceback as function) as (boolean, string)
             if not ok then
                util.log("      error in handler for ", method, ": ", err)

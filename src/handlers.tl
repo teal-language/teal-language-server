@@ -16,7 +16,7 @@ local Method <const> = lsp.Method.Method
 
 local handlers <const>: {Name:Method} = {}
 
-handlers["initialize"] = function(params: Params, id: number)
+handlers["initialize"] = function(params: Params, id: integer)
    util.assert(not server.initialized, "Server was already initialized")
    server.initialized = true
 
@@ -76,7 +76,7 @@ handlers["textDocument/didSave"] = function(params: Params)
    doc:process_and_publish_results()
 end
 
-handlers["textDocument/hover"] = function(params: Params, id: number)
+handlers["textDocument/hover"] = function(params: Params, id: integer)
    local doc <const> = get_doc(params)
    if not doc then
       return
@@ -115,7 +115,7 @@ return setmetatable({}, {
    __index = function(_self: {Name:Method}, key: Name): Method
       util.log("   getting handler for ", key)
       local f <const> = rawget(handlers, key)
-      return f and function(p: Params, id: number)
+      return f and function(p: Params, id: integer)
          util.log("   calling handler for '", key, "' with")
          util.log("          id: ", id)
          util.log("      params: ", p)
