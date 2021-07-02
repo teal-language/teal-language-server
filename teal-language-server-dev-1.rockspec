@@ -2,14 +2,14 @@ rockspec_format = "3.0"
 package = "teal-language-server"
 version = "dev-1"
 source = {
-   url = "git+https://git@github.com/teal-language/teal-language-server.git"
+   url = "git://github.com/teal-language/teal-language-server"
 }
 description = {
    summary = "A language server for the Teal language",
-   detailed = "A language server for the Teal language. Experimental at best",
+   detailed = "A language server for the Teal language. Experimental at best, use at your own risk :)",
    homepage = "https://github.com/teal-language/teal-language-server",
    license = "MIT",
-   issues_url = "https://github.com/teal-language/cyan/issues",
+   issues_url = "https://github.com/teal-language/teal-language-server/issues",
 }
 dependencies = {
    "dkjson",
