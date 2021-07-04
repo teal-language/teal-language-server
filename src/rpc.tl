@@ -1,4 +1,6 @@
 
+local loop <const> = require("tealls.loop")
+local poll <const> = require("tealls.poll")
 local lsp <const> = require("tealls.lsp")
 local json <const> = require("dkjson")
 local util <const> = require("tealls.util")
@@ -13,24 +15,26 @@ local contenttype: {string:boolean} = {
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
 
---[[
-   TODO: look into non-blocking io
-     - luasocket: popular module, language servers can communicate over sockets instead of stdio, portable
-     - luv: no typedefs until interfaces (or whatever), maybe a little big? cross-platform
-     - cqueues: nice to use with coroutines, unix only
-]]
-
-local function read_line(fh: FILE): string
-   local line = fh:read("*l")
-   if not line then return end
-   line = line:gsub("\r", "")
-   return line
+local function read(patt: string | integer): string
+   util.log("Doing read, io_mode: " .. loop.io_mode)
+   if loop.io_mode == "evented" then
+      while true do
+         local has_data, err = poll()
+         if err then
+            error(err)
+         end
+         if has_data then
+            break
+         else
+            coroutine.yield()
+         end
+      end
+   end
+   return (assert(io.stdin:read(patt)):gsub("\r", ""))
 end
 
-function rpc.decode(fh: FILE): {string:any}, string
-   fh = fh or io.stdin
-   util.log("Decoding rpc (doing blocking read)")
-   local line = read_line(fh)
+function rpc.decode(): {string:any}, string
+   local line = read("*l")
    if not line then
       return nil, "eof"
    end
@@ -58,15 +62,14 @@ function rpc.decode(fh: FILE): {string:any}, string
       else
          return nil, "unexpected header: " .. line
       end
-      line = read_line(fh)
+      line = read("*l")
    end
 
    if not len then
       return nil, "no Content-Length found"
    end
 
-   local body = fh:read(len)
-   body = body:gsub("\r", "")
+   local body = read(len)
    util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then

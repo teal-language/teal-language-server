@@ -1,4 +1,6 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local coroutine = _tl_compat and _tl_compat.coroutine or coroutine; local io = _tl_compat and _tl_compat.io or io; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
+local loop = require("tealls.loop")
+local poll = require("tealls.poll")
 local lsp = require("tealls.lsp")
 local json = require("dkjson")
 local util = require("tealls.util")
@@ -13,24 +15,26 @@ local contenttype = {
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
 
-
-
-
-
-
-
-
-local function read_line(fh)
-   local line = fh:read("*l")
-   if not line then return end
-   line = line:gsub("\r", "")
-   return line
+local function read(patt)
+   util.log("Doing read, io_mode: " .. loop.io_mode)
+   if loop.io_mode == "evented" then
+      while true do
+         local has_data, err = poll()
+         if err then
+            error(err)
+         end
+         if has_data then
+            break
+         else
+            coroutine.yield()
+         end
+      end
+   end
+   return (assert(io.stdin:read(patt)):gsub("\r", ""))
 end
 
-function rpc.decode(fh)
-   fh = fh or io.stdin
-   util.log("Decoding rpc (doing blocking read)")
-   local line = read_line(fh)
+function rpc.decode()
+   local line = read("*l")
    if not line then
       return nil, "eof"
    end
@@ -58,15 +62,14 @@ function rpc.decode(fh)
       else
          return nil, "unexpected header: " .. line
       end
-      line = read_line(fh)
+      line = read("*l")
    end
 
    if not len then
       return nil, "no Content-Length found"
    end
 
-   local body = fh:read(len)
-   body = body:gsub("\r", "")
+   local body = read(len)
    util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then

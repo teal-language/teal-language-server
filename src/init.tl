@@ -1,4 +1,5 @@
 
+local loop <const> = require("tealls.loop")
 local lsp <const> = require("tealls.lsp")
 local rpc <const> = require("tealls.rpc")
 local handlers <const> = require("tealls.handlers")
@@ -20,18 +21,16 @@ util.log("args: ", args)
 
 local function assert_init()
    util.log("waiting for initialize request")
-   local data = util.assert(rpc.decode())
+   local data: {string:any}
+   data = util.assert(rpc.decode())
    util.assert(data.method, "No method in initial request")
    util.assert(data.method == "initialize", "Initial method was not 'initialize'")
    handlers["initialize"](data.params as lsp.Method.Params, data.id as integer)
 end
 
-local function start()
-   util.log(("="):rep(30))
-   util.log("starting...")
-   assert_init()
-   util.log("initialized!")
+local running = true
 
+local function input_job()
    while true do
       local data <const>, err = rpc.decode()
       if not data then
@@ -41,22 +40,40 @@ local function start()
 
       if data.method then
          if data.method == "shutdown" then
+            running = false
             break
          end
-         local method <const> = data.method as lsp.Method.Name
-         local params <const> = data.params as lsp.Method.Params
-         util.log("Method: ", method)
-         if handlers[method] then
-            local ok: boolean
-            ok, err = xpcall(function()
-               handlers[method](params, data.id as integer)
-            end, debug.traceback as function) as (boolean, string)
-            if not ok then
-               util.log("      error in handler for ", method, ": ", err)
+         loop.enqueue(function()
+            local method <const> = data.method as lsp.Method.Name
+            local params <const> = data.params as lsp.Method.Params
+            util.log("Method: ", method)
+            if handlers[method] then
+               local ok: boolean
+               ok, err = xpcall(function()
+                  handlers[method](params, data.id as integer)
+               end, debug.traceback as function) as (boolean, string)
+               if not ok then
+                  util.log("      error in handler for ", method, ": ", err)
+               end
+            else
+               util.log("   ! no handler for ", method)
             end
-         else
-            util.log("   ! no handler for ", method)
-         end
+         end)
+         coroutine.yield()
+      end
+   end
+end
+
+local function start()
+   util.log(("="):rep(30))
+   util.log("starting...")
+   assert_init()
+   util.log("initialized!")
+
+   loop.enqueue(input_job)
+   while running do
+      if not loop.step() then
+         break
       end
    end
 
@@ -65,4 +82,3 @@ local function start()
 end
 
 start()
-
