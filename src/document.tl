@@ -1,9 +1,10 @@
 
-local tl <const> = require("tl")
 local fs <const> = require("cyan.fs")
-local server <const> = require("tealls.server")
+local loop <const> = require("tealls.loop")
 local lsp <const> = require("tealls.lsp")
 local methods <const> = require("tealls.methods")
+local server <const> = require("tealls.server")
+local tl <const> = require("tl")
 local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
 
@@ -22,6 +23,7 @@ local type Node = any
 local record Document
    uri: uri.ParsedUri
    text: string
+   latest_id: integer
 end
 
 local record Cache
@@ -48,7 +50,20 @@ local function is_lua(fname: string): boolean
    return select(2, fs.extension_split(fname)) == ".lua"
 end
 
+function Document:_cancel_if_old()
+   local current_id <const> = assert(self.latest_id)
+   coroutine.yield()
+   local new_id <const> = assert(self.latest_id)
+   util.log("Checking if document version is old...")
+   if current_id < new_id then
+      util.log("      Document is old")
+      loop.cancel()
+   end
+   util.log("      Document is new")
+end
+
 function Document:get_tokens(): {Token}, {Token}
+   self:_cancel_if_old()
    local cache = private_cache[self]
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self.text) as ({Token}, {Token})
@@ -61,6 +76,7 @@ end
 
 local parse_prog = tl.parse_program as function({Token}, {tl.Error}): (number, Node)
 function Document:get_ast(): Node, {tl.Error}
+   self:_cancel_if_old()
    local tks, err_tks = self:get_tokens()
    if #err_tks > 0 then
       return
@@ -77,6 +93,7 @@ end
 
 local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): tl.Result
 function Document:get_result(): tl.Result
+   self:_cancel_if_old()
    local ast, errs = self:get_ast()
    if #errs > 0 then
       return nil
@@ -93,6 +110,7 @@ function Document:get_result(): tl.Result
 end
 
 function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
+   self:_cancel_if_old()
    local result = self:get_result()
    if not result then
       return
@@ -109,6 +127,8 @@ end
 function Document:update_text(text: string)
    private_cache[self] = nil
    self.text = text
+   self.latest_id = self.latest_id + 1;
+   coroutine.yield()
 end
 
 local cache <const>: {string:Document} = {}
@@ -117,10 +137,11 @@ local document <const> = {
 }
 
 function document.open(u: uri.ParsedUri, content: string): Document
-   local d <const> = setmetatable({
+   local d <const>: Document = setmetatable({
       uri = u,
       text = content,
-   } as Document, { __index = Document } as metatable<Document>)
+      latest_id = 0,
+   }, { __index = Document })
    cache[d.uri.path] = d
    return d
 end

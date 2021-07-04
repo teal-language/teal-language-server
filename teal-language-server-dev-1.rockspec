@@ -19,6 +19,8 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
+		["tealls.poll"] = "src/poll.c",
+
       ["tealls.document"] = "build/tealls/document.lua",
       ["tealls.handlers"] = "build/tealls/handlers.lua",
       ["tealls.init"] = "build/tealls/init.lua",
@@ -31,6 +33,8 @@ build = {
    },
    install = {
       lua = {
+         ["tealls.poll"] = "src/poll.d.tl",
+
          ["tealls.document"] = "src/document.tl",
          ["tealls.handlers"] = "src/handlers.tl",
          ["tealls.init"] = "src/init.tl",

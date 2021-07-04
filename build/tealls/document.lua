@@ -1,9 +1,10 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
-local tl = require("tl")
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local coroutine = _tl_compat and _tl_compat.coroutine or coroutine; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
 local fs = require("cyan.fs")
-local server = require("tealls.server")
+local loop = require("tealls.loop")
 local lsp = require("tealls.lsp")
 local methods = require("tealls.methods")
+local server = require("tealls.server")
+local tl = require("tl")
 local uri = require("tealls.uri")
 local util = require("tealls.util")
 
@@ -20,6 +21,7 @@ local Token = {}
 local Node = {}
 
 local Document = {}
+
 
 
 
@@ -48,7 +50,20 @@ local function is_lua(fname)
    return select(2, fs.extension_split(fname)) == ".lua"
 end
 
+function Document:_cancel_if_old()
+   local current_id = assert(self.latest_id)
+   coroutine.yield()
+   local new_id = assert(self.latest_id)
+   util.log("Checking if document version is old...")
+   if current_id < new_id then
+      util.log("      Document is old")
+      loop.cancel()
+   end
+   util.log("      Document is new")
+end
+
 function Document:get_tokens()
+   self:_cancel_if_old()
    local cache = private_cache[self]
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self.text)
@@ -61,6 +76,7 @@ end
 
 local parse_prog = tl.parse_program
 function Document:get_ast()
+   self:_cancel_if_old()
    local tks, err_tks = self:get_tokens()
    if #err_tks > 0 then
       return
@@ -77,6 +93,7 @@ end
 
 local type_check = tl.type_check
 function Document:get_result()
+   self:_cancel_if_old()
    local ast, errs = self:get_ast()
    if #errs > 0 then
       return nil
@@ -93,6 +110,7 @@ function Document:get_result()
 end
 
 function Document:get_type_report()
+   self:_cancel_if_old()
    local result = self:get_result()
    if not result then
       return
@@ -109,6 +127,8 @@ end
 function Document:update_text(text)
    private_cache[self] = nil
    self.text = text
+   self.latest_id = self.latest_id + 1;
+   coroutine.yield()
 end
 
 local cache = {}
@@ -120,6 +140,7 @@ function document.open(u, content)
    local d = setmetatable({
       uri = u,
       text = content,
+      latest_id = 0,
    }, { __index = Document })
    cache[d.uri.path] = d
    return d
