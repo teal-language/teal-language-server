@@ -1,3 +1,4 @@
+local poll <const> = require("tealls.poll")
 local util <const> = require("tealls.util")
 
 local enum IoMode
@@ -6,13 +7,13 @@ local enum IoMode
 end
 
 local loop <const> = {
+   IoMode = IoMode,
    io_mode: IoMode = "blocking",
 }
 
 local work: {thread} = {}
 
 function loop.enqueue(fn: function)
-   print("enqueuing work")
    table.insert(work, coroutine.create(fn))
 end
 
@@ -25,7 +26,7 @@ end
 
 local main_thread <const> = coroutine.create(function()
    while true do
-      local current_work = work
+      local current_work <const> = work
       work = {}
       if #current_work == 1 then
          loop.io_mode = "blocking"
@@ -33,9 +34,6 @@ local main_thread <const> = coroutine.create(function()
       for _, job in ipairs(current_work) do
          local ok, val = coroutine.resume(job)
          assert(ok, val)
-         if val == cancel then
-            util.log(("Job %s was cancelled"):format(tostring(job)))
-         end
          if coroutine.status(job) ~= "dead"
             and val ~= cancel then
             table.insert(work, job)
@@ -50,6 +48,20 @@ function loop.step(): boolean
    local ok, err = coroutine.resume(main_thread)
    util.assert(ok, tostring(err))
    return coroutine.status(main_thread) ~= "dead"
+end
+
+function loop.read(patt: string | integer): string
+   util.log("Doing read, io_mode: " .. loop.io_mode)
+   if loop.io_mode == "evented" then
+      repeat
+         local has_data <const>, err <const> = poll()
+         assert(not err, err)
+         if not has_data then
+            coroutine.yield()
+         end
+      until has_data
+   end
+   return assert(io.stdin:read(patt))
 end
 
 return loop
