@@ -64,4 +64,8 @@ function loop.read(patt: string | integer): string
    return assert(io.stdin:read(patt))
 end
 
+function loop.yield()
+   coroutine.yield()
+end
+
 return loop

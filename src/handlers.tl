@@ -51,7 +51,7 @@ end
 
 handlers["textDocument/didOpen"] = function(params: Params)
    local td <const> = params.textDocument as lsp.TextDocument
-   document.open(uri.parse(td.uri), td.text)
+   document.open(uri.parse(td.uri), td.text, td.version)
       :process_and_publish_results()
 end
 
@@ -72,7 +72,7 @@ handlers["textDocument/didSave"] = function(params: Params)
       util.log("Unable to find document: ", td.uri)
       return
    end
-   doc:update_text(params.text as string)
+   doc:update_text(params.text as string, td.version)
    doc:process_and_publish_results()
 end
 
@@ -84,7 +84,7 @@ handlers["textDocument/didChange"] = function(params: Params)
       return
    end
    local changes <const> = params.contentChanges as {lsp.TextDocumentContentChangeEvent}
-   doc:update_text(changes[1].text as string)
+   doc:update_text(changes[1].text as string, td.version)
    doc:process_and_publish_results()
 end
 

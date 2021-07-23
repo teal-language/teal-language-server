@@ -51,9 +51,9 @@ local function is_lua(fname)
 end
 
 function Document:_cancel_if_old()
-   local current_id = assert(self.latest_id)
+   local current_id = assert(self.latest_version)
    coroutine.yield()
-   local new_id = assert(self.latest_id)
+   local new_id = assert(self.latest_version)
    util.log("Checking if document version is old...")
    if current_id < new_id then
       util.log("      Document is old")
@@ -124,11 +124,13 @@ function Document:get_type_report()
    return cache.type_report, cache.type_report_env
 end
 
-function Document:update_text(text)
-   private_cache[self] = nil
-   self.text = text
-   self.latest_id = self.latest_id + 1;
-   coroutine.yield()
+function Document:update_text(text, version)
+   if not self.latest_version or self.latest_version < version then
+      private_cache[self] = nil
+      self.text = text
+      self.latest_version = version
+      loop.yield()
+   end
 end
 
 local cache = {}
@@ -136,11 +138,11 @@ local document = {
    Document = Document,
 }
 
-function document.open(u, content)
+function document.open(u, content, version)
    local d = setmetatable({
       uri = u,
       text = content,
-      latest_id = 0,
+      latest_version = version,
    }, { __index = Document })
    cache[d.uri.path] = d
    return d
@@ -274,6 +276,7 @@ function Document:show_type(info, depth)
       ti(out, ...)
    end
 
+   loop.yield()
    local tr = self:get_type_report()
 
    local function show_record_field(name, field_id)

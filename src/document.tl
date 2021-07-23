@@ -23,7 +23,7 @@ local type Node = any
 local record Document
    uri: uri.ParsedUri
    text: string
-   latest_id: integer
+   latest_version: integer
 end
 
 local record Cache
@@ -51,9 +51,9 @@ local function is_lua(fname: string): boolean
 end
 
 function Document:_cancel_if_old()
-   local current_id <const> = assert(self.latest_id)
+   local current_id <const> = assert(self.latest_version)
    coroutine.yield()
-   local new_id <const> = assert(self.latest_id)
+   local new_id <const> = assert(self.latest_version)
    util.log("Checking if document version is old...")
    if current_id < new_id then
       util.log("      Document is old")
@@ -124,11 +124,13 @@ function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
    return cache.type_report, cache.type_report_env
 end
 
-function Document:update_text(text: string)
-   private_cache[self] = nil
-   self.text = text
-   self.latest_id = self.latest_id + 1;
-   coroutine.yield()
+function Document:update_text(text: string, version: integer)
+   if not self.latest_version or self.latest_version < version then
+      private_cache[self] = nil
+      self.text = text
+      self.latest_version = version
+      loop.yield()
+   end
 end
 
 local cache <const>: {string:Document} = {}
@@ -136,11 +138,11 @@ local document <const> = {
    Document = Document,
 }
 
-function document.open(u: uri.ParsedUri, content: string): Document
+function document.open(u: uri.ParsedUri, content: string, version: integer): Document
    local d <const>: Document = setmetatable({
       uri = u,
       text = content,
-      latest_id = 0,
+      latest_version = version,
    }, { __index = Document })
    cache[d.uri.path] = d
    return d
@@ -274,6 +276,7 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
       ti(out, ...)
    end
 
+   loop.yield()
    local tr = self:get_type_report()
 
    local function show_record_field(name: string, field_id: integer): string
@@ -347,4 +350,3 @@ function Document:token_at(where: lsp.Position): string
 end
 
 return document
-
