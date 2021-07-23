@@ -54,7 +54,11 @@ function Document:_cancel_if_old()
    local current_id <const> = assert(self.latest_version)
    coroutine.yield()
    local new_id <const> = assert(self.latest_version)
-   util.log("Checking if document version is old...")
+   util.log("Checking if document version is old... (prev id: "
+      .. tostring(current_id)
+      .. ", current id: "
+      .. tostring(new_id)
+      .. ")")
    if current_id < new_id then
       util.log("      Document is old")
       loop.cancel()
@@ -100,6 +104,7 @@ function Document:get_result(): tl.Result
    end
    local cache = private_cache[self]
    if not cache.result then
+      loop.yield()
       cache.result = type_check(ast, {
          lax = is_lua(self.uri.path),
          filename = self.uri.path,
