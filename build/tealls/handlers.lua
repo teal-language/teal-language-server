@@ -9,6 +9,7 @@ local rpc = require("tealls.rpc")
 local document = require("tealls.document")
 local uri = require("tealls.uri")
 local util = require("tealls.util")
+local path_util = require("tealls.path_util")
 
 local Name = lsp.Method.Name
 local Params = lsp.Method.Params
@@ -86,6 +87,47 @@ handlers["textDocument/didChange"] = function(params)
    local changes = params.contentChanges
    doc:update_text(changes[1].text, td.version)
    doc:process_and_publish_results()
+end
+
+handlers["textDocument/definition"] = function(params, id)
+   local doc = get_doc(params)
+   if not doc then
+      return
+   end
+   local pos = params.position
+   local tk = doc:token_at(pos)
+   if not tk then
+      rpc.respond(id, nil)
+      return
+   end
+   local info = doc:type_information_at(pos)
+
+   if not info or info.file == nil then
+      rpc.respond(id, nil)
+      return
+   end
+
+   util.log("Found type info: ", info)
+
+   local file_uri
+
+   if #info.file == 0 then
+      file_uri = doc.uri
+   else
+      if path_util.is_absolute(info.file) then
+         file_uri = uri.uri_from_path(info.file)
+      else
+         file_uri = uri.uri_from_path(path_util.join(server.root_dir, info.file))
+      end
+   end
+
+   rpc.respond(id, {
+      uri = uri.tostring(file_uri),
+      range = {
+         start = lsp.position(info.y - 1, info.x - 1),
+         ["end"] = lsp.position(info.y - 1, info.x - 1),
+      },
+   })
 end
 
 handlers["textDocument/hover"] = function(params, id)

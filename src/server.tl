@@ -30,6 +30,8 @@ local server <const> = {
          },
       },
       hoverProvider = true,
+      definitionProvider = true,
+      -- typeDefinitionProvider = true,
       -- completionProvider = {
          -- triggerCharacters = { ".", ":" },
       -- },
