@@ -82,8 +82,7 @@ local record lsp
          "textDocument/didSave"
          "textDocument/didClose"
          "textDocument/hover"
-         "textDocument/gotoDefinition"
-
+         "textDocument/definition"
          "textDocument/publishDiagnostics"
       end
 
