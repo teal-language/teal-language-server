@@ -9,6 +9,7 @@ local rpc <const> = require("tealls.rpc")
 local document <const> = require("tealls.document")
 local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
+local path_util <const> = require("tealls.path_util")
 
 local Name <const> = lsp.Method.Name
 local Params <const> = lsp.Method.Params
@@ -88,6 +89,75 @@ handlers["textDocument/didChange"] = function(params: Params)
    doc:process_and_publish_results()
 end
 
+handlers["textDocument/completion"] = function(params: Params, id: integer)
+
+   local doc <const> = get_doc(params)
+   if not doc then
+      rpc.respond(id, nil)
+   end
+
+   local pos <const> = params.position as lsp.Position
+   local line = doc:get_line(pos.line + 1)
+   local identifier = line:sub(1, pos.character - 1):match("(%w+)$")
+
+   util.log("Looking up type info for identifier: '" .. identifier .. "'")
+
+   local info <const> = doc:get_type_info_for_symbol(identifier, pos)
+   local items:{any} = { }
+
+   if info then
+      for key, _ in pairs(info.fields) do
+         table.insert(items, {label = key})
+      end
+   end
+
+   rpc.respond(id, {
+      isIncomplete = false,
+      items = items
+   })
+end
+
+handlers["textDocument/definition"] = function(params: Params, id: integer)
+   local doc <const> = get_doc(params)
+   if not doc then
+      return
+   end
+   local pos <const> = params.position as lsp.Position
+   local tk <const> = doc:token_at(pos)
+   if not tk then
+      rpc.respond(id, nil)
+      return
+   end
+   local info <const> = doc:type_information_at(pos)
+
+   if not info or info.file == nil then
+      rpc.respond(id, nil)
+      return
+   end
+
+   util.log("Found type info: ", info)
+
+   local file_uri:uri.ParsedUri
+
+   if #info.file == 0 then
+      file_uri = doc.uri
+   else
+      if path_util.is_absolute(info.file) then
+         file_uri = uri.uri_from_path(info.file)
+      else
+         file_uri = uri.uri_from_path(path_util.join(server.root_dir, info.file))
+      end
+   end
+
+   rpc.respond(id, {
+      uri = uri.tostring(file_uri),
+      range = {
+         start = lsp.position(info.y - 1, info.x - 1),
+         ["end"] = lsp.position(info.y - 1, info.x - 1),
+      },
+   })
+end
+
 handlers["textDocument/hover"] = function(params: Params, id: integer)
    local doc <const> = get_doc(params)
    if not doc then
@@ -112,6 +182,9 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
       })
       return
    end
+
+   util.log("Found type info: ", info)
+
    local type_str <const> = doc:show_type(info)
    rpc.respond(id, {
       contents = { tk .. ":", type_str },

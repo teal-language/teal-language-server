@@ -29,6 +29,7 @@ build = {
       ["tealls.methods"] = "build/tealls/methods.lua",
       ["tealls.rpc"] = "build/tealls/rpc.lua",
       ["tealls.server"] = "build/tealls/server.lua",
+      ["tealls.path_util"] = "build/tealls/path_util.lua",
       ["tealls.uri"] = "build/tealls/uri.lua",
       ["tealls.util"] = "build/tealls/util.lua",
    },

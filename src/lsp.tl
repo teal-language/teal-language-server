@@ -82,9 +82,9 @@ local record lsp
          "textDocument/didSave"
          "textDocument/didClose"
          "textDocument/hover"
-         "textDocument/gotoDefinition"
-
+         "textDocument/definition"
          "textDocument/publishDiagnostics"
+         "textDocument/completion"
       end
 
       type Params = {integer|string:JsonValue} -- should be JsonObject | {JsonValue}
