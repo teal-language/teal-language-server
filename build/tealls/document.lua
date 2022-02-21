@@ -131,7 +131,7 @@ function Document:get_type_report()
 end
 
 function Document:update_text(text, version)
-   if not self.latest_version or self.latest_version < version then
+   if not self.latest_version or not version or self.latest_version < version then
       private_cache[self] = nil
       self.text = text
       self.latest_version = version

@@ -50,9 +50,8 @@ function loop.step(): boolean
    return coroutine.status(main_thread) ~= "dead"
 end
 
-function loop.read(patt: string | integer): string
-   util.log("Doing read, io_mode: " .. loop.io_mode)
-   if loop.io_mode == "evented" then
+function loop.read(patt: string | integer, force: boolean): string
+   if loop.io_mode == "evented" and not force then
       repeat
          local has_data <const>, err <const> = poll()
          assert(not err, err)
@@ -61,7 +60,9 @@ function loop.read(patt: string | integer): string
          end
       until has_data
    end
-   return assert(io.stdin:read(patt))
+   local result = assert(io.stdin:read(patt))
+   -- util.log("Completed stdin read: '" .. result .. "'")
+   return result
 end
 
 function loop.yield()

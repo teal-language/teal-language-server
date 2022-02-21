@@ -8,7 +8,7 @@ local util <const> = require("tealls.util")
 local methods <const> = {}
 
 function methods.publish_diagnostics(uri: string, diagnostics: {lsp.Diagnostic}, version: number)
-   util.log("publishing diagnostics: ", diagnostics)
+   util.log("publishing diagnostics...")
    rpc.notify("textDocument/publishDiagnostics", {
       uri = uri,
       diagnostics = diagnostics,

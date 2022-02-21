@@ -5,3 +5,4 @@ tealls/
 /lua
 /lua_modules
 /.luarocks
+/build

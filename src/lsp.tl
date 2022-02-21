@@ -117,6 +117,11 @@ local record lsp
    end
    completion_trigger_kind: {CompletionTriggerKind:integer}
 
+   record CompletionContext
+      triggerKind: integer
+      triggerCharacter: string
+   end
+
 end
 
 lsp.error_code = {

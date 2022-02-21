@@ -15,8 +15,9 @@ local contenttype = {
 }
 
 function rpc.decode()
-   local line = loop.read("*l"):gsub("\r", "")
+   local line = loop.read("*l", false):gsub("\r", "")
    if not line then
+      util.log("Failed to read rpc")
       return nil, "eof"
    end
 
@@ -24,6 +25,7 @@ function rpc.decode()
    while line and line ~= "" do
       local key, val = line:match("^([^:]+): (.+)$")
       if not (key and val) then
+         util.log("invalid header")
          return nil, "invalid header: " .. line
       end
       util.log("   Header: ", key, " ", val)
@@ -34,6 +36,7 @@ function rpc.decode()
             local function quote(s)
                return "'" .. s .. "'"
             end
+            util.log("invalid Content-Type")
             return nil, string.format(
             "invalid Content-Type: got '%s', expected one of %s",
             val,
@@ -41,24 +44,28 @@ function rpc.decode()
 
          end
       else
+         util.log("unexpected header")
          return nil, "unexpected header: " .. line
       end
-      line = loop.read("*l"):gsub("\r", "")
+      line = loop.read("*l", true):gsub("\r", "")
    end
 
    if not len then
+      util.log("Failed to find rpc content")
       return nil, "no Content-Length found"
    end
 
-   local body = loop.read(len):gsub("\r", "")
+   local body = loop.read(len, true):gsub("\r", "")
    util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then
       return nil, "Malformed json"
    end
    if data.jsonrpc ~= "2.0" then
+      util.log("Incorrect jsonrpc version")
       return nil, "Incorrect jsonrpc version: got " .. tostring(data.jsonrpc) .. " expected 2.0"
    end
+   util.log("successfully parsed rpc!")
    return data
 end
 

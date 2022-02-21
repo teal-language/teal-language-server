@@ -3,7 +3,12 @@
 
 
 
-local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, }
+local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {}, }
+
+
+
+
+
 
 
 

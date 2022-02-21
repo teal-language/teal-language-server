@@ -91,14 +91,36 @@ end
 
 handlers["textDocument/completion"] = function(params: Params, id: integer)
 
+   local context = params.context as lsp.CompletionContext
+
+   if context.triggerKind ~= 2 then
+      util.log("Ignoring completion request given kind: ", context.triggerKind)
+      return
+   end
+
    local doc <const> = get_doc(params)
    if not doc then
+      util.log("No doc found for completion request")
       rpc.respond(id, nil)
+      return
    end
 
    local pos <const> = params.position as lsp.Position
    local line = doc:get_line(pos.line + 1)
-   local identifier = line:sub(1, pos.character - 1):match("(%w+)$")
+
+   if not line then
+      util.log("No line found for completion request")
+      rpc.respond(id, nil)
+      return
+   end
+
+   local identifier = line:sub(1, pos.character):match("(%w+)$")
+
+   if not identifier or #identifier == 0 then
+      util.log("No identifier found for completion request")
+      rpc.respond(id, nil)
+      return
+   end
 
    util.log("Looking up type info for identifier: '" .. identifier .. "'")
 
@@ -198,14 +220,10 @@ end
 -- Wrap some logs around each handler for debugging
 return setmetatable({}, {
    __index = function(_self: {Name:Method}, key: Name): Method
-      util.log("   getting handler for ", key)
       local f <const> = rawget(handlers, key)
       return f and function(p: Params, id: integer)
-         util.log("   calling handler for '", key, "' with")
-         util.log("          id: ", id)
-         util.log("      params: ", p)
+         util.log("calling handler for '", key, "'")
          f(p, id)
-         util.log("   done handler for ", key)
       end
    end
 }) as {Name:Method}

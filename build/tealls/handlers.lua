@@ -91,14 +91,36 @@ end
 
 handlers["textDocument/completion"] = function(params, id)
 
+   local context = params.context
+
+   if context.triggerKind ~= 2 then
+      util.log("Ignoring completion request given kind: ", context.triggerKind)
+      return
+   end
+
    local doc = get_doc(params)
    if not doc then
+      util.log("No doc found for completion request")
       rpc.respond(id, nil)
+      return
    end
 
    local pos = params.position
    local line = doc:get_line(pos.line + 1)
-   local identifier = line:sub(1, pos.character - 1):match("(%w+)$")
+
+   if not line then
+      util.log("No line found for completion request")
+      rpc.respond(id, nil)
+      return
+   end
+
+   local identifier = line:sub(1, pos.character):match("(%w+)$")
+
+   if not identifier or #identifier == 0 then
+      util.log("No identifier found for completion request")
+      rpc.respond(id, nil)
+      return
+   end
 
    util.log("Looking up type info for identifier: '" .. identifier .. "'")
 
@@ -198,14 +220,10 @@ end
 
 return setmetatable({}, {
    __index = function(_self, key)
-      util.log("   getting handler for ", key)
       local f = rawget(handlers, key)
       return f and function(p, id)
-         util.log("   calling handler for '", key, "' with")
-         util.log("          id: ", id)
-         util.log("      params: ", p)
+         util.log("calling handler for '", key, "'")
          f(p, id)
-         util.log("   done handler for ", key)
       end
    end,
 })

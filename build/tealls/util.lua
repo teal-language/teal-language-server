@@ -52,7 +52,7 @@ end
 local logfile = "/tmp/teal-language-server.log"
 function util.log(...)
    if logging_enabled then
-      local fh = assert(io.open(logfile, "w"))
+      local fh = assert(io.open(logfile, "a"))
       fh:write("[", os.date("%X"), "] ")
       for i = 1, select("#", ...) do
          local x = select(i, ...)
