@@ -9,7 +9,7 @@ local rpc <const> = require("tealls.rpc")
 local document <const> = require("tealls.document")
 local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
-local path_util <const> = require("tealls.path_util")
+local cyan_path <const> = require("cyan.fs.path")
 
 local Name <const> = lsp.Method.Name
 local Params <const> = lsp.Method.Params
@@ -114,10 +114,10 @@ handlers["textDocument/completion"] = function(params: Params, id: integer)
       return
    end
 
-   local identifier = line:sub(1, pos.character):match("(%w+)$")
+   local identifier = line:sub(1, pos.character):match("([%a_][%w_]*)[%.:]?$")
 
    if not identifier or #identifier == 0 then
-      util.log("No identifier found for completion request")
+      util.log("No identifier found for completion request. Line: '", line, "'")
       rpc.respond(id, nil)
       return
    end
@@ -127,10 +127,14 @@ handlers["textDocument/completion"] = function(params: Params, id: integer)
    local info <const> = doc:get_type_info_for_symbol(identifier, pos)
    local items:{any} = { }
 
-   if info then
+   if info and info.fields then
       for key, _ in pairs(info.fields) do
          table.insert(items, {label = key})
       end
+   end
+
+   if #items == 0 then
+      table.insert(items, {label = "(none)"})
    end
 
    rpc.respond(id, {
@@ -157,18 +161,20 @@ handlers["textDocument/definition"] = function(params: Params, id: integer)
       return
    end
 
-   util.log("Found type info: ", info)
+   -- util.log("Found type info: ", info)
 
-   local file_uri:uri.ParsedUri
+   local file_uri: uri.ParsedUri
 
    if #info.file == 0 then
       file_uri = doc.uri
    else
-      if path_util.is_absolute(info.file) then
-         file_uri = uri.uri_from_path(info.file)
-      else
-         file_uri = uri.uri_from_path(path_util.join(server.root_dir, info.file))
+      local file_path = cyan_path.new(info.file)
+
+      if not file_path:is_absolute() then
+         file_path:prepend(server.root_dir)
       end
+
+      file_uri = uri.uri_from_path(file_path:to_real_path())
    end
 
    rpc.respond(id, {
@@ -205,7 +211,7 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
       return
    end
 
-   util.log("Found type info: ", info)
+   -- util.log("Found type info: ", info)
 
    local type_str <const> = doc:show_type(info)
    rpc.respond(id, {
@@ -222,6 +228,7 @@ return setmetatable({}, {
    __index = function(_self: {Name:Method}, key: Name): Method
       local f <const> = rawget(handlers, key)
       return f and function(p: Params, id: integer)
+         -- util.log("calling handler for '", key, "'.  Params: ", p)
          util.log("calling handler for '", key, "'")
          f(p, id)
       end

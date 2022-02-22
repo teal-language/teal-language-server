@@ -55,16 +55,15 @@ function Document:_cancel_if_old()
    local current_id <const> = assert(self.latest_version)
    coroutine.yield()
    local new_id <const> = assert(self.latest_version)
-   util.log("Checking if document version is old... (prev id: "
-      .. tostring(current_id)
-      .. ", current id: "
-      .. tostring(new_id)
-      .. ")")
+   -- util.log("Checking if document version is old... (prev id: "
+   --    .. tostring(current_id)
+   --    .. ", current id: "
+   --    .. tostring(new_id)
+   --    .. ")")
    if current_id < new_id then
-      util.log("      Document is old")
+      util.log("Document is old!  Cancelling current operation")
       loop.cancel()
    end
-   util.log("      Document is new")
 end
 
 function Document:get_tokens(): {Token}, {Token}
@@ -97,12 +96,10 @@ function Document:get_ast(): Node, {tl.Error}
 end
 
 local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): tl.Result
-function Document:get_result(): tl.Result
+function Document:get_result(): tl.Result, boolean
    self:_cancel_if_old()
    local ast, errs = self:get_ast()
-   if #errs > 0 then
-      return nil
-   end
+   local found_errors = #errs > 0
    local cache = private_cache[self]
    if not cache.result then
       loop.yield()
@@ -112,29 +109,28 @@ function Document:get_result(): tl.Result
          env = server:get_env(),
       })
    end
-   return cache.result
+   return cache.result, found_errors
 end
 
-function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
+function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv, boolean
    self:_cancel_if_old()
-   local result = self:get_result()
-   if not result then
-      return
-   end
+   local result, has_errors = self:get_result()
 
    local cache = private_cache[self]
    if not cache.type_report then
       cache.type_report, cache.type_report_env = tl.get_types(result)
    end
 
-   return cache.type_report, cache.type_report_env
+   return cache.type_report, cache.type_report_env, has_errors
 end
 
 function Document:update_text(text: string, version: integer)
-   if not self.latest_version or not version or self.latest_version < version then
+   if not version or not self.latest_version or self.latest_version < version then
       private_cache[self] = nil
       self.text = text
-      self.latest_version = version
+      if version then
+         self.latest_version = version
+      end
       self.lines = {}
 
       for x in (text .. "\n"):gmatch("([^\n]*)\n") do
@@ -229,7 +225,8 @@ function Document:process_and_publish_results()
 
    local diags <const>: {lsp.Diagnostic} = {}
    local fname <const> = self.uri.path
-   local result = self:get_result()
+   local result, has_errors = self:get_result()
+   assert(not has_errors)
    local disabled_warnings <const> = set(server.config.disable_warnings or {})
    local warning_errors <const> = set(server.config.warning_error or {})
    local enabled_warnings <const> = filter(result.warnings, function(e: tl.Error): boolean
@@ -259,25 +256,21 @@ function Document:get_line(line: integer): string
 end
 
 function Document:get_type_info_for_symbol(identifier:string, where: lsp.Position): tl.TypeInfo
-   local tr <const> = self:get_type_report()
-   if not tr then
-      return nil
-   end
+   local tr <const>, _ = self:get_type_report()
    local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
    local type_id <const> = symbols[identifier]
 
    if not type_id then
+      util.log("Failed to find type id for identifier '", identifier, "'.  Available symbols: ", symbols)
       return nil
    end
 
+   util.log("Successfully found type id for given identifier '", identifier, "'")
    return tr.types[type_id] or tr.types[tr.globals[identifier]]
 end
 
 function Document:type_information_at(where: lsp.Position): tl.TypeInfo
-   local tr <const> = self:get_type_report()
-   if not tr then
-      return
-   end
+   local tr <const>, _ = self:get_type_report()
    local tk <const> = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
@@ -311,7 +304,7 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
    end
 
    loop.yield()
-   local tr = self:get_type_report()
+   local tr, _ = self:get_type_report()
 
    local function show_record_field(name: string, field_id: integer): string
       local field <const> = {}

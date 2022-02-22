@@ -16,6 +16,9 @@ for _, v in ipairs(arg) do
    end
 end
 
+io.stdin:setvbuf  'no'
+io.stdout:setvbuf 'no'
+
 util.set_logging(args["logging"] == "on")
 util.log("args: ", args)
 

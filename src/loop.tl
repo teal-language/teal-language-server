@@ -52,6 +52,7 @@ end
 
 function loop.read(patt: string | integer, force: boolean): string
    if loop.io_mode == "evented" and not force then
+      util.log("Waiting for stdin data...")
       repeat
          local has_data <const>, err <const> = poll()
          assert(not err, err)
