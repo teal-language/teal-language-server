@@ -9,7 +9,7 @@ local rpc = require("tealls.rpc")
 local document = require("tealls.document")
 local uri = require("tealls.uri")
 local util = require("tealls.util")
-local path_util = require("tealls.path_util")
+local cyan_path = require("cyan.fs.path")
 
 local Name = lsp.Method.Name
 local Params = lsp.Method.Params
@@ -114,11 +114,13 @@ handlers["textDocument/definition"] = function(params, id)
    if #info.file == 0 then
       file_uri = doc.uri
    else
-      if path_util.is_absolute(info.file) then
-         file_uri = uri.uri_from_path(info.file)
-      else
-         file_uri = uri.uri_from_path(path_util.join(server.root_dir, info.file))
+      local file_path = cyan_path.new(info.file)
+
+      if not file_path:is_absolute() then
+         file_path:prepend(server.root_dir)
       end
+
+      file_uri = uri.uri_from_path(file_path:to_real_path())
    end
 
    rpc.respond(id, {
