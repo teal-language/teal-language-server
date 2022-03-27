@@ -105,31 +105,18 @@ handlers["textDocument/completion"] = function(params: Params, id: integer)
       return
    end
 
-   local pos <const> = params.position as lsp.Position
-   local line = doc:get_line(pos.line + 1)
+   local pos = params.position as lsp.Position
+   pos.line = pos.line + 1
 
-   if not line then
-      util.log("No line found for completion request")
-      rpc.respond(id, nil)
-      return
-   end
-
-   local identifier = line:sub(1, pos.character):match("([%a_][%w_]*)[%.:]?$")
-
-   if not identifier or #identifier == 0 then
-      util.log("No identifier found for completion request. Line: '", line, "'")
-      rpc.respond(id, nil)
-      return
-   end
-
-   util.log("Looking up type info for identifier: '" .. identifier .. "'")
-
-   local info <const> = doc:get_type_info_for_symbol(identifier, pos)
+   local info <const> = doc:type_information_at(pos)
    local items:{any} = { }
 
-   if info and info.fields then
-      for key, _ in pairs(info.fields) do
-         table.insert(items, {label = key})
+   if info then
+      -- util.log("Found type info ", info)
+      if info.fields then
+         for key, _ in pairs(info.fields) do
+            table.insert(items, {label = key})
+         end
       end
    end
 
@@ -154,7 +141,8 @@ handlers["textDocument/definition"] = function(params: Params, id: integer)
       rpc.respond(id, nil)
       return
    end
-   local info <const> = doc:type_information_at(pos)
+   local token_pos = lsp.position(tk.y, tk.x)
+   local info <const> = doc:type_information_at(token_pos)
 
    if not info or info.file == nil then
       rpc.respond(id, nil)
@@ -199,13 +187,14 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
       })
       return
    end
-   local info <const> = doc:type_information_at(pos)
+   local token_pos = lsp.position(tk.y, tk.x)
+   local info <const> = doc:type_information_at(token_pos)
    if not info then
       rpc.respond(id, {
-         contents = { tk .. ":", " No info found " },
+         contents = { tk.tk .. ":", " No info found " },
          range = {
-            start = lsp.position(pos.line, pos.character),
-            ["end"] = lsp.position(pos.line, pos.character + #tk),
+            start = lsp.position(token_pos.line, token_pos.character),
+            ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
          },
       })
       return
@@ -215,10 +204,10 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
 
    local type_str <const> = doc:show_type(info)
    rpc.respond(id, {
-      contents = { tk .. ":", type_str },
+      contents = { tk.tk .. ":", type_str },
       range = {
-         start = lsp.position(pos.line, pos.character),
-         ["end"] = lsp.position(pos.line, pos.character + #tk),
+         start = lsp.position(token_pos.line, token_pos.character),
+         ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
       },
    })
 end

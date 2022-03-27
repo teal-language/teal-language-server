@@ -163,11 +163,30 @@ function document.get(u: uri.ParsedUri): Document
    return cache[u.path]
 end
 
-local get_token_at <const> = tl.get_token_at as function({Token}, number, number): string
+local get_raw_token_at <const> = tl.get_token_at as function({Token}, number, number): string
+
+-- This is just a copy and pasted version of tl.get_token_at
+-- that returns the full token and not just the token string
+local function get_token_at(tks: {Token}, y: integer, x: integer): Token
+   local _, found <const> = util.binary_search(
+      tks, nil,
+      function(tk: Token): boolean
+         return tk.y < y
+            or (tk.y == y and tk.x <= x)
+      end
+   )
+
+   if found
+      and found.y == y
+      and found.x <= x and x < found.x + #found.tk
+   then
+      return found
+   end
+end
 
 local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
    local x <const>, y <const> = err.x, err.y
-   local err_tk <const> = get_token_at(tks, y, x)
+   local err_tk <const> = get_raw_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -259,26 +278,54 @@ function Document:get_type_info_for_symbol(identifier:string, where: lsp.Positio
    local tr <const>, _ = self:get_type_report()
    local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
    local type_id <const> = symbols[identifier]
+   local result:tl.TypeInfo = nil
 
-   if not type_id then
-      util.log("Failed to find type id for identifier '", identifier, "'.  Available symbols: ", symbols)
-      return nil
+   if type_id ~= nil then
+      result = tr.types[type_id]
    end
 
-   util.log("Successfully found type id for given identifier '", identifier, "'")
-   return tr.types[type_id] or tr.types[tr.globals[identifier]]
+   if result == nil then
+      result = tr.types[tr.globals[identifier]]
+   end
+
+   if result == nil then
+      util.log("Failed to find type id for identifier '", identifier, "'.  Available symbols: Locals: ", symbols, ".  Globals: ", tr.globals)
+   else
+      util.log("Successfully found type id for given identifier '", identifier, "'")
+   end
+
+   return result
 end
 
 function Document:type_information_at(where: lsp.Position): tl.TypeInfo
    local tr <const>, _ = self:get_type_report()
-   local tk <const> = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
-   if not tk then
-      return
-   end
-   local symbols <const> = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
-   local type_id <const> = symbols[tk]
 
-   return tr.types[type_id] or tr.types[tr.globals[tk]]
+   local file_info = tr.by_pos[self.uri.path]
+
+   if file_info == nil then
+      return nil
+   end
+
+   local line_info = file_info[where.line]
+
+   if line_info == nil then
+      return nil
+   end
+
+   -- I don't know why we have to check both character and character-1 here
+   -- For some reason, deref tokens are indexed by the `.` so we need character-1 for those cases
+   local type_id = line_info[where.character] or line_info[where.character-1]
+   local type_info = tr.types[type_id]
+
+   if type_info ~= nil then
+      if type_info.ref ~= nil then
+         return tr.types[type_info.ref]
+      end
+
+      return type_info
+   end
+
+   return nil
 end
 
 local function indent(n: number): string
@@ -372,7 +419,11 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
    end
 end
 
-function Document:token_at(where: lsp.Position): string
+function Document:raw_token_at(where: lsp.Position): string
+   return get_raw_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+end
+
+function Document:token_at(where: lsp.Position): Token
    return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
 end
 

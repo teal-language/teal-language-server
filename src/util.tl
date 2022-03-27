@@ -78,32 +78,27 @@ function util.json_nullable<T>(x: T): T
    return x
 end
 
--- Binary search a list
--- Predicate return vals
---      < 0: result is before current guess
---      > 0: result is after current guess
---      = 0: result is current guess, stop searching
--- Returns the index of the found object and the found object
-function util.binary_search<T>(list: {T}, predicate: function(T): integer): integer, T
-   if #list < 2 then
-      return 1
-   end
-   local max_steps = math.ceil(math.log(#list, 2)) + 2
-   local guess = #list // 2
-   local factor = #list // 4
-   for _ = 1, max_steps do
-      local res <const> = predicate(list[guess])
-      if res > 0 then
-         guess = guess + factor
-      elseif res < 0 then
-         guess = guess - factor
+function util.binary_search<T, U>(list: {T}, item: U, cmp: function(T, U): boolean): integer, T
+   local len <const> = #list
+   local mid: integer
+   local s, e = 1, len
+   while s <= e do
+      mid = math.floor((s + e) / 2)
+      local val <const> = list[mid]
+      local res <const> = cmp(val, item)
+      if res then
+         if mid == len then
+            return mid, val
+         else
+            if not cmp(list[mid + 1], item) then
+               return mid, val
+            end
+         end
+         s = mid + 1
       else
-         return guess, list[guess]
+         e = mid - 1
       end
-      guess = math.min(math.max(guess, 1), #list)
-      factor = math.max(factor // 2, 1)
    end
-   return guess, list[guess]
 end
 
 return util
