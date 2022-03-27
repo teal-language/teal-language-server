@@ -24,7 +24,6 @@ local record Document
    uri: uri.ParsedUri
    text: string
    latest_version: integer
-   lines: {string}
 end
 
 local record Cache
@@ -131,11 +130,7 @@ function Document:update_text(text: string, version: integer)
       if version then
          self.latest_version = version
       end
-      self.lines = {}
 
-      for x in (text .. "\n"):gmatch("([^\n]*)\n") do
-         table.insert(self.lines, x)
-      end
       loop.yield()
    end
 end
@@ -264,14 +259,6 @@ function Document:process_and_publish_results()
    insert_errs(fname, diags, tks, werrors, "Error")
    insert_errs(fname, diags, tks, result.type_errors, "Error")
    methods.publish_diagnostics(uri.tostring(self.uri), diags)
-end
-
-function Document:get_line(line: integer): string
-   if line >= 1 and line <= #self.lines then
-      return self.lines[line]
-   end
-
-   return nil
 end
 
 function Document:get_type_info_for_symbol(identifier:string, where: lsp.Position): tl.TypeInfo
