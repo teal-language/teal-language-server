@@ -33,6 +33,7 @@ handlers["initialize"] = function(params: Params, id: integer)
    local cfg, errs = config.load()
    if not cfg then
       util.log("unable to load config ", errs)
+      cfg = {}
    end
    server.config = cfg
 
