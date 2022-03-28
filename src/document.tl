@@ -332,6 +332,8 @@ function Document:type_information_at(where: lsp.Position): tl.TypeInfo
       return nil
    end
 
+   util.log("Successfully found type id '", type_id, "'")
+
    local type_info = tr.types[type_id]
 
    if type_info == nil then
@@ -339,9 +341,12 @@ function Document:type_information_at(where: lsp.Position): tl.TypeInfo
       return nil
    end
 
+   util.log("Successfully found type info: ", type_info)
+
    local canonical_type_info = tr.types[type_info.ref]
 
    if canonical_type_info ~= nil then
+      util.log("Successfully found type info from ref field: ", canonical_type_info)
       return canonical_type_info
    end
 

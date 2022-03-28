@@ -120,15 +120,25 @@ handlers["textDocument/completion"] = function(params: Params, id: integer)
    end
 
    local token_pos = lsp.position(tk.y, tk.x)
-   util.log("Found actual token at position: ", token_pos)
+   util.log("Found actual token '", tk.tk, "' at position: '", token_pos, "'")
 
-   local info <const> = doc:type_information_at(token_pos)
+   local type_info = doc:type_information_at(token_pos)
    local items:{any} = { }
 
-   if info then
-      util.log("Found type info ", info)
-      if info.fields then
-         for key, _ in pairs(info.fields) do
+   if not type_info then
+      util.log("No type information found at calculated token position.  Attempting to get type information by raw token instead.")
+
+      type_info = doc:type_information_for_token(tk)
+
+      if not type_info then
+         util.log("Also failed to find type type_info based on token")
+      end
+   end
+
+   if type_info then
+      util.log("Successfully found type type_info ", type_info)
+      if type_info.fields then
+         for key, _ in pairs(type_info.fields) do
             table.insert(items, {label = key})
          end
       end
@@ -208,7 +218,7 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
       return
    end
    local token_pos = lsp.position(tk.y, tk.x)
-   util.log("Found actual token at position: ", token_pos)
+   util.log("Found actual token '", tk.tk, "' at position: '", token_pos, "'")
    local type_info = doc:type_information_at(token_pos)
    if not type_info then
       util.log("No type information found at calculated token position.  Attempting to get type information by raw token instead.")
