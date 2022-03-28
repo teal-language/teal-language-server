@@ -1,9 +1,10 @@
 
-local tl <const> = require("tl")
 local fs <const> = require("cyan.fs")
-local server <const> = require("tealls.server")
+local loop <const> = require("tealls.loop")
 local lsp <const> = require("tealls.lsp")
 local methods <const> = require("tealls.methods")
+local server <const> = require("tealls.server")
+local tl <const> = require("tl")
 local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
 
@@ -22,6 +23,7 @@ local type Node = any
 local record Document
    uri: uri.ParsedUri
    text: string
+   latest_version: integer
 end
 
 local record Cache
@@ -48,7 +50,23 @@ local function is_lua(fname: string): boolean
    return select(2, fs.extension_split(fname)) == ".lua"
 end
 
+function Document:_cancel_if_old()
+   local current_id <const> = assert(self.latest_version)
+   coroutine.yield()
+   local new_id <const> = assert(self.latest_version)
+   -- util.log("Checking if document version is old... (prev id: "
+   --    .. tostring(current_id)
+   --    .. ", current id: "
+   --    .. tostring(new_id)
+   --    .. ")")
+   if current_id < new_id then
+      util.log("Document is old!  Cancelling current operation")
+      loop.cancel()
+   end
+end
+
 function Document:get_tokens(): {Token}, {Token}
+   self:_cancel_if_old()
    local cache = private_cache[self]
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self.text) as ({Token}, {Token})
@@ -61,6 +79,7 @@ end
 
 local parse_prog = tl.parse_program as function({Token}, {tl.Error}): (number, Node)
 function Document:get_ast(): Node, {tl.Error}
+   self:_cancel_if_old()
    local tks, err_tks = self:get_tokens()
    if #err_tks > 0 then
       return
@@ -76,39 +95,44 @@ function Document:get_ast(): Node, {tl.Error}
 end
 
 local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): tl.Result
-function Document:get_result(): tl.Result
+function Document:get_result(): tl.Result, boolean
+   self:_cancel_if_old()
    local ast, errs = self:get_ast()
-   if #errs > 0 then
-      return nil
-   end
+   local found_errors = #errs > 0
    local cache = private_cache[self]
    if not cache.result then
+      loop.yield()
       cache.result = type_check(ast, {
          lax = is_lua(self.uri.path),
          filename = self.uri.path,
          env = server:get_env(),
       })
    end
-   return cache.result
+   return cache.result, found_errors
 end
 
-function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
-   local result = self:get_result()
-   if not result then
-      return
-   end
+function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv, boolean
+   self:_cancel_if_old()
+   local result, has_errors = self:get_result()
 
    local cache = private_cache[self]
    if not cache.type_report then
       cache.type_report, cache.type_report_env = tl.get_types(result)
    end
 
-   return cache.type_report, cache.type_report_env
+   return cache.type_report, cache.type_report_env, has_errors
 end
 
-function Document:update_text(text: string)
-   private_cache[self] = nil
-   self.text = text
+function Document:update_text(text: string, version: integer)
+   if not version or not self.latest_version or self.latest_version < version then
+      private_cache[self] = nil
+      self.text = text
+      if version then
+         self.latest_version = version
+      end
+
+      loop.yield()
+   end
 end
 
 local cache <const>: {string:Document} = {}
@@ -116,11 +140,12 @@ local document <const> = {
    Document = Document,
 }
 
-function document.open(u: uri.ParsedUri, content: string): Document
-   local d <const> = setmetatable({
+function document.open(u: uri.ParsedUri, content: string, version: integer): Document
+   local d <const>: Document = setmetatable({
       uri = u,
       text = content,
-   } as Document, { __index = Document } as metatable<Document>)
+      latest_version = version,
+   }, { __index = Document })
    cache[d.uri.path] = d
    return d
 end
@@ -133,11 +158,30 @@ function document.get(u: uri.ParsedUri): Document
    return cache[u.path]
 end
 
-local get_token_at <const> = tl.get_token_at as function({Token}, number, number): string
+local get_raw_token_at <const> = tl.get_token_at as function({Token}, number, number): string
+
+-- This is just a copy and pasted version of tl.get_token_at
+-- that returns the full token and not just the token string
+local function get_token_at(tks: {Token}, y: integer, x: integer): Token
+   local _, found <const> = util.binary_search(
+      tks, nil,
+      function(tk: Token): boolean
+         return tk.y < y
+            or (tk.y == y and tk.x <= x)
+      end
+   )
+
+   if found
+      and found.y == y
+      and found.x <= x and x < found.x + #found.tk
+   then
+      return found
+   end
+end
 
 local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
    local x <const>, y <const> = err.x, err.y
-   local err_tk <const> = get_token_at(tks, y, x)
+   local err_tk <const> = get_raw_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -195,7 +239,8 @@ function Document:process_and_publish_results()
 
    local diags <const>: {lsp.Diagnostic} = {}
    local fname <const> = self.uri.path
-   local result = self:get_result()
+   local result, has_errors = self:get_result()
+   assert(not has_errors)
    local disabled_warnings <const> = set(server.config.disable_warnings or {})
    local warning_errors <const> = set(server.config.warning_error or {})
    local enabled_warnings <const> = filter(result.warnings, function(e: tl.Error): boolean
@@ -216,19 +261,96 @@ function Document:process_and_publish_results()
    methods.publish_diagnostics(uri.tostring(self.uri), diags)
 end
 
-function Document:type_information_at(where: lsp.Position): tl.TypeInfo
-   local tr <const> = self:get_type_report()
-   if not tr then
-      return
-   end
-   local tk <const> = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
-   if not tk then
-      return
-   end
-   local symbols <const> = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
-   local type_id <const> = symbols[tk]
+function Document:get_type_info_for_symbol(identifier:string, where: lsp.Position): tl.TypeInfo
+   local tr <const>, _ = self:get_type_report()
+   local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
+   local type_id <const> = symbols[identifier]
+   local result:tl.TypeInfo = nil
 
-   return tr.types[type_id] or tr.types[tr.globals[tk]]
+   if type_id ~= nil then
+      result = tr.types[type_id]
+   end
+
+   if result == nil then
+      result = tr.types[tr.globals[identifier]]
+   end
+
+   if result == nil then
+      util.log("Failed to find type id for identifier '", identifier, "'.  Available symbols: Locals: ", symbols, ".  Globals: ", tr.globals)
+   else
+      util.log("Successfully found type id for given identifier '", identifier, "'")
+   end
+
+   return result
+end
+
+function Document:type_information_for_token(token: Token): tl.TypeInfo
+   local tr <const>, _ = self:get_type_report()
+
+   local symbols <const> = tl.symbols_in_scope(tr, token.y, token.x)
+   local type_id <const> = symbols[token.tk]
+   local local_type_info = tr.types[type_id]
+
+   if local_type_info then
+      util.log("Successfully found type info by raw token in local scope")
+      return local_type_info
+   end
+
+   local global_type_info = tr.types[tr.globals[token.tk]]
+
+   if global_type_info then
+      util.log("Successfully found type info by raw token in globals table")
+      return global_type_info
+   end
+
+   util.log("Failed to find type info at given position")
+   return nil
+end
+
+function Document:type_information_at(where: lsp.Position): tl.TypeInfo
+   local tr <const>, _ = self:get_type_report()
+   local file_info = tr.by_pos[self.uri.path]
+
+   if file_info == nil then
+      util.log("Could not find file info for path '", self.uri.path, "'")
+      return nil
+   end
+
+   local line_info = file_info[where.line]
+
+   if line_info == nil then
+      util.log("Could not find line info for file '", self.uri.path, "' at position '", where, "'")
+      return nil
+   end
+
+   -- I don't know why we have to check both character and character-1 here
+   -- For some reason, deref tokens are indexed by the `.` so we need character-1 for those cases
+   local type_id = line_info[where.character] or line_info[where.character-1]
+
+   if type_id == nil then
+      util.log("Could not find type id for file '", self.uri.path, "' at position '", where, "'")
+      return nil
+   end
+
+   util.log("Successfully found type id '", type_id, "'")
+
+   local type_info = tr.types[type_id]
+
+   if type_info == nil then
+      util.log("Could not find type info for type id '", type_id, "'")
+      return nil
+   end
+
+   util.log("Successfully found type info: ", type_info)
+
+   local canonical_type_info = tr.types[type_info.ref]
+
+   if canonical_type_info ~= nil then
+      util.log("Successfully found type info from ref field: ", canonical_type_info)
+      return canonical_type_info
+   end
+
+   return type_info
 end
 
 local function indent(n: number): string
@@ -253,7 +375,8 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
       ti(out, ...)
    end
 
-   local tr = self:get_type_report()
+   loop.yield()
+   local tr, _ = self:get_type_report()
 
    local function show_record_field(name: string, field_id: integer): string
       local field <const> = {}
@@ -321,9 +444,12 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
    end
 end
 
-function Document:token_at(where: lsp.Position): string
+function Document:raw_token_at(where: lsp.Position): string
+   return get_raw_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+end
+
+function Document:token_at(where: lsp.Position): Token
    return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
 end
 
 return document
-

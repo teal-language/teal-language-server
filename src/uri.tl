@@ -96,6 +96,16 @@ function uri.path_from_uri(s: string): string
    return parsed.path
 end
 
+function uri.uri_from_path(path: string): ParsedUri
+   return {
+      scheme = "file",
+      authority = "",
+      path = path,
+      query = nil,
+      fragment = nil
+   }
+end
+
 function uri.tostring(u: ParsedUri): string
    return u.scheme .. "://"
       .. (u.authority or "")

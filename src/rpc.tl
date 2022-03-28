@@ -1,4 +1,5 @@
 
+local loop <const> = require("tealls.loop")
 local lsp <const> = require("tealls.lsp")
 local json <const> = require("dkjson")
 local util <const> = require("tealls.util")
@@ -13,25 +14,10 @@ local contenttype: {string:boolean} = {
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
 
---[[
-   TODO: look into non-blocking io
-     - luasocket: popular module, language servers can communicate over sockets instead of stdio, portable
-     - luv: no typedefs until interfaces (or whatever), maybe a little big? cross-platform
-     - cqueues: nice to use with coroutines, unix only
-]]
-
-local function read_line(fh: FILE): string
-   local line = fh:read("*l")
-   if not line then return end
-   line = line:gsub("\r", "")
-   return line
-end
-
-function rpc.decode(fh: FILE): {string:any}, string
-   fh = fh or io.stdin
-   util.log("Decoding rpc (doing blocking read)")
-   local line = read_line(fh)
+function rpc.decode(): {string:any}, string
+   local line = loop.read("*l", false):gsub("\r", "")
    if not line then
+      util.log("Failed to read rpc")
       return nil, "eof"
    end
 
@@ -39,6 +25,7 @@ function rpc.decode(fh: FILE): {string:any}, string
    while line and line ~= "" do -- parse headers
       local key, val = line:match("^([^:]+): (.+)$")
       if not (key and val) then
+         util.log("invalid header")
          return nil, "invalid header: " .. line
       end
       util.log("   Header: ", key, " ", val)
@@ -49,6 +36,7 @@ function rpc.decode(fh: FILE): {string:any}, string
             local function quote(s: string): string
                return "'" .. s .. "'"
             end
+            util.log("invalid Content-Type")
             return nil, string.format(
                "invalid Content-Type: got '%s', expected one of %s",
                val,
@@ -56,25 +44,28 @@ function rpc.decode(fh: FILE): {string:any}, string
             )
          end
       else
+         util.log("unexpected header")
          return nil, "unexpected header: " .. line
       end
-      line = read_line(fh)
+      line = loop.read("*l", true):gsub("\r", "")
    end
 
    if not len then
+      util.log("Failed to find rpc content")
       return nil, "no Content-Length found"
    end
 
-   local body = fh:read(len)
-   body = body:gsub("\r", "")
+   local body = loop.read(len, true):gsub("\r", "")
    util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then
       return nil, "Malformed json"
    end
    if data.jsonrpc ~= "2.0" then
+      util.log("Incorrect jsonrpc version")
       return nil, "Incorrect jsonrpc version: got " .. tostring(data.jsonrpc) .. " expected 2.0"
    end
+   util.log("successfully parsed rpc!")
    return data
 end
 

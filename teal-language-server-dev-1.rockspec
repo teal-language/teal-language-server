@@ -19,9 +19,12 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
+		["tealls.poll"] = "src/poll.c",
+
       ["tealls.document"] = "build/tealls/document.lua",
       ["tealls.handlers"] = "build/tealls/handlers.lua",
       ["tealls.init"] = "build/tealls/init.lua",
+      ["tealls.loop"] = "build/tealls/loop.lua",
       ["tealls.lsp"] = "build/tealls/lsp.lua",
       ["tealls.methods"] = "build/tealls/methods.lua",
       ["tealls.rpc"] = "build/tealls/rpc.lua",
@@ -31,9 +34,11 @@ build = {
    },
    install = {
       lua = {
+         ["tealls.poll"] = "src/poll.d.tl",
          ["tealls.document"] = "src/document.tl",
          ["tealls.handlers"] = "src/handlers.tl",
          ["tealls.init"] = "src/init.tl",
+         ["tealls.loop"] = "src/loop.tl",
          ["tealls.lsp"] = "src/lsp.tl",
          ["tealls.methods"] = "src/methods.tl",
          ["tealls.rpc"] = "src/rpc.tl",

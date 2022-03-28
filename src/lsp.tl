@@ -82,9 +82,9 @@ local record lsp
          "textDocument/didSave"
          "textDocument/didClose"
          "textDocument/hover"
-         "textDocument/gotoDefinition"
-
+         "textDocument/definition"
          "textDocument/publishDiagnostics"
+         "textDocument/completion"
       end
 
       type Params = {integer|string:JsonValue} -- should be JsonObject | {JsonValue}
@@ -116,6 +116,11 @@ local record lsp
       "TriggerForIncompleteCompletions"
    end
    completion_trigger_kind: {CompletionTriggerKind:integer}
+
+   record CompletionContext
+      triggerKind: integer
+      triggerCharacter: string
+   end
 
 end
 
