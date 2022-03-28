@@ -96,6 +96,7 @@ handlers["textDocument/completion"] = function(params: Params, id: integer)
 
    if context.triggerKind ~= 2 then
       util.log("Ignoring completion request given kind: ", context.triggerKind)
+      rpc.respond(id, nil)
       return
    end
 
@@ -107,13 +108,25 @@ handlers["textDocument/completion"] = function(params: Params, id: integer)
    end
 
    local pos = params.position as lsp.Position
-   pos.line = pos.line + 1
+   pos.character = pos.character - 2
 
-   local info <const> = doc:type_information_at(pos)
+   util.log("Received request for completion at position: ", pos)
+   local tk <const> = doc:token_at(pos)
+
+   if not tk then
+      util.log("Could not find token at given position")
+      rpc.respond(id, nil)
+      return
+   end
+
+   local token_pos = lsp.position(tk.y, tk.x)
+   util.log("Found actual token at position: ", token_pos)
+
+   local info <const> = doc:type_information_at(token_pos)
    local items:{any} = { }
 
    if info then
-      -- util.log("Found type info ", info)
+      util.log("Found type info ", info)
       if info.fields then
          for key, _ in pairs(info.fields) do
             table.insert(items, {label = key})
@@ -179,9 +192,13 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
    local doc <const> = get_doc(params)
    if not doc then
       util.log("Failed to find document for given params")
+      rpc.respond(id, nil)
       return
    end
    local pos <const> = params.position as lsp.Position
+
+   util.log("Received request for hover at position: ", pos)
+
    local tk <const> = doc:token_at(pos)
    if not tk then
       util.log("Could not find token at given position")
@@ -191,6 +208,7 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
       return
    end
    local token_pos = lsp.position(tk.y, tk.x)
+   util.log("Found actual token at position: ", token_pos)
    local type_info = doc:type_information_at(token_pos)
    if not type_info then
       util.log("No type information found at calculated token position.  Attempting to get type information by raw token instead.")
@@ -210,7 +228,7 @@ handlers["textDocument/hover"] = function(params: Params, id: integer)
       end
    end
 
-   util.log("Successfully found type type_info: ", type_info)
+   util.log("Successfully found type_info: ", type_info)
 
    local type_str <const> = doc:show_type(type_info)
    rpc.respond(id, {
