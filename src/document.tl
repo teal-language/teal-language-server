@@ -284,35 +284,68 @@ function Document:get_type_info_for_symbol(identifier:string, where: lsp.Positio
    return result
 end
 
-function Document:type_information_at(where: lsp.Position): tl.TypeInfo
+function Document:type_information_for_token(token: Token): tl.TypeInfo
    local tr <const>, _ = self:get_type_report()
 
+   local symbols <const> = tl.symbols_in_scope(tr, token.y, token.x)
+   local type_id <const> = symbols[token.tk]
+   local local_type_info = tr.types[type_id]
+
+   if local_type_info then
+      util.log("Successfully found type info by raw token in local scope")
+      return local_type_info
+   end
+
+   local global_type_info = tr.types[tr.globals[token.tk]]
+
+   if global_type_info then
+      util.log("Successfully found type info by raw token in globals table")
+      return global_type_info
+   end
+
+   util.log("Failed to find type info at given position")
+   return nil
+end
+
+function Document:type_information_at(where: lsp.Position): tl.TypeInfo
+   local tr <const>, _ = self:get_type_report()
    local file_info = tr.by_pos[self.uri.path]
 
    if file_info == nil then
+      util.log("Could not find file info for path '", self.uri.path, "'")
       return nil
    end
 
    local line_info = file_info[where.line]
 
    if line_info == nil then
+      util.log("Could not find line info for file '", self.uri.path, "' at position '", where, "'")
       return nil
    end
 
    -- I don't know why we have to check both character and character-1 here
    -- For some reason, deref tokens are indexed by the `.` so we need character-1 for those cases
    local type_id = line_info[where.character] or line_info[where.character-1]
-   local type_info = tr.types[type_id]
 
-   if type_info ~= nil then
-      if type_info.ref ~= nil then
-         return tr.types[type_info.ref]
-      end
-
-      return type_info
+   if type_id == nil then
+      util.log("Could not find type id for file '", self.uri.path, "' at position '", where, "'")
+      return nil
    end
 
-   return nil
+   local type_info = tr.types[type_id]
+
+   if type_info == nil then
+      util.log("Could not find type info for type id '", type_id, "'")
+      return nil
+   end
+
+   local canonical_type_info = tr.types[type_info.ref]
+
+   if canonical_type_info ~= nil then
+      return canonical_type_info
+   end
+
+   return type_info
 end
 
 local function indent(n: number): string

@@ -178,32 +178,41 @@ end
 handlers["textDocument/hover"] = function(params: Params, id: integer)
    local doc <const> = get_doc(params)
    if not doc then
+      util.log("Failed to find document for given params")
       return
    end
    local pos <const> = params.position as lsp.Position
    local tk <const> = doc:token_at(pos)
    if not tk then
+      util.log("Could not find token at given position")
       rpc.respond(id, {
          contents = { " No info found " }
       })
       return
    end
    local token_pos = lsp.position(tk.y, tk.x)
-   local info <const> = doc:type_information_at(token_pos)
-   if not info then
-      rpc.respond(id, {
-         contents = { tk.tk .. ":", " No info found " },
-         range = {
-            start = lsp.position(token_pos.line, token_pos.character),
-            ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
-         },
-      })
-      return
+   local type_info = doc:type_information_at(token_pos)
+   if not type_info then
+      util.log("No type information found at calculated token position.  Attempting to get type information by raw token instead.")
+
+      type_info = doc:type_information_for_token(tk)
+
+      if not type_info then
+         util.log("Also failed to find type info based on token")
+         rpc.respond(id, {
+            contents = { tk.tk .. ":", " No type_info found " },
+            range = {
+               start = lsp.position(token_pos.line, token_pos.character),
+               ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
+            },
+         })
+         return
+      end
    end
 
-   -- util.log("Found type info: ", info)
+   util.log("Successfully found type type_info: ", type_info)
 
-   local type_str <const> = doc:show_type(info)
+   local type_str <const> = doc:show_type(type_info)
    rpc.respond(id, {
       contents = { tk.tk .. ":", type_str },
       range = {
