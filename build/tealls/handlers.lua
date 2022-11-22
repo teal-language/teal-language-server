@@ -89,6 +89,18 @@ handlers["textDocument/didChange"] = function(params)
    doc:process_and_publish_results()
 end
 
+handlers["textDocument/didChange"] = function(params)
+   local td = params.textDocument
+   local doc = document.get(uri.parse(td.uri))
+   if not doc then
+      util.log("Unable to find document: ", td.uri)
+      return
+   end
+   local changes = params.contentChanges
+   doc:update_text(changes[1].text)
+   doc:process_and_publish_results()
+end
+
 handlers["textDocument/definition"] = function(params, id)
    local doc = get_doc(params)
    if not doc then
