@@ -20,6 +20,10 @@ util.set_logging(args["logging"] == "on")
 util.log("args: ", args)
 
 local function assert_init()
+   util.log("disabling buffering on stdin and stdout")
+   util.assert(io.stdin:setvbuf("no"))
+   util.assert(io.stdout:setvbuf("no"))
+
    util.log("waiting for initialize request")
    local data
    data = util.assert(rpc.decode())
