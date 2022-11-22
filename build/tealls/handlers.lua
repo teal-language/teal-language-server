@@ -73,6 +73,9 @@ handlers["textDocument/didSave"] = function(params)
       util.log("Unable to find document: ", td.uri)
       return
    end
+   if not td.version then
+      util.log("didSave did not provide a version")
+   end
    doc:update_text(params.text, td.version)
    doc:process_and_publish_results()
 end
@@ -85,6 +88,9 @@ handlers["textDocument/didChange"] = function(params)
       return
    end
    local changes = params.contentChanges
+   if not td.version then
+      util.log("didChange did not provide a version")
+   end
    doc:update_text(changes[1].text, td.version)
    doc:process_and_publish_results()
 end

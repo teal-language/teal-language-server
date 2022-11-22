@@ -130,10 +130,11 @@ function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
 end
 
 function Document:update_text(text: string, version: integer)
-   if not self.latest_version or self.latest_version < version then
+   -- for some reason, certian messages aren't providing a version
+   if not self.latest_version or not version or self.latest_version < version then
       private_cache[self] = nil
       self.text = text
-      self.latest_version = version
+      self.latest_version = version or 0
       loop.yield()
    end
 end
