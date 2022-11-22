@@ -1,4 +1,5 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
+local loop = require("tealls.loop")
 local lsp = require("tealls.lsp")
 local json = require("dkjson")
 local util = require("tealls.util")
@@ -13,24 +14,8 @@ local contenttype = {
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
 
-
-
-
-
-
-
-
-local function read_line(fh)
-   local line = fh:read("*l")
-   if not line then return end
-   line = line:gsub("\r", "")
-   return line
-end
-
-function rpc.decode(fh)
-   fh = fh or io.stdin
-   util.log("Decoding rpc (doing blocking read)")
-   local line = read_line(fh)
+function rpc.decode()
+   local line = loop.read("*l"):gsub("\r", "")
    if not line then
       return nil, "eof"
    end
@@ -58,15 +43,14 @@ function rpc.decode(fh)
       else
          return nil, "unexpected header: " .. line
       end
-      line = read_line(fh)
+      line = loop.read("*l"):gsub("\r", "")
    end
 
    if not len then
       return nil, "no Content-Length found"
    end
 
-   local body = fh:read(len)
-   body = body:gsub("\r", "")
+   local body = loop.read(len):gsub("\r", "")
    util.log("   Body: ", body)
    local data = json.decode(body)
    if not data then

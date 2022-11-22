@@ -1,9 +1,10 @@
 
-local tl <const> = require("tl")
 local fs <const> = require("cyan.fs")
-local server <const> = require("tealls.server")
+local loop <const> = require("tealls.loop")
 local lsp <const> = require("tealls.lsp")
 local methods <const> = require("tealls.methods")
+local server <const> = require("tealls.server")
+local tl <const> = require("tl")
 local uri <const> = require("tealls.uri")
 local util <const> = require("tealls.util")
 
@@ -22,6 +23,7 @@ local type Node = any
 local record Document
    uri: uri.ParsedUri
    text: string
+   latest_version: integer
 end
 
 local record Cache
@@ -48,7 +50,24 @@ local function is_lua(fname: string): boolean
    return select(2, fs.extension_split(fname)) == ".lua"
 end
 
+function Document:_cancel_if_old()
+   local current_id <const> = assert(self.latest_version)
+   coroutine.yield()
+   local new_id <const> = assert(self.latest_version)
+   util.log("Checking if document version is old... (prev id: "
+      .. tostring(current_id)
+      .. ", current id: "
+      .. tostring(new_id)
+      .. ")")
+   if current_id < new_id then
+      util.log("      Document is old")
+      loop.cancel()
+   end
+   util.log("      Document is new")
+end
+
 function Document:get_tokens(): {Token}, {Token}
+   self:_cancel_if_old()
    local cache = private_cache[self]
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self.text) as ({Token}, {Token})
@@ -61,6 +80,7 @@ end
 
 local parse_prog = tl.parse_program as function({Token}, {tl.Error}): (number, Node)
 function Document:get_ast(): Node, {tl.Error}
+   self:_cancel_if_old()
    local tks, err_tks = self:get_tokens()
    if #err_tks > 0 then
       return
@@ -77,12 +97,14 @@ end
 
 local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): tl.Result
 function Document:get_result(): tl.Result
+   self:_cancel_if_old()
    local ast, errs = self:get_ast()
    if #errs > 0 then
       return nil
    end
    local cache = private_cache[self]
    if not cache.result then
+      loop.yield()
       cache.result = type_check(ast, {
          lax = is_lua(self.uri.path),
          filename = self.uri.path,
@@ -93,6 +115,7 @@ function Document:get_result(): tl.Result
 end
 
 function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
+   self:_cancel_if_old()
    local result = self:get_result()
    if not result then
       return
@@ -106,9 +129,13 @@ function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv
    return cache.type_report, cache.type_report_env
 end
 
-function Document:update_text(text: string)
-   private_cache[self] = nil
-   self.text = text
+function Document:update_text(text: string, version: integer)
+   if not self.latest_version or self.latest_version < version then
+      private_cache[self] = nil
+      self.text = text
+      self.latest_version = version
+      loop.yield()
+   end
 end
 
 local cache <const>: {string:Document} = {}
@@ -116,11 +143,12 @@ local document <const> = {
    Document = Document,
 }
 
-function document.open(u: uri.ParsedUri, content: string): Document
-   local d <const> = setmetatable({
+function document.open(u: uri.ParsedUri, content: string, version: integer): Document
+   local d <const>: Document = setmetatable({
       uri = u,
       text = content,
-   } as Document, { __index = Document } as metatable<Document>)
+      latest_version = version,
+   }, { __index = Document })
    cache[d.uri.path] = d
    return d
 end
@@ -253,6 +281,7 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
       ti(out, ...)
    end
 
+   loop.yield()
    local tr = self:get_type_report()
 
    local function show_record_field(name: string, field_id: integer): string
@@ -326,4 +355,3 @@ function Document:token_at(where: lsp.Position): string
 end
 
 return document
-

@@ -52,7 +52,7 @@ end
 
 handlers["textDocument/didOpen"] = function(params)
    local td = params.textDocument
-   document.open(uri.parse(td.uri), td.text):
+   document.open(uri.parse(td.uri), td.text, td.version):
    process_and_publish_results()
 end
 
@@ -73,7 +73,19 @@ handlers["textDocument/didSave"] = function(params)
       util.log("Unable to find document: ", td.uri)
       return
    end
-   doc:update_text(params.text)
+   doc:update_text(params.text, td.version)
+   doc:process_and_publish_results()
+end
+
+handlers["textDocument/didChange"] = function(params)
+   local td = params.textDocument
+   local doc = document.get(uri.parse(td.uri))
+   if not doc then
+      util.log("Unable to find document: ", td.uri)
+      return
+   end
+   local changes = params.contentChanges
+   doc:update_text(changes[1].text, td.version)
    doc:process_and_publish_results()
 end
 
