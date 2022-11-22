@@ -13,12 +13,12 @@ local filter, set =
 cyanutils.tab.filter, cyanutils.tab.set
 
 
-local Token = {}
 
 
 
 
-local Node = {}
+
+
 
 local Document = {}
 
@@ -26,7 +26,7 @@ local Document = {}
 
 
 
-local Cache = {}
+
 
 
 
