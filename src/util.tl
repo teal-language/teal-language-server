@@ -45,11 +45,15 @@ local function inspect(x: any): string
 end
 
 local logging_enabled = true
-function util.set_logging(to: boolean)
+local logfile = "/tmp/teal-language-server.log"
+
+function util.set_logging(to: boolean, file: string)
    logging_enabled = to
+   if file then
+      logfile = file
+   end
 end
 
-local logfile <const> = "/tmp/teal-language-server.log"
 function util.log(...: any)
    if logging_enabled then
       local fh <const> = assert(io.open(logfile, "a"))

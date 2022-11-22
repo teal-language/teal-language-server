@@ -45,11 +45,15 @@ local function inspect(x)
 end
 
 local logging_enabled = true
-function util.set_logging(to)
+local logfile = "/tmp/teal-language-server.log"
+
+function util.set_logging(to, file)
    logging_enabled = to
+   if file then
+      logfile = file
+   end
 end
 
-local logfile = "/tmp/teal-language-server.log"
 function util.log(...)
    if logging_enabled then
       local fh = assert(io.open(logfile, "a"))

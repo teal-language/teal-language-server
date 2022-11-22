@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local coroutine = _tl_compat and _tl_compat.coroutine or coroutine; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local coroutine = _tl_compat and _tl_compat.coroutine or coroutine; local debug = _tl_compat and _tl_compat.debug or debug; local io = _tl_compat and _tl_compat.io or io; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall
 local loop = require("tealls.loop")
 local lsp = require("tealls.lsp")
 local rpc = require("tealls.rpc")
@@ -16,7 +16,15 @@ for _, v in ipairs(arg) do
    end
 end
 
-util.set_logging(args["logging"] == "on")
+local is_dev = arg[0]:sub(-3, -1) == "dev"
+
+util.set_logging(
+is_dev or args["logging"] == "on",
+args["logfile"] or
+(is_dev and
+"/tmp/teal-language-server-dev.log" or
+"/tmp/teal-language-server.log"))
+
 util.log("args: ", args)
 
 local function assert_init()

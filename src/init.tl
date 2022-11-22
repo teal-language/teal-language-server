@@ -16,7 +16,15 @@ for _, v in ipairs(arg) do
    end
 end
 
-util.set_logging(args["logging"] == "on")
+local is_dev <const> = arg[0]:sub(-3, -1) == "dev"
+
+util.set_logging(
+   is_dev or args["logging"] == "on",
+   args["logfile"] or
+      (is_dev
+         and "/tmp/teal-language-server-dev.log"
+         or "/tmp/teal-language-server.log")
+)
 util.log("args: ", args)
 
 local function assert_init()
