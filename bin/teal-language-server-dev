@@ -1,0 +1,21 @@
+#!/usr/bin/env lua
+
+package.path = "./?.lua;" .. package.path
+package.cpath = "./?.so;" .. package.cpath
+
+local tl = require("tl")
+tl.loader()
+local old_require = require
+require = function(path)
+	if path:sub(1, 7) == "tealls." then
+		local sub_module = path:sub(8, -1)
+		if sub_module == "poll" then
+			return old_require(path)
+		end
+
+		local new_path = "src." .. path:sub(8, -1)
+		return old_require(new_path)
+	end
+	return old_require(path)
+end
+require("tealls.init")
