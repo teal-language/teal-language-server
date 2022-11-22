@@ -15,14 +15,15 @@ static int luapoll(lua_State *L) {
         .revents = 0,
     };
     int result = poll(&fd, 1, 0);
+    int err = errno; // lua api functions can affect errno
     if (result < 0) {
         lua_pushnil(L);
-        lua_pushstring(L, strerror(errno));
+        lua_pushstring(L, strerror(err));
         return 2;
     }
     if (fd.revents & POLLERR) {
         lua_pushnil(L);
-        lua_pushstring(L, strerror(errno));
+        lua_pushstring(L, strerror(err));
         return 2;
     }
     int data_available = fd.revents & POLLIN;
