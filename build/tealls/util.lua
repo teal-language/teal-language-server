@@ -89,8 +89,8 @@ function util.binary_search(list, predicate)
       return 1
    end
    local max_steps = math.ceil(math.log(#list, 2)) + 2
-   local guess = #list // 2
-   local factor = #list // 4
+   local guess = math.floor(#list / 2)
+   local factor = math.floor(#list / 4)
    for _ = 1, max_steps do
       local res = predicate(list[guess])
       if res > 0 then
@@ -101,7 +101,7 @@ function util.binary_search(list, predicate)
          return guess, list[guess]
       end
       guess = math.min(math.max(guess, 1), #list)
-      factor = math.max(factor // 2, 1)
+      factor = math.max(math.floor(factor / 2), 1)
    end
    return guess, list[guess]
 end

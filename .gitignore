@@ -3,3 +3,5 @@ teal-language-server.log
 /lua
 /lua_modules
 /.luarocks
+
+teal-types
