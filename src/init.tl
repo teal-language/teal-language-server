@@ -15,7 +15,7 @@ for _, v in ipairs(arg) do
    end
 end
 
-util.set_logging(args["logging"] == "on")
+-- util.set_logging(args["logging"] == "on")
 util.log("args: ", args)
 
 local function assert_init()

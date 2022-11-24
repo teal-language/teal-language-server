@@ -106,4 +106,27 @@ function util.binary_search(list, predicate)
    return guess, list[guess]
 end
 
+function util.binary_search2(list, item, cmp)
+   local len = #list
+   local mid
+   local s, e = 1, len
+   while s <= e do
+      mid = math.floor((s + e) / 2)
+      local val = list[mid]
+      local res = cmp(val, item)
+      if res then
+         if mid == len then
+            return mid, val
+         else
+            if not cmp(list[mid + 1], item) then
+               return mid, val
+            end
+         end
+         s = mid + 1
+      else
+         e = mid - 1
+      end
+   end
+end
+
 return util

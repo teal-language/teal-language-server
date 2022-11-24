@@ -133,7 +133,22 @@ function document.get(u: uri.ParsedUri): Document
    return cache[u.path]
 end
 
-local get_token_at <const> = tl.get_token_at as function({Token}, number, number): string
+local function get_token_at(tks: {Token}, y: integer, x: integer): Token
+   local _, found <const> = util.binary_search2(
+      tks, nil,
+      function(tk: Token): boolean
+         return tk.y < y
+            or (tk.y == y and tk.x <= x)
+      end
+   )
+
+   if found
+      and found.y == y
+      and found.x <= x and x < found.x + #found.tk
+   then
+      return found
+   end
+end
 
 local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
    local x <const>, y <const> = err.x, err.y
@@ -146,7 +161,7 @@ local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity:
          },
          ["end"] = {
             line = y - 1,
-            character = (err_tk and x + #err_tk - 1) or x,
+            character = (err_tk and x + #err_tk.tk - 1) or x,
          },
       },
       severity = lsp.severity[severity],
@@ -216,19 +231,59 @@ function Document:process_and_publish_results()
    methods.publish_diagnostics(uri.tostring(self.uri), diags)
 end
 
-function Document:type_information_at(where: lsp.Position): tl.TypeInfo
-   local tr <const> = self:get_type_report()
+-- If token tk is a field of expression p.tk or p:tk then return token p
+function Document:get_parent(tk: Token): Token
+   local tk_before = get_token_at(self:get_tokens(), tk.y, tk.x-1)
+   if tk_before and (tk_before.tk == '.' or tk_before.tk == ':') then
+      return get_token_at(self:get_tokens(), tk_before.y, tk_before.x-1)
+   end
+end
+
+function Document:get_type_info(tk: Token): tl.TypeInfo
+   local tr = self:get_type_report()
    if not tr then
       return
    end
+
+   local parent_tk = self:get_parent(tk)
+   if parent_tk then
+      util.log('Got parent token', parent_tk)
+      local parent_info = self:get_type_info(parent_tk)
+      if parent_info then
+         util.log('Got parent', parent_info)
+         if parent_info.ref then
+            parent_info = tr.types[parent_info.ref]
+         end
+
+         if parent_info.fields then
+            local field_type_id = parent_info.fields[tk.tk]
+            return tr.types[field_type_id]
+         end
+      end
+   end
+
+   local symbols <const> = tl.symbols_in_scope(tr, tk.y + 1, tk.x + 1)
+   local type_id <const> = symbols[tk.tk]
+   if tr.types[type_id] then
+      return tr.types[type_id]
+   end
+
+   local global_type_id = tr.globals[tk.tk]
+   if tr.types[global_type_id] then
+      return tr.types[global_type_id]
+   end
+
+end
+
+function Document:type_information_at(where: lsp.Position): tl.TypeInfo
    local tk <const> = get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
    if not tk then
       return
    end
-   local symbols <const> = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
-   local type_id <const> = symbols[tk]
 
-   return tr.types[type_id] or tr.types[tr.globals[tk]]
+   util.log('Got token', tk)
+
+   return self:get_type_info(tk)
 end
 
 local function indent(n: number): string
@@ -321,7 +376,7 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
    end
 end
 
-function Document:token_at(where: lsp.Position): string
+function Document:token_at(where: lsp.Position): Token
    return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
 end
 
