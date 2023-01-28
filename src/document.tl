@@ -26,7 +26,7 @@ end
 
 local record Cache
    tokens: {Token}
-   err_tokens: {Token}
+   err_tokens: {Error}
 
    ast: Node
    parse_errors: {tl.Error}
@@ -48,10 +48,10 @@ local function is_lua(fname: string): boolean
    return select(2, fs.extension_split(fname)) == ".lua"
 end
 
-function Document:get_tokens(): {Token}, {Token}
+function Document:get_tokens(): {Token}, {Error}
    local cache = private_cache[self]
    if not cache.tokens then
-      cache.tokens, cache.err_tokens = tl.lex(self.text) as ({Token}, {Token})
+      cache.tokens, cache.err_tokens = tl.lex(self.text) as ({Token}, {Error})
       if not cache.err_tokens then
          cache.err_tokens = {}
       end
@@ -59,7 +59,7 @@ function Document:get_tokens(): {Token}, {Token}
    return cache.tokens, cache.err_tokens
 end
 
-local parse_prog = tl.parse_program as function({Token}, {tl.Error}): (number, Node)
+local parse_prog = tl.parse_program as function({Token}, {tl.Error}, string): Node, {string}
 function Document:get_ast(): Node, {tl.Error}
    local tks, err_tks = self:get_tokens()
    if #err_tks > 0 then
@@ -70,7 +70,7 @@ function Document:get_ast(): Node, {tl.Error}
    if not cache.ast then
       local _: any
       cache.parse_errors = {}
-      _, cache.ast = parse_prog(tks, cache.parse_errors)
+      cache.ast, _ = parse_prog(tks, cache.parse_errors)
    end
    return cache.ast, cache.parse_errors
 end
