@@ -37,7 +37,7 @@ Install the [lspconfig plugin](https://github.com/neovim/nvim-lspconfig) and put
 ```lua
 local lspconfig = require("lspconfig")
 
-lspconfig.teal_language_server.setup {}
+lspconfig.teal_ls.setup {}
 ```
 
 # Usage
