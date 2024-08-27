@@ -1,5 +1,12 @@
-teal-language-server.log
 /luarocks
 /lua
 /lua_modules
 /.luarocks
+/luarocks.bat
+/lua.bat
+/luarocks_tree
+/*.src.rock
+
+# install dirs on CI machine
+/.install
+/.lua
