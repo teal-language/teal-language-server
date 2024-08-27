@@ -3,25 +3,25 @@ set -ex
 cd `dirname $BASH_SOURCE`/..
 rm -rf ./gen
 mkdir ./gen
-mkdir ./gen/tea_leaves
-luarocks_tree/bin/tl gen src/tea_leaves/args_parser.tl -o gen/tea_leaves/args_parser.lua
-luarocks_tree/bin/tl gen src/tea_leaves/asserts.tl -o gen/tea_leaves/asserts.lua
-cp src/tea_leaves/class.lua gen/tea_leaves/class.lua
-luarocks_tree/bin/tl gen src/tea_leaves/constants.tl -o gen/tea_leaves/constants.lua
-luarocks_tree/bin/tl gen src/tea_leaves/document.tl -o gen/tea_leaves/document.lua
-luarocks_tree/bin/tl gen src/tea_leaves/document_manager.tl -o gen/tea_leaves/document_manager.lua
-luarocks_tree/bin/tl gen src/tea_leaves/env_updater.tl -o gen/tea_leaves/env_updater.lua
-luarocks_tree/bin/tl gen src/tea_leaves/lsp.tl -o gen/tea_leaves/lsp.lua
-luarocks_tree/bin/tl gen src/tea_leaves/lsp_events_manager.tl -o gen/tea_leaves/lsp_events_manager.lua
-luarocks_tree/bin/tl gen src/tea_leaves/lsp_reader_writer.tl -o gen/tea_leaves/lsp_reader_writer.lua
-luarocks_tree/bin/tl gen src/tea_leaves/main.tl -o gen/tea_leaves/main.lua
-luarocks_tree/bin/tl gen src/tea_leaves/misc_handlers.tl -o gen/tea_leaves/misc_handlers.lua
-luarocks_tree/bin/tl gen src/tea_leaves/path.tl -o gen/tea_leaves/path.lua
-luarocks_tree/bin/tl gen src/tea_leaves/server_state.tl -o gen/tea_leaves/server_state.lua
-luarocks_tree/bin/tl gen src/tea_leaves/stdin_reader.tl -o gen/tea_leaves/stdin_reader.lua
-luarocks_tree/bin/tl gen src/tea_leaves/teal_project_config.tl -o gen/tea_leaves/teal_project_config.lua
-luarocks_tree/bin/tl gen src/tea_leaves/trace_entry.tl -o gen/tea_leaves/trace_entry.lua
-luarocks_tree/bin/tl gen src/tea_leaves/trace_stream.tl -o gen/tea_leaves/trace_stream.lua
-luarocks_tree/bin/tl gen src/tea_leaves/tracing.tl -o gen/tea_leaves/tracing.lua
-luarocks_tree/bin/tl gen src/tea_leaves/uri.tl -o gen/tea_leaves/uri.lua
-luarocks_tree/bin/tl gen src/tea_leaves/util.tl -o gen/tea_leaves/util.lua
+mkdir ./gen/teal_language_server
+luarocks_tree/bin/tl gen src/teal_language_server/args_parser.tl -o gen/teal_language_server/args_parser.lua
+luarocks_tree/bin/tl gen src/teal_language_server/asserts.tl -o gen/teal_language_server/asserts.lua
+cp src/teal_language_server/class.lua gen/teal_language_server/class.lua
+luarocks_tree/bin/tl gen src/teal_language_server/constants.tl -o gen/teal_language_server/constants.lua
+luarocks_tree/bin/tl gen src/teal_language_server/document.tl -o gen/teal_language_server/document.lua
+luarocks_tree/bin/tl gen src/teal_language_server/document_manager.tl -o gen/teal_language_server/document_manager.lua
+luarocks_tree/bin/tl gen src/teal_language_server/env_updater.tl -o gen/teal_language_server/env_updater.lua
+luarocks_tree/bin/tl gen src/teal_language_server/lsp.tl -o gen/teal_language_server/lsp.lua
+luarocks_tree/bin/tl gen src/teal_language_server/lsp_events_manager.tl -o gen/teal_language_server/lsp_events_manager.lua
+luarocks_tree/bin/tl gen src/teal_language_server/lsp_reader_writer.tl -o gen/teal_language_server/lsp_reader_writer.lua
+luarocks_tree/bin/tl gen src/teal_language_server/main.tl -o gen/teal_language_server/main.lua
+luarocks_tree/bin/tl gen src/teal_language_server/misc_handlers.tl -o gen/teal_language_server/misc_handlers.lua
+luarocks_tree/bin/tl gen src/teal_language_server/path.tl -o gen/teal_language_server/path.lua
+luarocks_tree/bin/tl gen src/teal_language_server/server_state.tl -o gen/teal_language_server/server_state.lua
+luarocks_tree/bin/tl gen src/teal_language_server/stdin_reader.tl -o gen/teal_language_server/stdin_reader.lua
+luarocks_tree/bin/tl gen src/teal_language_server/teal_project_config.tl -o gen/teal_language_server/teal_project_config.lua
+luarocks_tree/bin/tl gen src/teal_language_server/trace_entry.tl -o gen/teal_language_server/trace_entry.lua
+luarocks_tree/bin/tl gen src/teal_language_server/trace_stream.tl -o gen/teal_language_server/trace_stream.lua
+luarocks_tree/bin/tl gen src/teal_language_server/tracing.tl -o gen/teal_language_server/tracing.lua
+luarocks_tree/bin/tl gen src/teal_language_server/uri.tl -o gen/teal_language_server/uri.lua
+luarocks_tree/bin/tl gen src/teal_language_server/util.tl -o gen/teal_language_server/util.lua

@@ -1,2 +1,2 @@
 #!/usr/bin/env lua
-require('tea_leaves.main')
+require('teal_language_server.main')

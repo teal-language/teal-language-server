@@ -1,14 +1,14 @@
 rockspec_format = "3.0"
-package = "tea-leaves"
+package = "teal-language-server"
 version = "0.0.2-1"
 source = {
-   url = "git+https://github.com/svermeulen/tea-leaves.git",
+   url = "git+https://github.com/svermeulen/teal-language-server.git",
    branch = "main"
 }
 description = {
    summary = "A language server for the Teal language",
    detailed = "A language server for the Teal language",
-   homepage = "https://github.com/svermeulen/tea-leaves",
+   homepage = "https://github.com/svermeulen/teal-language-server",
    license = "MIT"
 }
 dependencies = {
@@ -23,31 +23,31 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
-      ["tea_leaves.args_parser"] = "gen/tea_leaves/args_parser.lua",
-      ["tea_leaves.asserts"] = "gen/tea_leaves/asserts.lua",
-      ["tea_leaves.class"] = "gen/tea_leaves/class.lua",
-      ["tea_leaves.constants"] = "gen/tea_leaves/constants.lua",
-      ["tea_leaves.document"] = "gen/tea_leaves/document.lua",
-      ["tea_leaves.document_manager"] = "gen/tea_leaves/document_manager.lua",
-      ["tea_leaves.env_updater"] = "gen/tea_leaves/env_updater.lua",
-      ["tea_leaves.lsp"] = "gen/tea_leaves/lsp.lua",
-      ["tea_leaves.lsp_events_manager"] = "gen/tea_leaves/lsp_events_manager.lua",
-      ["tea_leaves.lsp_reader_writer"] = "gen/tea_leaves/lsp_reader_writer.lua",
-      ["tea_leaves.main"] = "gen/tea_leaves/main.lua",
-      ["tea_leaves.misc_handlers"] = "gen/tea_leaves/misc_handlers.lua",
-      ["tea_leaves.path"] = "gen/tea_leaves/path.lua",
-      ["tea_leaves.server_state"] = "gen/tea_leaves/server_state.lua",
-      ["tea_leaves.stdin_reader"] = "gen/tea_leaves/stdin_reader.lua",
-      ["tea_leaves.teal_project_config"] = "gen/tea_leaves/teal_project_config.lua",
-      ["tea_leaves.trace_entry"] = "gen/tea_leaves/trace_entry.lua",
-      ["tea_leaves.trace_stream"] = "gen/tea_leaves/trace_stream.lua",
-      ["tea_leaves.tracing"] = "gen/tea_leaves/tracing.lua",
-      ["tea_leaves.uri"] = "gen/tea_leaves/uri.lua",
-      ["tea_leaves.util"] = "gen/tea_leaves/util.lua",
+      ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
+      ["teal_language_server.asserts"] = "gen/teal_language_server/asserts.lua",
+      ["teal_language_server.class"] = "gen/teal_language_server/class.lua",
+      ["teal_language_server.constants"] = "gen/teal_language_server/constants.lua",
+      ["teal_language_server.document"] = "gen/teal_language_server/document.lua",
+      ["teal_language_server.document_manager"] = "gen/teal_language_server/document_manager.lua",
+      ["teal_language_server.env_updater"] = "gen/teal_language_server/env_updater.lua",
+      ["teal_language_server.lsp"] = "gen/teal_language_server/lsp.lua",
+      ["teal_language_server.lsp_events_manager"] = "gen/teal_language_server/lsp_events_manager.lua",
+      ["teal_language_server.lsp_reader_writer"] = "gen/teal_language_server/lsp_reader_writer.lua",
+      ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
+      ["teal_language_server.misc_handlers"] = "gen/teal_language_server/misc_handlers.lua",
+      ["teal_language_server.path"] = "gen/teal_language_server/path.lua",
+      ["teal_language_server.server_state"] = "gen/teal_language_server/server_state.lua",
+      ["teal_language_server.stdin_reader"] = "gen/teal_language_server/stdin_reader.lua",
+      ["teal_language_server.teal_project_config"] = "gen/teal_language_server/teal_project_config.lua",
+      ["teal_language_server.trace_entry"] = "gen/teal_language_server/trace_entry.lua",
+      ["teal_language_server.trace_stream"] = "gen/teal_language_server/trace_stream.lua",
+      ["teal_language_server.tracing"] = "gen/teal_language_server/tracing.lua",
+      ["teal_language_server.uri"] = "gen/teal_language_server/uri.lua",
+      ["teal_language_server.util"] = "gen/teal_language_server/util.lua",
    },
    install = {
      bin = {
-       ['tea-leaves'] = 'bin/tea-leaves'
+       ['teal-language-server'] = 'bin/teal-language-server'
      }
    }
 }
