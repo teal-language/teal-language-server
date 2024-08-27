@@ -16,7 +16,7 @@ local args_parser = {CommandLineArgs = {}, }
 
 function args_parser.parse_args()
    local argparse = require("argparse")
-   local parser = argparse("teal-language-server", "Tea Leaves")
+   local parser = argparse("teal-language-server", "Teal Language Server")
 
    parser:option("-V --verbose", "")
 
