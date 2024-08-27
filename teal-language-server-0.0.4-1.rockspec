@@ -1,14 +1,14 @@
 rockspec_format = "3.0"
 package = "teal-language-server"
-version = "0.0.3-1"
+version = "0.0.4-1"
 source = {
-   url = "git+https://github.com/svermeulen/teal-language-server.git",
+   url = "git+https://github.com/teal-language/teal-language-server.git",
    branch = "main"
 }
 description = {
    summary = "A language server for the Teal language",
    detailed = "A language server for the Teal language",
-   homepage = "https://github.com/svermeulen/teal-language-server",
+   homepage = "https://github.com/teal-language/teal-language-server",
    license = "MIT"
 }
 dependencies = {
