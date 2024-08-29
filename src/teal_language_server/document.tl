@@ -351,6 +351,78 @@ function Document:type_information_for_token(token: Token): tl.TypeInfo
    return nil
 end
 
+function Document:_get_content_lines(): {string}
+   if self._content_lines == nil then
+      self._content_lines = util.string_split(self._content, "\n")
+   end
+   return self._content_lines
+end
+
+function Document:get_line(line: integer): string
+   return self:_get_content_lines()[line + 1]
+end
+
+local function extract_word(str:string, index:integer):string
+    local start_index = index
+    local end_index = index
+
+    -- Move backwards to find the start of the word
+    while start_index > 1 and string.match(string.sub(str, start_index - 1, start_index - 1), "[%w_]") do
+        start_index = start_index - 1
+    end
+
+    -- Move forwards to find the end of the word
+    while end_index <= #str and string.match(string.sub(str, end_index, end_index), "[%w_]") do
+        end_index = end_index + 1
+    end
+
+    return string.sub(str, start_index, end_index - 1)
+end
+
+function Document:_try_lookup_from_deref(line_no:integer, char_pos:integer, line_info:{integer: integer}, tr:tl.TypeReport):integer
+
+   local test_char = char_pos-1
+   local closest_type_id:integer
+
+   while test_char > 1 do
+      closest_type_id = line_info[test_char]
+      if closest_type_id ~= nil then
+         break
+      end
+      test_char = test_char - 1
+   end
+
+   if closest_type_id == nil then
+      tracing.debug(_module_name, "Failed to find closest type id", {})
+      return nil
+   end
+
+   local parent_type_info = tr.types[closest_type_id]
+
+   if parent_type_info == nil then
+      return nil
+   end
+
+   local line_str = self:get_line(line_no-1)
+   local word_under_cursor = extract_word(line_str, char_pos)
+
+   if parent_type_info.ref then
+      local real_type_info = tr.types[parent_type_info.ref]
+
+      if real_type_info.fields then
+         return real_type_info.fields[word_under_cursor]
+      end
+
+      return nil
+   end
+
+   if parent_type_info.fields then
+      return parent_type_info.fields[word_under_cursor]
+   end
+
+   return nil
+end
+
 function Document:type_information_at(where: lsp.Position): tl.TypeInfo
    local tr <const>, _ = self:get_type_report()
    local file_info = tr.by_pos[self._uri.path]
@@ -367,14 +439,19 @@ function Document:type_information_at(where: lsp.Position): tl.TypeInfo
       return nil
    end
 
-   tracing.trace(_module_name, "Found line info: {}", {line_info})
-   -- I don't know why we have to check character, character-1, and character+1 here
+   tracing.trace(_module_name, "Found line info: {}.  Checking character {}", {line_info, where.character})
+
+   -- I don't know why we have to check character, character-1, and character+1 here but can confirm that we do
    -- TODO - figure out why line_info and where.character are off by one sometimes
    local type_id = line_info[where.character] or line_info[where.character-1] or line_info[where.character+1]
 
    if type_id == nil then
-      tracing.warning(_module_name, "Could not find type id for file {} at position {}, line info {}", {self._uri.path, where, line_info})
-      return nil
+      type_id = self:_try_lookup_from_deref(where.line, where.character, line_info, tr)
+
+      if type_id == nil then
+         tracing.warning(_module_name, "Could not find type id for file {} at position {}, line info {}", {self._uri.path, where, line_info})
+         return nil
+      end
    end
 
    tracing.trace(_module_name, "Successfully found type id {}", {type_id})
@@ -494,19 +571,8 @@ function Document:show_type(info: tl.TypeInfo, depth: number): string
    end
 end
 
-function Document:_get_content_lines(): {string}
-   if self._content_lines == nil then
-      self._content_lines = util.string_split(self._content, "\n")
-   end
-   return self._content_lines
-end
-
 function Document:raw_token_at(where: lsp.Position): string
    return get_raw_token_at(self:get_tokens(), where.line + 1, where.character + 1)
-end
-
-function Document:get_line(line: integer): string
-   return self:_get_content_lines()[line + 1]
 end
 
 function Document:token_at(where: lsp.Position): Token
