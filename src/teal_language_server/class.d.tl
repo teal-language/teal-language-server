@@ -16,7 +16,7 @@ local record SetupOptions
 end
 
 local record Class
-   setup:function(rec:any, name:string, options:SetupOptions)
+   setup:function(rec:any, name:string, options?:SetupOptions)
 
    get_name:function(any):string
    try_get_name:function(any):string

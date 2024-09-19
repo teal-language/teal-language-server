@@ -28,9 +28,6 @@ local record Cache
    parse_errors: {tl.Error}
 
    result: tl.Result
-
-   type_report: tl.TypeReport
-   type_report_env: tl.TypeReportEnv
 end
 
 local record Document
@@ -109,7 +106,7 @@ end
 function Document:get_tokens(): {Token}, {tl.Error}
    local cache = self._cache
    if not cache.tokens then
-      cache.tokens, cache.err_tokens = tl.lex(self._content) as ({Token}, {tl.Error})
+      cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path) as ({Token}, {tl.Error})
       if not cache.err_tokens then
          cache.err_tokens = {}
       end
@@ -117,7 +114,7 @@ function Document:get_tokens(): {Token}, {tl.Error}
    return cache.tokens, cache.err_tokens
 end
 
-local parse_prog = tl.parse_program as function({Token}, {tl.Error}, string): Node, {string}
+local parse_prog = tl.parse_program as function({Token}, {tl.Error}, ?string): Node, {string}
 function Document:get_ast(): Node, {tl.Error}
    local tks, err_tks = self:get_tokens()
    if #err_tks > 0 then
@@ -150,15 +147,11 @@ function Document:get_result(): tl.Result, boolean
    return cache.result, found_errors
 end
 
-function Document:get_type_report(): tl.TypeReport, tl.TypeReportEnv, boolean
-   local result, has_errors = self:get_result()
+function Document:get_type_report(): tl.TypeReport, tl.TypeReporter, boolean
+   local _result, has_errors = self:get_result() -- TODO - is this necessary?
+   local env = self._server_state:get_env()
 
-   local cache = self._cache
-   if not cache.type_report then
-      cache.type_report, cache.type_report_env = tl.get_types(result)
-   end
-
-   return cache.type_report, cache.type_report_env, has_errors
+   return env.reporter:get_report(), env.reporter, has_errors
 end
 
 local function _strip_trailing_colons(text: string): string
@@ -239,7 +232,7 @@ local function insert_errs(fname: string, diags: {lsp.Diagnostic}, tks: {Token},
    end
 end
 
-function Document:_publish_diagnostics(diagnostics: {lsp.Diagnostic}, version: number)
+function Document:_publish_diagnostics(diagnostics: {lsp.Diagnostic}, version?: number)
    tracing.debug(_module_name, "Publishing diagnostics for {}...", {self._uri.path})
    self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
       uri = Uri.tostring(self._uri),
@@ -248,7 +241,7 @@ function Document:_publish_diagnostics(diagnostics: {lsp.Diagnostic}, version: n
    } as lsp.Method.Params)
 end
 
-local function imap<V, T>(t: {V}, fn: function(V): (T), start: integer, finish: integer): {T}
+local function imap<V, T>(t: {V}, fn: function(V): (T), start?: integer, finish?: integer): {T}
    local new: {T} = {}
    for i = start or 1, finish or #t do
       new[i] = fn(t[i])
@@ -307,7 +300,7 @@ end
 
 function Document:get_type_info_for_symbol(identifier:string, where: lsp.Position): tl.TypeInfo
    local tr <const>, _ = self:get_type_report()
-   local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
+   local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1, self._uri.path)
    local type_id <const> = symbols[identifier]
    local result:tl.TypeInfo = nil
 
@@ -331,7 +324,7 @@ end
 function Document:type_information_for_token(token: Token): tl.TypeInfo
    local tr <const>, _ = self:get_type_report()
 
-   local symbols <const> = tl.symbols_in_scope(tr, token.y, token.x)
+   local symbols <const> = tl.symbols_in_scope(tr, token.y, token.x, self._uri.path)
    local type_id <const> = symbols[token.tk]
    local local_type_info = tr.types[type_id]
 
@@ -481,7 +474,7 @@ function Document:type_information_at(where: lsp.Position): tl.TypeInfo
    return type_info
 end
 
-local function indent(n: number): string
+local function indent(n: integer): string
    return ("   "):rep(n)
 end
 local function ti(list: {string}, ...: string)
@@ -490,7 +483,7 @@ local function ti(list: {string}, ...: string)
    end
 end
 
-function Document:show_type(info: tl.TypeInfo, depth: number): string
+function Document:show_type(info: tl.TypeInfo, depth: integer): string
    if not info then return "???" end
    depth = depth or 1
    if depth > 4 then

@@ -11,8 +11,8 @@ local record TealProjectConfig
    module_name: string
    scripts: {string:{string}}
 
-   gen_compat: tl.CompatMode
-   gen_target: tl.TargetMode
+   gen_compat: tl.GenCompat
+   gen_target: tl.GenTarget
    disable_warnings: {tl.WarningKind}
    warning_error: {tl.WarningKind}
 

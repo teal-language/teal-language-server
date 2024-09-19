@@ -65,7 +65,7 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
       return "%" .. c
    end
 
-   local function str_esc(s: string, sub: string | function(string): string | {string:string}): string, integer
+   local function str_esc(s: string, sub?: string | function(string): string | {string:string}): string, integer
       return s:gsub(
          "[%^%$%(%)%%%.%[%]%*%+%-%?]",
          sub as function(string): string
@@ -77,8 +77,18 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
       self._substitutions[source_dir] = "^" .. str_esc(mod_name)
    end
 
-   local function init_teal_env(gen_compat: boolean | tl.CompatMode, gen_target: tl.TargetMode, env_def: string): tl.Env, string
-      return tl.init_env(false, gen_compat, gen_target, {env_def})
+   local function init_teal_env(gen_compat: tl.GenCompat, gen_target: tl.GenTarget, env_def: string): tl.Env, string
+      local opts:tl.EnvOptions = {
+         defaults = {
+            gen_compat = gen_compat,
+            gen_target = gen_target,
+         },
+         predefined_modules = {env_def},
+      }
+
+      local env = tl.new_env(opts)
+      env.report_types = true
+      return env
    end
 
    cfg = cfg or {}

@@ -304,9 +304,14 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
 
    tracing.trace(_module_name, "Successfully found type_info: {}", {type_info})
 
-   local type_str <const> = doc:show_type(type_info)
+   -- show_type is too much info
+   -- this causes everything to be much slower
+   -- this also seems to be inconsistent with other lsps which just show type name
+   -- local type_str <const> = doc:show_type(type_info)
+   local type_str <const> = type_info.str
+
    self._lsp_reader_writer:send_rpc(id, {
-      contents = { tk.tk .. ":", type_str },
+      contents = { type_str },
       range = {
          start = lsp.position(token_pos.line, token_pos.character),
          ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
