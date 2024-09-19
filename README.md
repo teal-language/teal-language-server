@@ -12,7 +12,7 @@ A language server for the [Teal language](https://github.com/teal-language/tl)
 * `luarocks install teal-language-server`
 * `teal-language-server`
 
-Tested on Windows, Linux and MacOS
+Tested on Windows, Linux and macOS
 
 ### From source
 
