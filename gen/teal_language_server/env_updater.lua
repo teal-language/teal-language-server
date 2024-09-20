@@ -78,7 +78,17 @@ function EnvUpdater:_init_env_from_config(cfg)
    end
 
    local function init_teal_env(gen_compat, gen_target, env_def)
-      return tl.init_env(false, gen_compat, gen_target, { env_def })
+      local opts = {
+         defaults = {
+            gen_compat = gen_compat,
+            gen_target = gen_target,
+         },
+         predefined_modules = { env_def },
+      }
+
+      local env = tl.new_env(opts)
+      env.report_types = true
+      return env
    end
 
    cfg = cfg or {}
