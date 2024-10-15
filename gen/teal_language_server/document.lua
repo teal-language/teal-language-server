@@ -30,9 +30,6 @@ local tl = require("tl")
 
 
 
-
-
-
 local Document = {}
 
 
@@ -109,7 +106,7 @@ end
 function Document:get_tokens()
    local cache = self._cache
    if not cache.tokens then
-      cache.tokens, cache.err_tokens = tl.lex(self._content)
+      cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path)
       if not cache.err_tokens then
          cache.err_tokens = {}
       end
@@ -151,14 +148,10 @@ function Document:get_result()
 end
 
 function Document:get_type_report()
-   local result, has_errors = self:get_result()
+   local _result, has_errors = self:get_result()
+   local env = self._server_state:get_env()
 
-   local cache = self._cache
-   if not cache.type_report then
-      cache.type_report, cache.type_report_env = tl.get_types(result)
-   end
-
-   return cache.type_report, cache.type_report_env, has_errors
+   return env.reporter:get_report(), env.reporter, has_errors
 end
 
 local function _strip_trailing_colons(text)
@@ -307,7 +300,7 @@ end
 
 function Document:get_type_info_for_symbol(identifier, where)
    local tr, _ = self:get_type_report()
-   local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1)
+   local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1, self._uri.path)
    local type_id = symbols[identifier]
    local result = nil
 
@@ -331,7 +324,7 @@ end
 function Document:type_information_for_token(token)
    local tr, _ = self:get_type_report()
 
-   local symbols = tl.symbols_in_scope(tr, token.y, token.x)
+   local symbols = tl.symbols_in_scope(tr, token.y, token.x, self._uri.path)
    local type_id = symbols[token.tk]
    local local_type_info = tr.types[type_id]
 

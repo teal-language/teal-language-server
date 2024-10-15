@@ -284,7 +284,7 @@ function Path:delete_file()
    tracing.trace(_module_name, "Deleted file at path '{path}'", {self._value})
 end
 
-function Path:create_directory(args:Path.CreateDirectoryArgs)
+function Path:create_directory(args?:Path.CreateDirectoryArgs)
    if args and args.exist_ok and self:exists() then
       asserts.that(self:is_directory())
       return

@@ -304,9 +304,14 @@ function MiscHandlers:_on_hover(params, id)
 
    tracing.trace(_module_name, "Successfully found type_info: {}", { type_info })
 
-   local type_str = doc:show_type(type_info)
+
+
+
+
+   local type_str = type_info.str
+
    self._lsp_reader_writer:send_rpc(id, {
-      contents = { tk.tk .. ":", type_str },
+      contents = { type_str },
       range = {
          start = lsp.position(token_pos.line, token_pos.character),
          ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),

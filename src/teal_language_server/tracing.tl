@@ -160,7 +160,7 @@ local function create_entry(module:string, level:TraceEntry.Level, message_templ
    }
 end
 
-function tracing.log(module:string, level:TraceEntry.Level, message:string, fields:any)
+function tracing.log(module:string, level:TraceEntry.Level, message:string, fields?:any)
    asserts.is_not_nil(message, "Must provide a non nil value for message")
    asserts.that(fields == nil or type(fields) == "table", "Invalid value for fields")
 
@@ -173,31 +173,31 @@ function tracing.log(module:string, level:TraceEntry.Level, message:string, fiel
    end
 end
 
-function tracing.trace(module:string, message:string, fields:{any:any})
+function tracing.trace(module:string, message:string, fields?:any)
    if tracing._is_level_enabled(module, _level_trace) then
       tracing.log(module, "TRACE", message, fields)
    end
 end
 
-function tracing.debug(module:string, message:string, fields:{any:any})
+function tracing.debug(module:string, message:string, fields?:any)
    if tracing._is_level_enabled(module, _level_debug) then
       tracing.log(module, "DEBUG", message, fields)
    end
 end
 
-function tracing.info(module:string, message:string, fields:{any:any})
+function tracing.info(module:string, message:string, fields?:any)
    if tracing._is_level_enabled(module, _level_info) then
       tracing.log(module, "INFO", message, fields)
    end
 end
 
-function tracing.warning(module:string, message:string, fields:{any:any})
+function tracing.warning(module:string, message:string, fields?:any)
    if tracing._is_level_enabled(module, _level_warning) then
       tracing.log(module, "WARNING", message, fields)
    end
 end
 
-function tracing.error(module:string, message:string, fields:{any:any})
+function tracing.error(module:string, message:string, fields?:any)
    if tracing._is_level_enabled(module, _level_error) then
       tracing.log(module, "ERROR", message, fields)
    end

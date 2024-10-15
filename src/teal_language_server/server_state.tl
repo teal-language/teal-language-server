@@ -49,7 +49,7 @@ local capabilities = {
 function ServerState:_validate_config(c:TealProjectConfig)
    asserts.that(type(c) == "table", "Expected table, got {}", type(c))
 
-   local function sort_in_place<Value>(t: {Value}, fn: function(Value, Value): boolean): {Value}
+   local function sort_in_place<Value>(t: {Value}, fn?: function(Value, Value): boolean): {Value}
       table.sort(t, fn)
       return t
    end
@@ -78,7 +78,7 @@ function ServerState:_validate_config(c:TealProjectConfig)
       end
    end
 
-   local function get_types_in_array(val: {any}, typefn: function(any): string): {string}
+   local function get_types_in_array(val: {any}, typefn?: function(any): string): {string}
       typefn = typefn or type
       local set <const> = {}
       for _, v in ipairs(val) do
@@ -98,7 +98,7 @@ function ServerState:_validate_config(c:TealProjectConfig)
       return "{" .. table.concat(ts, "|") .. "}"
    end
 
-   local function get_map_type(val: any, default_key: string, default_value: string): string
+   local function get_map_type(val: any, default_key: string, default_value?: string): string
       if type(val) ~= "table" then
          return type(val)
       end

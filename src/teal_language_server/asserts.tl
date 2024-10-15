@@ -18,13 +18,13 @@ end
 function asserts.fail(format:string, ...:any)
    _raise(format, ...)
 end
-function asserts.that(condition:boolean, format:string, ...:any)
+function asserts.that(condition:boolean, format?:string, ...:any)
    if not condition then
       _raise(format, ...)
    end
 end
 
-function asserts.is_nil(value:any, format:string, ...:any)
+function asserts.is_nil(value:any, format?:string, ...:any)
    if value ~= nil then
       if format == nil then
          _raise("Expected nil value but instead found '{}'", value)
@@ -34,7 +34,7 @@ function asserts.is_nil(value:any, format:string, ...:any)
    end
 end
 
-function asserts.is_not_nil(value:any, format:string, ...:any)
+function asserts.is_not_nil(value:any, format?:string, ...:any)
    if value == nil then
       if format == nil then
          _raise("Expected non-nil value")

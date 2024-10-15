@@ -142,7 +142,7 @@ local record lusc
       -- TODO
       -- start:function()
 
-      start_soon:function(self: Nursery, func:function(), Task.Opts)
+      start_soon:function(self: Nursery, func:function(), ?Task.Opts)
    end
 
    open_nursery:function(handler:function(nursery:Nursery), opts:Nursery.Opts):CancelScope.Result
@@ -157,7 +157,7 @@ local record lusc
    -- Note that this will only cancel tasks if one of the move_on* or fail_* options
    -- are provided.  Otherwise it will wait forever for tasks to complete gracefully
    -- Note also that if block_until_stopped is provided, it will block
-   stop:function(opts:DeadlineOpts)
+   stop:function(opts?:DeadlineOpts)
 
    -- Long running tasks can check this periodically, and then shut down
    -- gracefully, instead of relying on cancels
@@ -186,7 +186,7 @@ local record lusc
    -- and also that it only consists of the cancelled error
    is_cancelled_error:function(err:any):boolean
 
-   schedule:function(handler:function(), opts:Task.Opts)
+   schedule:function(handler:function(), opts?:Task.Opts)
 
    schedule_wrap: function(function(), opts:Task.Opts): function()
    schedule_wrap: function<T>(function(T), opts:Task.Opts): function(T)
