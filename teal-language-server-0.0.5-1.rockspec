@@ -1,6 +1,6 @@
 rockspec_format = "3.0"
 package = "teal-language-server"
-version = "0.0.4-1"
+version = "0.0.5-1"
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
    branch = "main"
