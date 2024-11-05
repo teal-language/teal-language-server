@@ -200,7 +200,9 @@ end
 
 function ServerState:_load_config(root_dir:Path):TealProjectConfig
    local config_path = root_dir:join("tlconfig.lua")
-   asserts.that(config_path:exists())
+   if config_path:exists() == false then
+      return {} as TealProjectConfig
+   end
 
    local success, result = pcall(dofile, config_path.value)
 
