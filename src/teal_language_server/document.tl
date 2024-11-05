@@ -103,7 +103,7 @@ local function is_lua(fname: string): boolean
    return fname:sub(-4) == ".lua"
 end
 
-function Document:get_tokens(): {Token}, {tl.Error}
+function Document:_get_tokens(): {Token}, {tl.Error}
    local cache = self._cache
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path) as ({Token}, {tl.Error})
@@ -115,26 +115,20 @@ function Document:get_tokens(): {Token}, {tl.Error}
 end
 
 local parse_prog = tl.parse_program as function({Token}, {tl.Error}, ?string): Node, {string}
-function Document:get_ast(): Node, {tl.Error}
-   local tks, err_tks = self:get_tokens()
-   if #err_tks > 0 then
-      return
-   end
-
+function Document:_get_ast(tokens: {Token}): Node, {tl.Error}
    local cache = self._cache
    if not cache.ast then
       local _: any
       cache.parse_errors = {}
-      cache.ast, _ = parse_prog(tks, cache.parse_errors)
+      cache.ast, _ = parse_prog(tokens, cache.parse_errors)
+      tracing.debug(_module_name, "parse_prog errors: " .. #cache.parse_errors)
    end
    return cache.ast, cache.parse_errors
 end
 
 local type_check <const> = tl.type_check as function(Node, tl.TypeCheckOptions): tl.Result
 
-function Document:get_result(): tl.Result, boolean
-   local ast, errs = self:get_ast()
-   local found_errors = #errs > 0
+function Document:_get_result(ast: Node): tl.Result
    local cache = self._cache
    if not cache.result then
       tracing.info(_module_name, "Type checking document {}", {self._uri.path})
@@ -144,14 +138,14 @@ function Document:get_result(): tl.Result, boolean
          env = self._server_state:get_env(),
       })
    end
-   return cache.result, found_errors
+   return cache.result
 end
 
 function Document:get_type_report(): tl.TypeReport, tl.TypeReporter, boolean
-   local _result, has_errors = self:get_result() -- TODO - is this necessary?
+   --local _result, has_errors = self:get_result() -- TODO - is this necessary?
    local env = self._server_state:get_env()
 
-   return env.reporter:get_report(), env.reporter, has_errors
+   return env.reporter:get_report(), env.reporter, false --has_errors
 end
 
 local function _strip_trailing_colons(text: string): string
@@ -250,7 +244,7 @@ local function imap<V, T>(t: {V}, fn: function(V): (T), start?: integer, finish?
 end
 
 function Document:process_and_publish_results()
-   local tks, err_tks = self:get_tokens()
+   local tks, err_tks = self:_get_tokens()
    if #err_tks > 0 then
       self:_publish_diagnostics(imap(err_tks, function(t: tl.Error): lsp.Diagnostic
          return {
@@ -265,7 +259,7 @@ function Document:process_and_publish_results()
       return
    end
 
-   local _, parse_errs = self:get_ast()
+   local ast, parse_errs = self:_get_ast(tks)
    if #parse_errs > 0 then
       self:_publish_diagnostics(imap(parse_errs, function(e: tl.Error): lsp.Diagnostic
          return make_diagnostic_from_error(tks, e, "Error")
@@ -275,8 +269,8 @@ function Document:process_and_publish_results()
 
    local diags <const>: {lsp.Diagnostic} = {}
    local fname <const> = self._uri.path
-   local result, has_errors = self:get_result()
-   assert(not has_errors)
+   local result = self:_get_result(ast)
+
    local config = self._server_state.config
    local disabled_warnings <const> = set(config.disable_warnings or {})
    local warning_errors <const> = set(config.warning_error or {})
@@ -565,11 +559,11 @@ function Document:show_type(info: tl.TypeInfo, depth?: integer): string
 end
 
 function Document:raw_token_at(where: lsp.Position): string
-   return get_raw_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+   return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 function Document:token_at(where: lsp.Position): Token
-   return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+   return get_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 class.setup(Document, "Document", {

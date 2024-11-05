@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
 
 local ServerState = require("teal_language_server.server_state")
 local Uri = require("teal_language_server.uri")
@@ -103,7 +103,7 @@ local function is_lua(fname)
    return fname:sub(-4) == ".lua"
 end
 
-function Document:get_tokens()
+function Document:_get_tokens()
    local cache = self._cache
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path)
@@ -115,26 +115,20 @@ function Document:get_tokens()
 end
 
 local parse_prog = tl.parse_program
-function Document:get_ast()
-   local tks, err_tks = self:get_tokens()
-   if #err_tks > 0 then
-      return
-   end
-
+function Document:_get_ast(tokens)
    local cache = self._cache
    if not cache.ast then
       local _
       cache.parse_errors = {}
-      cache.ast, _ = parse_prog(tks, cache.parse_errors)
+      cache.ast, _ = parse_prog(tokens, cache.parse_errors)
+      tracing.debug(_module_name, "parse_prog errors: " .. #cache.parse_errors)
    end
    return cache.ast, cache.parse_errors
 end
 
 local type_check = tl.type_check
 
-function Document:get_result()
-   local ast, errs = self:get_ast()
-   local found_errors = #errs > 0
+function Document:_get_result(ast)
    local cache = self._cache
    if not cache.result then
       tracing.info(_module_name, "Type checking document {}", { self._uri.path })
@@ -144,14 +138,14 @@ function Document:get_result()
          env = self._server_state:get_env(),
       })
    end
-   return cache.result, found_errors
+   return cache.result
 end
 
 function Document:get_type_report()
-   local _result, has_errors = self:get_result()
+
    local env = self._server_state:get_env()
 
-   return env.reporter:get_report(), env.reporter, has_errors
+   return env.reporter:get_report(), env.reporter, false
 end
 
 local function _strip_trailing_colons(text)
@@ -250,7 +244,7 @@ local function imap(t, fn, start, finish)
 end
 
 function Document:process_and_publish_results()
-   local tks, err_tks = self:get_tokens()
+   local tks, err_tks = self:_get_tokens()
    if #err_tks > 0 then
       self:_publish_diagnostics(imap(err_tks, function(t)
          return {
@@ -265,7 +259,7 @@ function Document:process_and_publish_results()
       return
    end
 
-   local _, parse_errs = self:get_ast()
+   local ast, parse_errs = self:_get_ast(tks)
    if #parse_errs > 0 then
       self:_publish_diagnostics(imap(parse_errs, function(e)
          return make_diagnostic_from_error(tks, e, "Error")
@@ -275,8 +269,8 @@ function Document:process_and_publish_results()
 
    local diags = {}
    local fname = self._uri.path
-   local result, has_errors = self:get_result()
-   assert(not has_errors)
+   local result = self:_get_result(ast)
+
    local config = self._server_state.config
    local disabled_warnings = set(config.disable_warnings or {})
    local warning_errors = set(config.warning_error or {})
@@ -565,11 +559,11 @@ function Document:show_type(info, depth)
 end
 
 function Document:raw_token_at(where)
-   return get_raw_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+   return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 function Document:token_at(where)
-   return get_token_at(self:get_tokens(), where.line + 1, where.character + 1)
+   return get_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 class.setup(Document, "Document", {
