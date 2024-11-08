@@ -14,7 +14,7 @@ description = {
 dependencies = {
    "luafilesystem",
    "tl",
-   "dkjson",
+   "lua-cjson",
    "argparse",
    "inspect",
    "luv",
