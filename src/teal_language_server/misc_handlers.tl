@@ -15,6 +15,7 @@ local uv <const> = require("luv")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
 local class <const> = require("teal_language_server.class")
+local tl <const> = require("tl")
 
 local record MiscHandlers
    _env_updater: EnvUpdater
@@ -23,11 +24,13 @@ local record MiscHandlers
    _server_state: ServerState
    _lsp_reader_writer: LspReaderWriter
    _lsp_events_manager: LspEventsManager
-   _has_handled_initialize:boolean
-   _cl_args:args_parser.CommandLineArgs
+   _has_handled_initialize: boolean
+   _cl_args: args_parser.CommandLineArgs
 
    metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_updater: EnvUpdater): MiscHandlers
 end
+
+
 
 function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_updater: EnvUpdater)
    asserts.is_not_nil(env_updater)
@@ -40,12 +43,12 @@ function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_wri
    self._trace_stream = trace_stream
    self._cl_args = args
    self._env_updater = env_updater
+
 end
 
 function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
    asserts.that(not self._has_handled_initialize)
    self._has_handled_initialize= true
-
    local root_dir_str:string
 
    if params.rootUri then
@@ -100,10 +103,12 @@ end
 function MiscHandlers:_on_did_save(params:lsp.Method.Params):nil
    local td <const> = params.textDocument as lsp.TextDocument
    local doc <const> = self._document_manager:get(Uri.parse(td.uri))
+
    if not doc then
       tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
       return
    end
+
    doc:update_text(params.text as string, td.version)
    -- Don't bother calling process_and_publish_results here because this
    -- will happen anyway after the full env update
@@ -124,12 +129,18 @@ function MiscHandlers:_on_did_change(params:lsp.Method.Params):nil
    doc:process_and_publish_results()
 end
 
+local function _create_label(field_name: string, field_type: string): string
+   local _, find_function, capture = field_type:find("function.-(%(.-%))")
+   if find_function ~= nil then
+      return field_name .. capture
+   end
+   return field_name
+end
+
 function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    local context = params.context as lsp.CompletionContext
 
-   -- triggerKind 1 = manual invocation (do we need to handle this?)
-   -- triggerKind 3 = "Completion was re-triggered as the current completion list is incomplete."
-   if context.triggerKind ~= 2 then
+   if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
       tracing.warning(_module_name, "Ignoring completion request given kind: {}", {context.triggerKind})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -144,56 +155,72 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
       return
    end
 
+   -- completion COMPLETELY breaks if you remove the "- 2" or change it
+   -- I _think_ it allows teal to create a full representation of the program
+   -- so the type checking still works and produces good syntax trees
    local pos = params.position as lsp.Position
    pos.character = pos.character - 2
 
-   tracing.info(_module_name, "Received request for completion at position: {}", {pos})
+   tracing.warning(_module_name, "Received request for completion at position: {}", {pos})
 
-   local tk <const> = doc:token_at(pos)
-
-   if not tk then
+   local tks, ends_with_colon <const> = doc:token_at(pos)
+   -- local tk = tks[1]
+   if #tks == 0 then
       tracing.warning(_module_name, "Could not find token at given position", {})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
+   if ends_with_colon then
+      tracing.warning(_module_name, "Ends with colon!")
+   end
 
-   local token_pos = lsp.position(tk.y, tk.x)
-   tracing.trace(_module_name, "Found actual token {} at position: {}", {tk.tk, token_pos})
-
-   local type_info = doc:type_information_at(token_pos)
    local items:{any} = { }
+   local type_info = doc:type_information_for_tokens(tks)
 
    if not type_info then
-      tracing.trace(_module_name, "No type information found at calculated token position {}.  Attempting to get type information by raw token instead.", {token_pos})
-
-      type_info = doc:type_information_for_token(tk)
-
-      if not type_info then
-         tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
-      end
+      tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
    end
 
    if type_info then
       tracing.trace(_module_name, "Successfully found type type_info '{}'", {type_info})
+      local tr = doc:get_type_report()
 
       if type_info.ref then
-         local tr, _ = doc:get_type_report()
-         local real_type_info = tr.types[type_info.ref]
-         if real_type_info.fields then
-            for key, _ in pairs(real_type_info.fields) do
-               table.insert(items, {label = key})
+         type_info = doc:resolve_type_ref(type_info.ref)
+      end
+
+      -- string
+      if type_info.t == tl.typecodes.STRING then
+         type_info = tr.types[tr.globals["string"]]
+      end
+
+      if type_info.fields then
+         for key, v in pairs(type_info.fields) do
+            type_info = doc:resolve_type_ref(v)
+            table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+            -- will move this out, I think it should pop up with something after typing a "("
+            -- polymorphic function!
+            -- if type_info.t == tl.typecodes.POLY then
+            --    for _, type_ref in ipairs(type_info.types) do
+            --       type_info = doc:resolve_type_ref(type_ref)
+            --       table.insert(items, {label = _create_label(key, type_info.str), kind = typecodes_to_kind[type_info.t]})
+            --    end
+            -- else
+            --    table.insert(items, {label = _create_label(key, type_info.str), kind = typecodes_to_kind[type_info.t]})
+            -- end
+         end
+
+      -- at a table, we might be able to help resolve the keys!
+      elseif type_info.keys then
+         type_info = doc:resolve_type_ref(type_info.keys)
+
+         if type_info.enums then
+            for _, enum_value in ipairs(type_info.enums) do
+               table.insert(items, {label = enum_value, kind = lsp.typecodes_to_kind[type_info.t]})
             end
-         else
-            tracing.warning(_module_name, "Unable to get fields for ref type", {})
          end
       else
-         if type_info.fields then
-            for key, _ in pairs(type_info.fields) do
-               table.insert(items, {label = key})
-            end
-         else
-            tracing.warning(_module_name, "Unable to get fields for type", {})
-         end
+         tracing.warning(_module_name, "Unable to get fields for ref type", {})
       end
    end
 
@@ -217,15 +244,14 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    end
 
    local pos <const> = params.position as lsp.Position
-   local tk <const> = doc:token_at(pos)
-   if not tk then
+   local tks <const> = doc:token_at(pos)
+   if #tks == 0 then
       tracing.trace(_module_name, "[on_definition] No token found at given position", {})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local token_pos = lsp.position(tk.y, tk.x)
-   local info <const> = doc:type_information_at(token_pos)
+   local info <const> = doc:type_information_for_tokens(tks)
 
    if not info or info.file == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -273,33 +299,31 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
 
    tracing.trace(_module_name, "Received request for hover at position: {}", {pos})
 
-   local tk <const> = doc:token_at(pos)
-   if not tk then
+   local tks <const> = doc:token_at(pos)
+   if #tks == 0 then
       tracing.warning(_module_name, "Could not find token at given position", {})
       self._lsp_reader_writer:send_rpc(id, {
          contents = { " No info found " }
       })
       return
    end
+   local tk = tks[#tks]
    local token_pos = lsp.position(tk.y, tk.x)
    tracing.trace(_module_name, "Found actual token '{}' at position: '{}'", {tk.tk, token_pos})
-   local type_info = doc:type_information_at(token_pos)
+   tracing.warning(_module_name, "Attempting to get type information by raw token instead...", {})
+
+   local type_info = doc:type_information_for_tokens(tks)
+
    if not type_info then
-      tracing.warning(_module_name, "No type information found at calculated token position.  Attempting to get type information by raw token instead...", {})
-
-      type_info = doc:type_information_for_token(tk)
-
-      if not type_info then
-         tracing.warning(_module_name, "Also failed to find type info based on token", {})
-         self._lsp_reader_writer:send_rpc(id, {
-            contents = { tk.tk .. ":", " No type_info found " },
-            range = {
-               start = lsp.position(token_pos.line, token_pos.character),
-               ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
-            },
-         })
-         return
-      end
+      tracing.warning(_module_name, "Also failed to find type info based on token", {})
+      self._lsp_reader_writer:send_rpc(id, {
+         contents = { tk.tk .. ":", " No type_info found " },
+         range = {
+            start = lsp.position(token_pos.line, token_pos.character),
+            ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
+         },
+      })
+      return
    end
 
    tracing.trace(_module_name, "Successfully found type_info: {}", {type_info})
@@ -328,6 +352,7 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/definition", self._on_definition)
    self:_add_handler("textDocument/hover", self._on_hover)
 end
+
 
 class.setup(MiscHandlers, "MiscHandlers", {
 })

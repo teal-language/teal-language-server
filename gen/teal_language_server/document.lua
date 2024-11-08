@@ -7,9 +7,9 @@ local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
 local class = require("teal_language_server.class")
 local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
-local util = require("teal_language_server.util")
 
 local tl = require("tl")
+
 
 
 
@@ -142,16 +142,8 @@ function Document:_get_result(ast)
 end
 
 function Document:get_type_report()
-
    local env = self._server_state:get_env()
-
-   return env.reporter:get_report(), env.reporter, false
-end
-
-local function _strip_trailing_colons(text)
-
-   text = text:gsub(":\n", ":a\n"):gsub(":\r\n", ":a\r\n")
-   return text
+   return env.reporter:get_report()
 end
 
 function Document:clear_cache()
@@ -165,12 +157,7 @@ function Document:update_text(text, version)
    if not version or not self._version or self._version < version then
       self:clear_cache()
 
-
-
-
-
-      self._content = _strip_trailing_colons(text)
-
+      self._content = text
       self._content_lines = nil
       if version then
          self._version = version
@@ -178,27 +165,39 @@ function Document:update_text(text, version)
    end
 end
 
-local get_raw_token_at = tl.get_token_at
 
 
 
 local function get_token_at(tks, y, x)
-   local _, found = binary_search(
+   local output = {}
+   local ends_with_colon = false
+   local i, found = binary_search(
    tks, nil,
    function(tk)
-      return tk.y < y or
-      (tk.y == y and tk.x <= x)
+      return tk.y < y or (tk.y == y and tk.x <= x)
    end)
 
 
-   if found and
-      found.y == y and
-      found.x <= x and x < found.x + #found.tk then
 
-      return found
+
+
+   if tks[i + 1] and tks[i + 1].kind == ":" then ends_with_colon = true end
+
+   if found then
+
+      while found.kind == "identifier" or found.kind == "." or found.kind == ":" do
+         if found.kind == "identifier" then
+            table.insert(output, 1, found)
+         end
+         i = i - 1
+         found = tks[i]
+      end
    end
+
+   return output, ends_with_colon
 end
 
+local get_raw_token_at = tl.get_token_at
 local function make_diagnostic_from_error(tks, err, severity)
    local x, y = err.x, err.y
    local err_tk = get_raw_token_at(tks, y, x)
@@ -292,180 +291,86 @@ function Document:process_and_publish_results()
    self:_publish_diagnostics(diags)
 end
 
-function Document:get_type_info_for_symbol(identifier, where)
-   local tr, _ = self:get_type_report()
-   local symbols = tl.symbols_in_scope(tr, where.line + 1, where.character + 1, self._uri.path)
-   local type_id = symbols[identifier]
-   local result = nil
-
-   if type_id ~= nil then
-      result = tr.types[type_id]
-   end
-
-   if result == nil then
-      result = tr.types[tr.globals[identifier]]
-   end
-
-   if result == nil then
-      tracing.warning(_module_name, "Failed to find type id for identifier '{}'.  Available symbols: Locals: {}.  Globals: {}", { identifier, symbols, tr.globals })
+function Document:resolve_type_ref(type_number)
+   local tr = self:get_type_report()
+   local type_info = tr.types[type_number]
+   if type_info.ref then
+      return self:resolve_type_ref(type_info.ref)
    else
-      tracing.debug(_module_name, "Successfully found type id for given identifier '{}'", { identifier })
+      return type_info
    end
-
-   return result
 end
 
-function Document:type_information_for_token(token)
-   local tr, _ = self:get_type_report()
+function Document:type_information_for_tokens(tokens)
 
-   local symbols = tl.symbols_in_scope(tr, token.y, token.x, self._uri.path)
-   local type_id = symbols[token.tk]
-   local local_type_info = tr.types[type_id]
+   local tr = self:get_type_report()
+   local type_info
 
-   if local_type_info then
-      tracing.trace(_module_name, "Successfully found type info by raw token in local scope", {})
-      return local_type_info
+
+   if tokens[1].tk == "self" then
+      local file = tr.by_pos[self._uri.path]
+      if file == nil then
+         tracing.warning(_module_name, "selfchecker: the file dissappeared?")
+         return nil
+      end
+
+      local line = file[tokens[1].y] or file[tokens[1].y - 1] or file[tokens[1].y + 1]
+      if line == nil then
+         tracing.warning(_module_name, "selfchecker: the line dissappeared?")
+         return nil
+      end
+
+      local type_ref = line[tokens[1].x] or line[tokens[1].x - 1] or line[tokens[1].x + 1]
+      if type_ref == nil then
+         tracing.warning(_module_name, "selfchecker: couldn't find the typeref")
+         return nil
+      end
+      type_info = self:resolve_type_ref(type_ref)
+   else
+      local scope_symbols = tl.symbols_in_scope(tr, tokens[1].y, tokens[1].x, self._uri.path)
+      local type_id = scope_symbols[tokens[1].tk]
+      tracing.warning(_module_name, "tokens[1].tk: " .. tokens[1].tk)
+
+      if type_id ~= nil then
+         type_info = self:resolve_type_ref(type_id)
+      end
    end
 
-   local global_type_info = tr.types[tr.globals[token.tk]]
 
-   if global_type_info then
-      tracing.trace(_module_name, "Successfully found type info by raw token in globals table", {})
-      return global_type_info
+   if type_info == nil then
+      type_info = tr.types[tr.globals[tokens[1].tk]]
+   end
+
+   if type_info == nil then
+      tracing.warning(_module_name, "Unable to find type info in global table as well..")
+   end
+
+   if type_info and #tokens > 1 then
+      for i = 2, #tokens do
+         tracing.trace(_module_name, "tokens[i].tk: " .. tokens[i].tk)
+
+         if type_info.fields then
+            type_info = self:resolve_type_ref(type_info.fields[tokens[i].tk])
+
+         elseif type_info.values and i == #tokens then
+            type_info = self:resolve_type_ref(type_info.values)
+
+         else
+            tracing.warning(_module_name, "Something odd is going on here bruv '{}'", type_info)
+
+         end
+
+         if type_info == nil then break end
+      end
+   end
+
+   if type_info then
+      tracing.trace(_module_name, "Successfully found type info", {})
+      return type_info
    end
 
    tracing.warning(_module_name, "Failed to find type info at given position", {})
    return nil
-end
-
-function Document:_get_content_lines()
-   if self._content_lines == nil then
-      self._content_lines = util.string_split(self._content, "\n")
-   end
-   return self._content_lines
-end
-
-function Document:get_line(line)
-   return self:_get_content_lines()[line + 1]
-end
-
-local function extract_word(str, index)
-   local start_index = index
-   local end_index = index
-
-
-   while start_index > 1 and string.match(string.sub(str, start_index - 1, start_index - 1), "[%w_]") do
-      start_index = start_index - 1
-   end
-
-
-   while end_index <= #str and string.match(string.sub(str, end_index, end_index), "[%w_]") do
-      end_index = end_index + 1
-   end
-
-   return string.sub(str, start_index, end_index - 1)
-end
-
-function Document:_try_lookup_from_deref(line_no, char_pos, line_info, tr)
-
-   local test_char = char_pos - 1
-   local closest_type_id
-
-   while test_char > 1 do
-      closest_type_id = line_info[test_char]
-      if closest_type_id ~= nil then
-         break
-      end
-      test_char = test_char - 1
-   end
-
-   if closest_type_id == nil then
-      tracing.debug(_module_name, "Failed to find closest type id", {})
-      return nil
-   end
-
-   local parent_type_info = tr.types[closest_type_id]
-
-   if parent_type_info == nil then
-      return nil
-   end
-
-   local line_str = self:get_line(line_no - 1)
-   local word_under_cursor = extract_word(line_str, char_pos)
-
-   if parent_type_info.ref then
-      local real_type_info = tr.types[parent_type_info.ref]
-
-      if real_type_info.fields then
-         return real_type_info.fields[word_under_cursor]
-      end
-
-      return nil
-   end
-
-   if parent_type_info.fields then
-      return parent_type_info.fields[word_under_cursor]
-   end
-
-   return nil
-end
-
-function Document:type_information_at(where)
-   local tr, _ = self:get_type_report()
-   local file_info = tr.by_pos[self._uri.path]
-
-   if file_info == nil then
-      tracing.warning(_module_name, "Could not find file info for path '{}'", { self._uri.path })
-      return nil
-   end
-
-   local line_info = file_info[where.line]
-
-   if line_info == nil then
-      tracing.warning(_module_name, "Could not find line info for file '{}' at line '{}'", { self._uri.path, where.line })
-      return nil
-   end
-
-   tracing.trace(_module_name, "Found line info: {}.  Checking character {}", { line_info, where.character })
-
-
-
-   local type_id = line_info[where.character] or line_info[where.character - 1] or line_info[where.character + 1]
-
-   if type_id == nil then
-      type_id = self:_try_lookup_from_deref(where.line, where.character, line_info, tr)
-
-      if type_id == nil then
-         tracing.warning(_module_name, "Could not find type id for file {} at position {}, line info {}", { self._uri.path, where, line_info })
-         return nil
-      end
-   end
-
-   tracing.trace(_module_name, "Successfully found type id {}", { type_id })
-
-   local type_info = tr.types[type_id]
-
-   if type_info == nil then
-      tracing.warning(_module_name, "Could not find type info for type id '{}'", { type_id })
-      return nil
-   end
-
-   tracing.trace(_module_name, "Successfully found type info: {}", { type_info })
-
-   if type_info.str == "string" then
-
-      tracing.trace(_module_name, "Hackily changed type info to string as a special case", {})
-      return (self._server_state:get_env().globals["string"])["t"]
-   end
-
-   local canonical_type_info = tr.types[type_info.ref]
-
-   if canonical_type_info ~= nil then
-      tracing.trace(_module_name, "Successfully found type info from ref field: {}", { canonical_type_info })
-      return canonical_type_info
-   end
-
-   return type_info
 end
 
 local function indent(n)
@@ -490,7 +395,7 @@ function Document:show_type(info, depth)
       ti(out, ...)
    end
 
-   local tr, _ = self:get_type_report()
+   local tr = self:get_type_report()
 
    local function show_record_field(name, field_id)
       local field = {}
@@ -556,10 +461,6 @@ function Document:show_type(info, depth)
    else
       return info.str
    end
-end
-
-function Document:raw_token_at(where)
-   return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 function Document:token_at(where)
