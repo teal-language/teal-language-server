@@ -191,6 +191,11 @@ local function get_token_at(tks: {Token}, y: integer, x: integer): {Token}, bool
          end
          i = i - 1
          found = tks[i]
+
+         -- if the token is local or global, remove the _next_ token in the list.
+         if found.kind == "keyword" and found.tk == "local" or found.tk == "global" then
+            table.remove(output, 1)
+         end
       end
    end
 

@@ -191,6 +191,11 @@ local function get_token_at(tks, y, x)
          end
          i = i - 1
          found = tks[i]
+
+
+         if found.kind == "keyword" and found.tk == "local" or found.tk == "global" then
+            table.remove(output, 1)
+         end
       end
    end
 
