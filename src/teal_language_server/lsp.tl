@@ -87,6 +87,7 @@ local record lsp
          "textDocument/definition"
          "textDocument/publishDiagnostics"
          "textDocument/completion"
+         "textDocument/signatureHelp"
          "shutdown"
       end
 

@@ -44,6 +44,9 @@ local capabilities = {
    completionProvider = {
       triggerCharacters = { ".", ":" },
    },
+   signatureHelpProvider = {
+      triggerCharacters = { "(" }
+   }
 }
 
 function ServerState:_validate_config(c:TealProjectConfig)

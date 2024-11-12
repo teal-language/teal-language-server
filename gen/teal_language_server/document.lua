@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
 
 local ServerState = require("teal_language_server.server_state")
 local Uri = require("teal_language_server.uri")
@@ -30,7 +30,25 @@ local tl = require("tl")
 
 
 
+
+
+
+
 local Document = {}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -146,6 +164,34 @@ function Document:get_type_report()
    return env.reporter:get_report()
 end
 
+local function _get_node_at(ast, y, x)
+   for _, node in ipairs(ast) do
+      if node.y == y and node.x == x then
+         return node
+      end
+   end
+end
+
+function Document:get_ast_node_at(type_info)
+   if type_info.file == "" then
+      return _get_node_at(self:_get_ast(), type_info.y, type_info.x)
+   end
+
+   local loaded_file = self._server_state:get_env().loaded[type_info.file]
+   if loaded_file == nil then return nil end
+   return _get_node_at(loaded_file.ast, type_info.y, type_info.x)
+end
+
+function Document:get_function_args_string(type_info)
+   local node = self:get_ast_node_at(type_info)
+   if node == nil then return nil end
+   local output = {}
+   for _, arg_info in ipairs(node.args) do
+      table.insert(output, arg_info.tk)
+   end
+   return output
+end
+
 function Document:clear_cache()
    self._cache = {}
    tracing.debug(_module_name, "Cleared cache for document {}", { self._uri })
@@ -170,7 +216,7 @@ end
 
 local function get_token_at(tks, y, x)
    local output = {}
-   local ends_with_colon = false
+   local separators = {}
    local i, found = binary_search(
    tks, nil,
    function(tk)
@@ -181,25 +227,32 @@ local function get_token_at(tks, y, x)
 
 
 
-   if tks[i + 1] and tks[i + 1].kind == ":" then ends_with_colon = true end
+   if tks[i + 1] and tks[i + 1].kind == ":" then separators[1] = ":" end
 
    if found then
 
       while found.kind == "identifier" or found.kind == "." or found.kind == ":" do
          if found.kind == "identifier" then
             table.insert(output, 1, found)
+         else
+            table.insert(separators, 1, found.kind)
          end
          i = i - 1
          found = tks[i]
-
-
-         if found.kind == "keyword" and found.tk == "local" or found.tk == "global" then
-            table.remove(output, 1)
-         end
       end
+
+
+
+
+      if #separators > 1 and separators[1] == ":" and
+         found.kind == "keyword" and found.tk == "local" or found.tk == "global" then
+         table.remove(output, 1)
+         table.remove(separators, 1)
+      end
+
    end
 
-   return output, ends_with_colon
+   return output, separators[#separators] == ":"
 end
 
 local get_raw_token_at = tl.get_token_at
@@ -306,39 +359,41 @@ function Document:resolve_type_ref(type_number)
    end
 end
 
+function Document:_quick_get(tr, last_token)
+
+   local file = tr.by_pos[self._uri.path]
+   if file == nil then
+      tracing.warning(_module_name, "selfchecker: the file dissappeared?")
+      return nil
+   end
+
+   local line = file[last_token.y] or file[last_token.y - 1] or file[last_token.y + 1]
+   if line == nil then
+      tracing.warning(_module_name, "selfchecker: the file dissappeared?")
+      return nil
+   end
+
+   local type_ref = line[last_token.x] or line[last_token.x - 1] or line[last_token.x + 1]
+   if type_ref == nil then
+      tracing.warning(_module_name, "selfchecker: couldn't find the typeref")
+      return nil
+   end
+   return self:resolve_type_ref(type_ref)
+end
+
 function Document:type_information_for_tokens(tokens)
-
    local tr = self:get_type_report()
-   local type_info
 
 
-   if tokens[1].tk == "self" then
-      local file = tr.by_pos[self._uri.path]
-      if file == nil then
-         tracing.warning(_module_name, "selfchecker: the file dissappeared?")
-         return nil
-      end
+   local type_info = self:_quick_get(tr, tokens[#tokens])
+   if type_info ~= nil then return type_info end
 
-      local line = file[tokens[1].y] or file[tokens[1].y - 1] or file[tokens[1].y + 1]
-      if line == nil then
-         tracing.warning(_module_name, "selfchecker: the line dissappeared?")
-         return nil
-      end
 
-      local type_ref = line[tokens[1].x] or line[tokens[1].x - 1] or line[tokens[1].x + 1]
-      if type_ref == nil then
-         tracing.warning(_module_name, "selfchecker: couldn't find the typeref")
-         return nil
-      end
-      type_info = self:resolve_type_ref(type_ref)
-   else
-      local scope_symbols = tl.symbols_in_scope(tr, tokens[1].y, tokens[1].x, self._uri.path)
-      local type_id = scope_symbols[tokens[1].tk]
-      tracing.warning(_module_name, "tokens[1].tk: " .. tokens[1].tk)
-
-      if type_id ~= nil then
-         type_info = self:resolve_type_ref(type_id)
-      end
+   local scope_symbols = tl.symbols_in_scope(tr, tokens[1].y, tokens[1].x, self._uri.path)
+   local type_id = scope_symbols[tokens[1].tk]
+   tracing.warning(_module_name, "tokens[1].tk: " .. tokens[1].tk)
+   if type_id ~= nil then
+      type_info = self:resolve_type_ref(type_id)
    end
 
 
@@ -350,6 +405,8 @@ function Document:type_information_for_tokens(tokens)
       tracing.warning(_module_name, "Unable to find type info in global table as well..")
    end
 
+   tracing.warning(_module_name, "What is this type_info:" .. tostring(type_info))
+
    if type_info and #tokens > 1 then
       for i = 2, #tokens do
          tracing.trace(_module_name, "tokens[i].tk: " .. tokens[i].tk)
@@ -360,8 +417,8 @@ function Document:type_information_for_tokens(tokens)
          elseif type_info.values and i == #tokens then
             type_info = self:resolve_type_ref(type_info.values)
 
-         else
-            tracing.warning(_module_name, "Something odd is going on here bruv '{}'", type_info)
+
+
 
          end
 
@@ -378,98 +435,12 @@ function Document:type_information_for_tokens(tokens)
    return nil
 end
 
-local function indent(n)
-   return ("   "):rep(n)
-end
-local function ti(list, ...)
-   for i = 1, select("#", ...) do
-      table.insert(list, (select(i, ...)))
-   end
-end
-
-function Document:show_type(info, depth)
-   if not info then return "???" end
-   depth = depth or 1
-   if depth > 4 then
-      return "..."
-   end
-
-   local out = {}
-
-   local function ins(...)
-      ti(out, ...)
-   end
-
-   local tr = self:get_type_report()
-
-   local function show_record_field(name, field_id)
-      local field = {}
-      ti(field, indent(depth))
-      local field_type = tr.types[field_id]
-      if field_type.str:match("^type ") then
-         ti(field, "type ", name, " = ", (self:show_type(field_type, depth + 1):gsub("^type ", "")))
-      else
-         ti(field, name, ": ", self:show_type(field_type, depth + 1))
-      end
-      ti(field, "\n")
-      return table.concat(field)
-   end
-
-   local function show_record_fields(fields)
-      if not fields then
-         ins("--???\n")
-         return
-      end
-      local f = {}
-      for name, field_id in pairs(fields) do
-         ti(f, show_record_field(name, field_id))
-      end
-      local function get_name(s)
-         return (s:match("^%s*type ([^=]+)") or s:match("^%s*([^:]+)")):lower()
-      end
-      table.sort(f, function(a, b)
-         return get_name(a) < get_name(b)
-      end)
-      for _, field in ipairs(f) do
-         ins(field)
-      end
-   end
-
-   if info.ref then
-      return info.str .. " => " .. self:show_type(tr.types[info.ref], depth + 1)
-   elseif info.str == "type record" or info.str == "record" then
-      ins(info.str)
-      if not info.fields then
-         ins(" ??? end")
-         return table.concat(out)
-      end
-      ins("\n")
-      show_record_fields(info.fields)
-      ins(indent(depth - 1))
-      ins("end")
-      return table.concat(out)
-   elseif info.str == "type enum" then
-      ins("enum\n")
-      if info.enums then
-         for _, str in ipairs(info.enums) do
-            ins(indent(depth))
-            ins(string.format("%q\n", str))
-         end
-      else
-         ins(indent(depth))
-         ins("--???")
-         ins("\n")
-      end
-      ins(indent(depth - 1))
-      ins("end")
-      return table.concat(out)
-   else
-      return info.str
-   end
-end
-
 function Document:token_at(where)
    return get_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
+end
+
+function Document:raw_token_at(where)
+   return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 class.setup(Document, "Document", {

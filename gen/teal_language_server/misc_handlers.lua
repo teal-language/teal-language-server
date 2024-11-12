@@ -16,10 +16,9 @@ local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
 local class = require("teal_language_server.class")
 local tl = require("tl")
+local lsp_formatter = require("teal_language_server.lsp_formatter")
 
 local MiscHandlers = {}
-
-
 
 
 
@@ -129,14 +128,6 @@ function MiscHandlers:_on_did_change(params)
    doc:process_and_publish_results()
 end
 
-local function _create_label(field_name, field_type)
-   local _, find_function, capture = field_type:find("function.-(%(.-%))")
-   if find_function ~= nil then
-      return field_name .. capture
-   end
-   return field_name
-end
-
 function MiscHandlers:_on_completion(params, id)
    local context = params.context
 
@@ -170,9 +161,6 @@ function MiscHandlers:_on_completion(params, id)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
-   if ends_with_colon then
-      tracing.warning(_module_name, "Ends with colon!")
-   end
 
    local items = {}
    local type_info = doc:type_information_for_tokens(tks)
@@ -197,17 +185,17 @@ function MiscHandlers:_on_completion(params, id)
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
-            table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
 
-
-
-
-
-
-
-
-
-
+            if ends_with_colon then
+               if type_info.t == tl.typecodes.FUNCTION then
+                  local args = doc:get_function_args_string(type_info)
+                  if #args >= 1 and args[1] == "self" then
+                     table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
+                  end
+               end
+            else
+               table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
+            end
          end
 
 
@@ -232,6 +220,63 @@ function MiscHandlers:_on_completion(params, id)
       isIncomplete = false,
       items = items,
    })
+end
+
+function MiscHandlers:_on_signature_help(params, id)
+   local td = params.textDocument
+   local doc = self._document_manager:get(Uri.parse(td.uri))
+   local output = {}
+
+   if not doc then
+      tracing.warning(_module_name, "No doc found for completion request", {})
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   local pos = params.position
+   pos.character = pos.character - 2
+
+   tracing.warning(_module_name, "Received request for completion at position: {}", { pos })
+
+   local tks, ends_with_colon = doc:token_at(pos)
+   if #tks == 0 then
+      tracing.warning(_module_name, "Could not find token at given position", {})
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   local type_info = doc:type_information_for_tokens(tks)
+
+   if type_info == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   output.signatures = {}
+   if type_info.t == tl.typecodes.POLY then
+      for _, type_ref in ipairs(type_info.types) do
+         type_info = doc:resolve_type_ref(type_ref)
+         local args = doc:get_function_args_string(type_info)
+         if args ~= nil then
+            local func_str = lsp_formatter.create_function_string(type_info.str, args, tks[#tks].tk)
+            table.insert(output.signatures, { label = func_str })
+         else
+            table.insert(output.signatures, { label = type_info.str })
+         end
+      end
+   else
+      local args = doc:get_function_args_string(type_info)
+      if args ~= nil then
+         local func_str = lsp_formatter.create_function_string(type_info.str, args, tks[#tks].tk)
+         table.insert(output.signatures, { label = func_str })
+      else
+         table.insert(output.signatures, { label = type_info.str })
+      end
+   end
+
+   tracing.warning(_module_name, "[_on_signature_help] Found type info: {}", { type_info })
+
+   self._lsp_reader_writer:send_rpc(id, output)
 end
 
 function MiscHandlers:_on_definition(params, id)
@@ -326,9 +371,9 @@ function MiscHandlers:_on_hover(params, id)
       return
    end
 
-   tracing.trace(_module_name, "Successfully found type_info: {}", { type_info })
+   tracing.warning(_module_name, "Successfully found type_info: {}", { type_info })
 
-   local type_str = doc:show_type(type_info)
+   local type_str = lsp_formatter.show_type(type_info, doc:get_type_report())
    self._lsp_reader_writer:send_rpc(id, {
       contents = { tk.tk .. ":", type_str },
       range = {
@@ -337,6 +382,7 @@ function MiscHandlers:_on_hover(params, id)
       },
    })
 end
+
 function MiscHandlers:_add_handler(name, handler)
    self._lsp_events_manager:set_handler(name, function(params, id) handler(self, params, id) end)
 end
@@ -349,10 +395,10 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/didSave", self._on_did_save)
    self:_add_handler("textDocument/didChange", self._on_did_change)
    self:_add_handler("textDocument/completion", self._on_completion)
+   self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
    self:_add_handler("textDocument/definition", self._on_definition)
    self:_add_handler("textDocument/hover", self._on_hover)
 end
-
 
 class.setup(MiscHandlers, "MiscHandlers", {})
 
