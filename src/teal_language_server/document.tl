@@ -8,6 +8,9 @@ local class <const> = require("teal_language_server.class")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
 
+local ltreesitter <const> = require("ltreesitter")
+local teal_parser = ltreesitter.load("./teal.so", "teal")
+
 local tl <const> = require("tl")
 
 -- Token nor tl.Node not exposed :((((
@@ -35,6 +38,16 @@ local record Cache
 end
 
 local record Document
+   record NodeInfo
+      type: string
+      source: string
+      parent_type: string
+      parent_source: string
+      preceded_by: string
+      self_type: string
+      metamethod __tostring: function(NodeInfo): string
+   end
+
    uri: Uri
 
    _uri: Uri
@@ -44,6 +57,8 @@ local record Document
    _lsp_reader_writer: LspReaderWriter
    _server_state: ServerState
    _cache: Cache
+   _tree: ltreesitter.Tree
+   _tree_cursor: ltreesitter.Cursor
 
    metamethod __call: function(self: Document, uri: Uri, content: string, version: integer, lsp_reader_writer: LspReaderWriter, server_state: ServerState): Document
 end
@@ -72,6 +87,8 @@ function Document:__init(uri: Uri, content: string, version: integer, lsp_reader
    self._version = version
    self._lsp_reader_writer = lsp_reader_writer
    self._server_state = server_state
+   self._tree = teal_parser:parse_string(self._content)
+   self._tree_cursor = self._tree:root():create_cursor()
 end
 
 ---@desc
@@ -209,6 +226,10 @@ function Document:update_text(text: string, version: integer)
          self._version = version
       end
    end
+
+   -- update tree and tree cursor as well
+   self._tree = teal_parser:parse_string(self._content)
+   self._tree_cursor = self._tree:root():create_cursor()
 end
 
 -- This is slightly modified version of tl.get_token_at
@@ -381,24 +402,32 @@ function Document:_quick_get(tr: tl.TypeReport, last_token: Token): tl.TypeInfo
    return self:resolve_type_ref(type_ref)
 end
 
-function Document:type_information_for_tokens(tokens: {Token}): tl.TypeInfo
+function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
 
    -- try the quick get (works well for self and raw types)
-   local type_info = self:_quick_get(tr, tokens[#tokens])
-   if type_info ~= nil then return type_info end
+   local type_info: tl.TypeInfo
 
    -- try and find it in scope
-   local scope_symbols <const> = tl.symbols_in_scope(tr, tokens[1].y, tokens[1].x, self._uri.path)
-   local type_id <const> = scope_symbols[tokens[1].tk]
-   tracing.warning(_module_name, "tokens[1].tk: " .. tokens[1].tk)
+   local scope_symbols <const> = tl.symbols_in_scope(tr, y+1, x+1, self._uri.path)
+   if #tokens == 0 then
+      local out = {}
+      for key, value in pairs(scope_symbols) do out[key] = value end
+      for key, value in pairs(tr.globals) do out[key] = value end
+      type_info = {
+         fields = out
+      }
+      return type_info
+   end
+   local type_id <const> = scope_symbols[tokens[1]]
+   tracing.warning(_module_name, "tokens[1]: " .. tokens[1])
    if type_id ~= nil then
       type_info = self:resolve_type_ref(type_id)
    end
 
    -- might be global instead
    if type_info == nil then
-      type_info = tr.types[tr.globals[tokens[1].tk] ]
+      type_info = tr.types[tr.globals[tokens[1]] ]
    end
 
    if type_info == nil then
@@ -409,10 +438,10 @@ function Document:type_information_for_tokens(tokens: {Token}): tl.TypeInfo
 
    if type_info and #tokens > 1 then
       for i = 2, #tokens do
-         tracing.trace(_module_name, "tokens[i].tk: " .. tokens[i].tk)
+         tracing.trace(_module_name, "tokens[i]: " .. tokens[i])
 
          if type_info.fields then
-            type_info = self:resolve_type_ref(type_info.fields[tokens[i].tk])
+            type_info = self:resolve_type_ref(type_info.fields[tokens[i]])
 
          elseif type_info.values and i == #tokens then
             type_info = self:resolve_type_ref(type_info.values)
@@ -441,6 +470,96 @@ end
 
 function Document:raw_token_at(where: lsp.Position): string
    return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
+end
+
+function Document:_parser_token(y: integer, x: integer): Document.NodeInfo
+   local moved = self._tree_cursor:goto_first_child()
+   local node = self._tree_cursor:current_node()
+
+   if moved == false then
+      self._tree_cursor:goto_parent()
+      local parent_node = self._tree_cursor:current_node()
+
+      local out: Document.NodeInfo = {
+         type = node:type(), 
+         source = node:source(), 
+         parent_type = parent_node:type(), 
+         parent_source = parent_node:source()
+      }
+
+      if node:type() == "." or node:type() == ":" then
+         -- considered an error and need to get the previous symbol
+         local prev = node:prev_sibling()
+         if prev then
+            out.preceded_by = prev:source()
+         else
+            parent_node = parent_node:prev_sibling()
+            if parent_node:child_count() > 0 then
+               -- no previous symbol, so get parent's previous sibling's last child
+               out.preceded_by = parent_node:child(parent_node:child_count()-1):source()
+            else
+               out.preceded_by = parent_node:source()
+            end
+         end
+      end
+
+      if out.preceded_by == "self" or 
+         out.source:find("self[%.%:]") or out.parent_source:find("self[%.%:]") then
+         while parent_node:type() ~= "program" do
+            self._tree_cursor:goto_parent()
+            parent_node = self._tree_cursor:current_node()
+            if parent_node:type() == "function_statement" then
+               local function_name = parent_node:child_by_field_name("name")
+               if function_name then
+                  local base_name = function_name:child_by_field_name("base")
+                  out.self_type = base_name:source()
+                  break
+               end
+            elseif parent_node:type() == "ERROR" then
+               -- for some reason you can't get the node by name in an error state, but you can still iterate over to it
+               for child in parent_node:children() do
+                  if child:name() == "function_name" then
+                     out.self_type = child:child_by_field_name("base"):source()
+                     break
+                  end
+               end
+            end
+         end
+      end
+
+      return out
+
+   end
+
+   local start_point = node:start_point()
+   local end_point = node:end_point()
+
+   while moved do
+      start_point = node:start_point()
+      end_point = node:end_point()
+
+      -- print(node:type())
+      -- print("start", start_point.column, start_point.row)
+      -- print("end", end_point.column, end_point.row)
+      -- print()
+
+      if y == start_point.row and y == end_point.row then
+         if x >= start_point.column and x <= end_point.column then
+            return self:_parser_token(y, x)
+         end
+
+      elseif y >= start_point.row and y <= end_point.row then
+         return self:_parser_token(y, x)
+      end
+
+      moved = self._tree_cursor:goto_next_sibling()
+      node = self._tree_cursor:current_node()
+   end
+end
+
+function Document:parser_token(y: integer, x: integer): Document.NodeInfo
+   self._tree_cursor:reset(self._tree:root())
+   return self:_parser_token(y, x)
 end
 
 class.setup(Document, "Document", {

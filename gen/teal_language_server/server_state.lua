@@ -44,6 +44,7 @@ local capabilities = {
    completionProvider = {
       triggerCharacters = { ".", ":" },
    },
+
    signatureHelpProvider = {
       triggerCharacters = { "(" },
    },

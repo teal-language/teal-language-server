@@ -5,6 +5,7 @@ local EnvUpdater <const> = require("teal_language_server.env_updater")
 local args_parser <const> = require("teal_language_server.args_parser")
 local TraceStream <const> = require("teal_language_server.trace_stream")
 local DocumentManager <const> = require("teal_language_server.document_manager")
+local Document <const> = require("teal_language_server.document")
 local ServerState <const> = require("teal_language_server.server_state")
 local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
 local Path <const> = require("teal_language_server.path")
@@ -118,7 +119,7 @@ end
 
 function MiscHandlers:_on_did_change(params:lsp.Method.Params):nil
    local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
+   local doc <const> = self._document_manager:get(Uri.parse(td.uri))   
    if not doc then
       tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
       return
@@ -128,13 +129,27 @@ function MiscHandlers:_on_did_change(params:lsp.Method.Params):nil
    doc:process_and_publish_results()
 end
 
-function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
+local function split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
+   local t = {}
+   for str in string.gmatch(input, "([^%.%:]+)") do
+      if str == "self" then
+         table.insert(t, self_type)
+      else
+         table.insert(t, str)
+      end
+      if stop_at and stop_at == str then
+         break
+      end
+   end
+   return t
+end
+
+function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
       tracing.warning(_module_name, "Ignoring completion request given kind: {}", {context.triggerKind})
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      return nil
    end
 
    local td <const> = params.textDocument as lsp.TextDocument
@@ -142,35 +157,71 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
    if not doc then
       tracing.warning(_module_name, "No doc found for completion request", {})
+      return nil
+   end
+
+   tracing.warning(_module_name, "Received request for completion at position: {}", {pos})
+   local node_info = doc:parser_token(pos.line, pos.character)
+   if node_info == nil then
+      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      return nil
+   end
+   tracing.warning(_module_name, "Found node info at pos", node_info)
+   return node_info, doc
+end
+
+function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
+   local pos = params.position as lsp.Position
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   -- completion COMPLETELY breaks if you remove the "- 2" or change it
-   -- I _think_ it allows teal to create a full representation of the program
-   -- so the type checking still works and produces good syntax trees
-   local pos = params.position as lsp.Position
-   pos.character = pos.character - 2
+   tracing.warning(_module_name, "Got nodeinfo: {}", node_info)
 
-   tracing.warning(_module_name, "Received request for completion at position: {}", {pos})
+   local tks: {string}
 
-   local tks, ends_with_colon <const> = doc:token_at(pos)
-   -- local tk = tks[1]
-   if #tks == 0 then
-      tracing.warning(_module_name, "Could not find token at given position", {})
+   -- literally at the . or : and are trying to autocomplete
+   -- preceded_by should have everything we need in it.
+   if node_info.type == "." or node_info.type == ":" then
+      tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
+      tracing.warning(_module_name, "Received request for completion at character: {}", {tks})
+   
+   -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
+   elseif node_info.type == "identifier" then
+      -- there may be other situations for completions
+      if node_info.parent_type == "ERROR" or node_info.parent_type == "arguments" then
+         tks = split_by_symbols(node_info.source, node_info.self_type)
+      else
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type)
+      end
+      -- takes it back to the just after the first dot, then does completion
+      -- if there's only one symbol, will return an empty list and type_information_for_tokens will just
+      -- show what's in scope
+      tks[#tks] = nil
+
+      -- trying to define something new, probably don't want the in-scope thing to popup
+      -- we could probably help complete simple types
+      if node_info.parent_type == "var" or node_info.parent_type == "simple_type" or node_info.parent_type == "table_type" then
+         self._lsp_reader_writer:send_rpc(id, nil)
+         return
+      end
+      
+   else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
    local items:{any} = { }
-   local type_info = doc:type_information_for_tokens(tks)
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
    end
 
    if type_info then
-      tracing.trace(_module_name, "Successfully found type type_info '{}'", {type_info})
+      tracing.warning(_module_name, "Successfully found type type_info '{}'", type_info)
       local tr = doc:get_type_report()
 
       if type_info.ref then
@@ -182,15 +233,26 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
          type_info = tr.types[tr.globals["string"]]
       end
 
+      -- this seemed to be the best way to compare the first arg with itself when comparing ":",
+      -- sometimes the types come in as nominal and don't resolve all the way back, so the name is 
+      -- what seems to work the most reliably
+      local original_str = type_info.str
+
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
             -- self based access should only show functions
-            if ends_with_colon then
+            if node_info.type == ":" then
                if type_info.t == tl.typecodes.FUNCTION then
-                  local args = doc:get_function_args_string(type_info)
-                  if #args >= 1 and args[1] == "self" then
-                     table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                  -- local args = doc:get_function_args_string(type_info)
+                  if type_info.args and #type_info.args >= 1 then
+                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
+                     if first_arg_type.t == tl.typecodes.SELF or (first_arg_type.t == tl.typecodes.NOMINAL and first_arg_type.str == original_str) then
+                        tracing.warning(_module_name, "adding " .. key, {})
+                        table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                     else
+                        tracing.warning(_module_name, "type info str: " .. original_str .. "first arg str: " .. first_arg_type.str, {})
+                     end
                   end
                end
             else
@@ -216,12 +278,17 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
       table.insert(items, {label = "(none)"})
    end
 
+   tracing.warning(_module_name, "Sending " .. #items .. " back to client", {})
+
    self._lsp_reader_writer:send_rpc(id, {
       isIncomplete = false,
       items = items
    })
 end
 
+
+
+--[[
 function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):nil
    local td <const> = params.textDocument as lsp.TextDocument
    local doc <const> = self._document_manager:get(Uri.parse(td.uri))
@@ -330,42 +397,54 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
       },
    })
 end
-
+]]
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
-   local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
-
-   if not doc then
-      tracing.warning(_module_name, "Failed to find document for given params", {})
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
-   end
    local pos <const> = params.position as lsp.Position
-
-   tracing.trace(_module_name, "Received request for hover at position: {}", {pos})
-
-   local tks <const> = doc:token_at(pos)
-   if #tks == 0 then
-      tracing.warning(_module_name, "Could not find token at given position", {})
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, {
-         contents = { " No info found " }
+         contents = { "Unknown Token:", " Unable to determine what token is under cursor " },
+         range = {
+            start = lsp.position(pos.line, pos.character),
+            ["end"] = lsp.position(pos.line, pos.character),
+         },
       })
       return
    end
-   local tk = tks[#tks]
-   local token_pos = lsp.position(tk.y, tk.x)
-   tracing.trace(_module_name, "Found actual token '{}' at position: '{}'", {tk.tk, token_pos})
-   tracing.warning(_module_name, "Attempting to get type information by raw token instead...", {})
 
-   local type_info = doc:type_information_for_tokens(tks)
+   tracing.trace(_module_name, "Received request for hover at position: {}", {pos})
+
+   local tks: {string} = {}
+   if node_info.type == "identifier" then
+
+      -- in place to remove const/total/etc
+      if node_info.parent_type == "var" then
+         tks = split_by_symbols(node_info.source, node_info.self_type)
+      else
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      end
+
+   else
+      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
+      self._lsp_reader_writer:send_rpc(id, {
+         contents = { node_info.source .. ":", " Can't hover on non-identifiers atm " },
+         range = {
+            start = lsp.position(pos.line, pos.character),
+            ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
+         },
+      })
+      return
+   end
+
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type info based on token", {})
       self._lsp_reader_writer:send_rpc(id, {
-         contents = { tk.tk .. ":", " No type_info found " },
+         contents = { node_info.source .. ":", " No type_info found " },
          range = {
-            start = lsp.position(token_pos.line, token_pos.character),
-            ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
+            start = lsp.position(pos.line, pos.character),
+            ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
          },
       })
       return
@@ -375,10 +454,10 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
 
    local type_str <const> = lsp_formatter.show_type(type_info, doc:get_type_report())
    self._lsp_reader_writer:send_rpc(id, {
-      contents = { tk.tk .. ":", type_str },
+      contents = { node_info.source .. ":", type_str },
       range = {
-         start = lsp.position(token_pos.line, token_pos.character),
-         ["end"] = lsp.position(token_pos.line, token_pos.character + #tk.tk),
+         start = lsp.position(pos.line, pos.character),
+         ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
       },
    })
 end
@@ -395,8 +474,8 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/didSave", self._on_did_save)
    self:_add_handler("textDocument/didChange", self._on_did_change)
    self:_add_handler("textDocument/completion", self._on_completion)
-   self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
-   self:_add_handler("textDocument/definition", self._on_definition)
+   -- self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
+   -- self:_add_handler("textDocument/definition", self._on_definition)
    self:_add_handler("textDocument/hover", self._on_hover)
 end
 

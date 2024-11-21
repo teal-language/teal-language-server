@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
 
 local ServerState = require("teal_language_server.server_state")
 local Uri = require("teal_language_server.uri")
@@ -7,6 +7,9 @@ local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
 local class = require("teal_language_server.class")
 local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
+
+local ltreesitter = require("ltreesitter")
+local teal_parser = ltreesitter.load("./teal.so", "teal")
 
 local tl = require("tl")
 
@@ -34,7 +37,19 @@ local tl = require("tl")
 
 
 
-local Document = {}
+local Document = {NodeInfo = {}, }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -72,6 +87,8 @@ function Document:__init(uri, content, version, lsp_reader_writer, server_state)
    self._version = version
    self._lsp_reader_writer = lsp_reader_writer
    self._server_state = server_state
+   self._tree = teal_parser:parse_string(self._content)
+   self._tree_cursor = self._tree:root():create_cursor()
 end
 
 
@@ -209,6 +226,10 @@ function Document:update_text(text, version)
          self._version = version
       end
    end
+
+
+   self._tree = teal_parser:parse_string(self._content)
+   self._tree_cursor = self._tree:root():create_cursor()
 end
 
 
@@ -381,24 +402,32 @@ function Document:_quick_get(tr, last_token)
    return self:resolve_type_ref(type_ref)
 end
 
-function Document:type_information_for_tokens(tokens)
+function Document:type_information_for_tokens(tokens, y, x)
    local tr = self:get_type_report()
 
 
-   local type_info = self:_quick_get(tr, tokens[#tokens])
-   if type_info ~= nil then return type_info end
+   local type_info
 
 
-   local scope_symbols = tl.symbols_in_scope(tr, tokens[1].y, tokens[1].x, self._uri.path)
-   local type_id = scope_symbols[tokens[1].tk]
-   tracing.warning(_module_name, "tokens[1].tk: " .. tokens[1].tk)
+   local scope_symbols = tl.symbols_in_scope(tr, y + 1, x + 1, self._uri.path)
+   if #tokens == 0 then
+      local out = {}
+      for key, value in pairs(scope_symbols) do out[key] = value end
+      for key, value in pairs(tr.globals) do out[key] = value end
+      type_info = {
+         fields = out,
+      }
+      return type_info
+   end
+   local type_id = scope_symbols[tokens[1]]
+   tracing.warning(_module_name, "tokens[1]: " .. tokens[1])
    if type_id ~= nil then
       type_info = self:resolve_type_ref(type_id)
    end
 
 
    if type_info == nil then
-      type_info = tr.types[tr.globals[tokens[1].tk]]
+      type_info = tr.types[tr.globals[tokens[1]]]
    end
 
    if type_info == nil then
@@ -409,10 +438,10 @@ function Document:type_information_for_tokens(tokens)
 
    if type_info and #tokens > 1 then
       for i = 2, #tokens do
-         tracing.trace(_module_name, "tokens[i].tk: " .. tokens[i].tk)
+         tracing.trace(_module_name, "tokens[i]: " .. tokens[i])
 
          if type_info.fields then
-            type_info = self:resolve_type_ref(type_info.fields[tokens[i].tk])
+            type_info = self:resolve_type_ref(type_info.fields[tokens[i]])
 
          elseif type_info.values and i == #tokens then
             type_info = self:resolve_type_ref(type_info.values)
@@ -441,6 +470,96 @@ end
 
 function Document:raw_token_at(where)
    return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
+end
+
+function Document:_parser_token(y, x)
+   local moved = self._tree_cursor:goto_first_child()
+   local node = self._tree_cursor:current_node()
+
+   if moved == false then
+      self._tree_cursor:goto_parent()
+      local parent_node = self._tree_cursor:current_node()
+
+      local out = {
+         type = node:type(),
+         source = node:source(),
+         parent_type = parent_node:type(),
+         parent_source = parent_node:source(),
+      }
+
+      if node:type() == "." or node:type() == ":" then
+
+         local prev = node:prev_sibling()
+         if prev then
+            out.preceded_by = prev:source()
+         else
+            parent_node = parent_node:prev_sibling()
+            if parent_node:child_count() > 0 then
+
+               out.preceded_by = parent_node:child(parent_node:child_count() - 1):source()
+            else
+               out.preceded_by = parent_node:source()
+            end
+         end
+      end
+
+      if out.preceded_by == "self" or
+         out.source:find("self[%.%:]") or out.parent_source:find("self[%.%:]") then
+         while parent_node:type() ~= "program" do
+            self._tree_cursor:goto_parent()
+            parent_node = self._tree_cursor:current_node()
+            if parent_node:type() == "function_statement" then
+               local function_name = parent_node:child_by_field_name("name")
+               if function_name then
+                  local base_name = function_name:child_by_field_name("base")
+                  out.self_type = base_name:source()
+                  break
+               end
+            elseif parent_node:type() == "ERROR" then
+
+               for child in parent_node:children() do
+                  if child:name() == "function_name" then
+                     out.self_type = child:child_by_field_name("base"):source()
+                     break
+                  end
+               end
+            end
+         end
+      end
+
+      return out
+
+   end
+
+   local start_point = node:start_point()
+   local end_point = node:end_point()
+
+   while moved do
+      start_point = node:start_point()
+      end_point = node:end_point()
+
+
+
+
+
+
+      if y == start_point.row and y == end_point.row then
+         if x >= start_point.column and x <= end_point.column then
+            return self:_parser_token(y, x)
+         end
+
+      elseif y >= start_point.row and y <= end_point.row then
+         return self:_parser_token(y, x)
+      end
+
+      moved = self._tree_cursor:goto_next_sibling()
+      node = self._tree_cursor:current_node()
+   end
+end
+
+function Document:parser_token(y, x)
+   self._tree_cursor:reset(self._tree:root())
+   return self:_parser_token(y, x)
 end
 
 class.setup(Document, "Document", {
