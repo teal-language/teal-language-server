@@ -1,4 +1,6 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local tl = require("tl")
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local tl = require("tl")
+
+local Document = require("teal_language_server.document")
 
 local lsp_formatter = {Documentation = {}, SignatureHelp = {SignatureParameter = {}, Signature = {}, }, }
 
@@ -65,93 +67,137 @@ function lsp_formatter.create_function_string(type_string, arg_names, tk)
    return table.concat(output)
 end
 
-local function indent(n)
-   return ("   "):rep(n)
-end
-local function ti(list, ...)
-   for i = 1, select("#", ...) do
-      table.insert(list, (select(i, ...)))
-   end
-end
 
 
-function lsp_formatter.show_type(info, tr, depth)
-   if not info then return "???" end
-   depth = depth or 1
-   if depth > 4 then
-      return "..."
-   end
 
-   local out = {}
 
-   local function ins(...)
-      ti(out, ...)
-   end
 
-   local function show_record_field(name, field_id)
-      local field = {}
-      ti(field, indent(depth))
-      local field_type = tr.types[field_id]
-      if field_type.str:match("^type ") then
-         ti(field, "type ", name, " = ", (lsp_formatter.show_type(field_type, tr, depth + 1):gsub("^type ", "")))
+
+
+
+
+
+
+
+function lsp_formatter.show_type(node_info, type_info, doc)
+   local output = { kind = "markdown" }
+   local sb = { strings = {} }
+   table.insert(sb.strings, "```teal")
+
+   if type_info.t == tl.typecodes.FUNCTION then
+      local args = doc:get_function_args_string(type_info)
+      if args ~= nil then
+         table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
       else
-         ti(field, name, ": ", lsp_formatter.show_type(field_type, tr, depth + 1))
+         table.insert(sb.strings, node_info.source .. ": " .. type_info.str)
       end
-      ti(field, "\n")
-      return table.concat(field)
-   end
 
-   local function show_record_fields(fields)
-      if not fields then
-         ins("--???\n")
-         return
+   elseif type_info.t == tl.typecodes.ENUM then
+      table.insert(sb.strings, "enum " .. type_info.str)
+      for _, _enum in ipairs(type_info.enums) do
+         table.insert(sb.strings, '  "' .. _enum .. '"')
       end
-      local f = {}
-      for name, field_id in pairs(fields) do
-         ti(f, show_record_field(name, field_id))
-      end
-      local function get_name(s)
-         return (s:match("^%s*type ([^=]+)") or s:match("^%s*([^:]+)")):lower()
-      end
-      table.sort(f, function(a, b)
-         return get_name(a) < get_name(b)
-      end)
-      for _, field in ipairs(f) do
-         ins(field)
-      end
-   end
+      table.insert(sb.strings, "end")
 
-   if info.ref then
-      return info.str .. " => " .. lsp_formatter.show_type(tr.types[info.ref], tr, depth + 1)
-   elseif info.t == tl.typecodes.RECORD then
-      ins(info.str)
-      if not info.fields then
-         ins(" ??? end")
-         return table.concat(out)
-      end
-      ins("\n")
-      show_record_fields(info.fields)
-      ins(indent(depth - 1))
-      ins("end")
-      return table.concat(out)
-   elseif info.t == tl.typecodes.ENUM then
-      ins("enum\n")
-      if info.enums then
-         for _, str in ipairs(info.enums) do
-            ins(indent(depth))
-            ins(string.format("%q\n", str))
-         end
-      else
-         ins(indent(depth))
-         ins("--???")
-         ins("\n")
-      end
-      ins(indent(depth - 1))
-      ins("end")
-      return table.concat(out)
+   elseif type_info.t == tl.typecodes.RECORD then
+
    else
-      return info.str
+      table.insert(sb.strings, node_info.source .. ": " .. type_info.str)
    end
+   table.insert(sb.strings, "```")
+   output.value = table.concat(sb.strings, "\n")
+   return output
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 return lsp_formatter

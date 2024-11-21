@@ -191,11 +191,26 @@ function MiscHandlers:_on_completion(params, id)
 
    elseif node_info.type == "identifier" then
 
-      if node_info.parent_type == "ERROR" or node_info.parent_type == "arguments" then
-         tks = split_by_symbols(node_info.source, node_info.self_type)
-      else
+
+
+
+
+
+
+
+
+
+
+
+
+      if node_info.parent_type == "index" or
+         node_info.parent_type == "method_index" or
+         node_info.parent_type == "function_name" then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
       end
+
 
 
 
@@ -417,17 +432,17 @@ function MiscHandlers:_on_hover(params, id)
    local tks = {}
    if node_info.type == "identifier" then
 
-
-      if node_info.parent_type == "var" then
-         tks = split_by_symbols(node_info.source, node_info.self_type)
-      else
+      if node_info.parent_type == "index" or
+         node_info.parent_type == "method_index" or
+         node_info.parent_type == "function_name" then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
       end
-
    else
       tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
       self._lsp_reader_writer:send_rpc(id, {
-         contents = { node_info.source .. ":", " Can't hover on non-identifiers atm " },
+         contents = { node_info.parent_type, ":", node_info.type },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
@@ -452,9 +467,9 @@ function MiscHandlers:_on_hover(params, id)
 
    tracing.warning(_module_name, "Successfully found type_info: {}", { type_info })
 
-   local type_str = lsp_formatter.show_type(type_info, doc:get_type_report())
+   local type_str = lsp_formatter.show_type(node_info, type_info, doc)
    self._lsp_reader_writer:send_rpc(id, {
-      contents = { node_info.source .. ":", type_str },
+      contents = type_str,
       range = {
          start = lsp.position(pos.line, pos.character),
          ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
@@ -475,8 +490,10 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/didChange", self._on_did_change)
    self:_add_handler("textDocument/completion", self._on_completion)
 
-
    self:_add_handler("textDocument/hover", self._on_hover)
+
+
+
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {})

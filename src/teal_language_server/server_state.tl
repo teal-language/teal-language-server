@@ -39,12 +39,10 @@ local capabilities = {
       },
    },
    hoverProvider = true,
-   definitionProvider = true,
-   -- typeDefinitionProvider = true,
+   definitionProvider = false,
    completionProvider = {
       triggerCharacters = { ".", ":" },
    },
-   -- completionProvider = true,
    signatureHelpProvider = {
       triggerCharacters = { "(" }
    }

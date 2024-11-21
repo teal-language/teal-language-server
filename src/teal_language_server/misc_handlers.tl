@@ -190,12 +190,27 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
    elseif node_info.type == "identifier" then
-      -- there may be other situations for completions
-      if node_info.parent_type == "ERROR" or node_info.parent_type == "arguments" then
+      -- there may be other situations for completions...
+      -- also, maybe a better way to handle these cases
+
+      --[[
+      if node_info.parent_type == "ERROR" or
+         node_info.parent_type == "arguments" or
+         node_info.parent_type == "bin_op" then
          tks = split_by_symbols(node_info.source, node_info.self_type)
       else
          tks = split_by_symbols(node_info.parent_source, node_info.self_type)
+      end]]
+
+      -- the types that we would need to index to get type info from
+      if node_info.parent_type == "index" or
+         node_info.parent_type == "method_index" or
+         node_info.parent_type == "function_name" then
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
       end
+
       -- takes it back to the just after the first dot, then does completion
       -- if there's only one symbol, will return an empty list and type_information_for_tokens will just
       -- show what's in scope
@@ -416,18 +431,18 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
 
    local tks: {string} = {}
    if node_info.type == "identifier" then
-
-      -- in place to remove const/total/etc
-      if node_info.parent_type == "var" then
-         tks = split_by_symbols(node_info.source, node_info.self_type)
-      else
+      -- parent types that show up with multiparts
+      if node_info.parent_type == "index" or
+         node_info.parent_type == "method_index" or
+         node_info.parent_type == "function_name" then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
       end
-
    else
       tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
       self._lsp_reader_writer:send_rpc(id, {
-         contents = { node_info.source .. ":", " Can't hover on non-identifiers atm " },
+         contents = { node_info.parent_type, ":", node_info.type },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
@@ -452,9 +467,9 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
 
    tracing.warning(_module_name, "Successfully found type_info: {}", {type_info})
 
-   local type_str <const> = lsp_formatter.show_type(type_info, doc:get_type_report())
+   local type_str <const> = lsp_formatter.show_type(node_info, type_info, doc)
    self._lsp_reader_writer:send_rpc(id, {
-      contents = { node_info.source .. ":", type_str },
+      contents = type_str,
       range = {
          start = lsp.position(pos.line, pos.character),
          ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
@@ -475,8 +490,10 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/didChange", self._on_did_change)
    self:_add_handler("textDocument/completion", self._on_completion)
    -- self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
-   -- self:_add_handler("textDocument/definition", self._on_definition)
    self:_add_handler("textDocument/hover", self._on_hover)
+
+   -- planning to figure out what defintion/declaration vs type definition/declaration should go to
+   -- self:_add_handler("textDocument/definition", self._on_definition)
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {

@@ -1,5 +1,7 @@
 local tl <const> = require("tl")
 
+local Document <const> = require("teal_language_server.document")
+
 local record lsp_formatter
    record Documentation
       kind: string
@@ -65,93 +67,46 @@ function lsp_formatter.create_function_string(type_string: string, arg_names: {s
     return table.concat(output)
 end
 
-local function indent(n: integer): string
-   return ("   "):rep(n)
-end
-local function ti(list: {string}, ...: string)
-   for i = 1, select("#", ...) do
-      table.insert(list, (select(i, ...)))
+local record StringBuilder
+   strings: {string}
+
+   build: function(self): string = macroexp(self: StringBuilder): string
+      return table.concat(self.strings, "\n")
+   end
+
+   add: function(self, line: string): nil = macroexp(self: StringBuilder, line: string): nil
+      return table.insert(self.strings, line)
    end
 end
 
--- TODO: eventually get rid of tr here if possible
-function lsp_formatter.show_type(info: tl.TypeInfo, tr: tl.TypeReport, depth?: integer): string
-   if not info then return "???" end
-   depth = depth or 1
-   if depth > 4 then
-      return "..."
-   end
+function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.TypeInfo, doc: Document): lsp_formatter.Documentation
+   local output: lsp_formatter.Documentation = {kind="markdown"}
+   local sb: StringBuilder = {strings = {}}
+   sb:add("```teal")
 
-   local out <const>: {string} = {}
-
-   local function ins(...: string)
-      ti(out, ...)
-   end
-
-   local function show_record_field(name: string, field_id: integer): string
-      local field <const> = {}
-      ti(field, indent(depth))
-      local field_type <const> = tr.types[field_id]
-      if field_type.str:match("^type ") then
-         ti(field, "type ", name, " = ", (lsp_formatter.show_type(field_type, tr, depth + 1):gsub("^type ", "")))
+   if type_info.t == tl.typecodes.FUNCTION then
+      local args = doc:get_function_args_string(type_info)
+      if args ~= nil then
+         sb:add("function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
       else
-         ti(field, name, ": ", lsp_formatter.show_type(field_type, tr, depth + 1))
+         sb:add(node_info.source .. ": " .. type_info.str)
       end
-      ti(field, "\n")
-      return table.concat(field)
-   end
 
-   local function show_record_fields(fields: {string:integer})
-      if not fields then
-         ins("--???\n")
-         return
+   elseif type_info.t == tl.typecodes.ENUM then
+      sb:add("enum " .. type_info.str)
+      for _, _enum in ipairs(type_info.enums) do
+         sb:add('  "' .. _enum .. '"')
       end
-      local f <const> = {}
-      for name, field_id in pairs(fields) do
-         ti(f, show_record_field(name, field_id))
-      end
-      local function get_name(s: string): string
-         return (s:match("^%s*type ([^=]+)") or s:match("^%s*([^:]+)")):lower()
-      end
-      table.sort(f, function(a: string, b: string): boolean
-         return get_name(a) < get_name(b)
-      end)
-      for _, field in ipairs(f) do
-         ins(field)
-      end
-   end
+      sb:add("end")
 
-   if info.ref then
-      return info.str .. " => " .. lsp_formatter.show_type(tr.types[info.ref], tr, depth + 1)
-   elseif info.t == tl.typecodes.RECORD then
-      ins(info.str)
-      if not info.fields then
-         ins(" ??? end")
-         return table.concat(out)
-      end
-      ins("\n")
-      show_record_fields(info.fields)
-      ins(indent(depth - 1))
-      ins("end")
-      return table.concat(out)
-   elseif info.t == tl.typecodes.ENUM then -- an enum def
-      ins("enum\n")
-      if info.enums then
-         for _, str in ipairs(info.enums) do
-            ins(indent(depth))
-            ins(string.format("%q\n", str))
-         end
-      else
-         ins(indent(depth))
-         ins("--???")
-         ins("\n")
-      end
-      ins(indent(depth - 1))
-      ins("end")
-      return table.concat(out)
+   elseif type_info.t == tl.typecodes.RECORD then
+
    else
-      return info.str
+      sb:add(node_info.source .. ": " .. type_info.str)
    end
+   sb:add("```")
+   output.value = sb:build()
+   return output
 end
 
 return lsp_formatter
