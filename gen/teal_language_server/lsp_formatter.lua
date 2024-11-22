@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local tl = require("tl")
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local tl = require("tl")
 
 local Document = require("teal_language_server.document")
 
@@ -95,11 +95,17 @@ function lsp_formatter.show_type(node_info, type_info, doc)
    elseif type_info.t == tl.typecodes.ENUM then
       table.insert(sb.strings, "enum " .. type_info.str)
       for _, _enum in ipairs(type_info.enums) do
-         table.insert(sb.strings, '  "' .. _enum .. '"')
+         table.insert(sb.strings, '   "' .. _enum .. '"')
       end
       table.insert(sb.strings, "end")
 
    elseif type_info.t == tl.typecodes.RECORD then
+      table.insert(sb.strings, "record " .. type_info.str)
+      for key, type_ref in pairs(type_info.fields) do
+         local type_ref_info = doc:resolve_type_ref(type_ref)
+         table.insert(sb.strings, '   ' .. key .. ': ' .. type_ref_info.str)
+      end
+      table.insert(sb.strings, "end")
 
    else
       table.insert(sb.strings, node_info.source .. ": " .. type_info.str)
@@ -108,96 +114,5 @@ function lsp_formatter.show_type(node_info, type_info, doc)
    output.value = table.concat(sb.strings, "\n")
    return output
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 return lsp_formatter

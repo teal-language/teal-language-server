@@ -51,7 +51,7 @@ end
 
 function lsp_formatter.create_function_string(type_string: string, arg_names: {string}, tk?: string): string
     local _, _, types, args, returns = type_string:find("^function(.-)(%b())(.-)$") as (integer, integer, string, string, string)
-    local output = {}
+    local output: {string} = {}
     if tk then output[1] = tk else output[1] = "function" end
     output[2] = types
     output[3] = "("
@@ -95,11 +95,17 @@ function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.Typ
    elseif type_info.t == tl.typecodes.ENUM then
       sb:add("enum " .. type_info.str)
       for _, _enum in ipairs(type_info.enums) do
-         sb:add('  "' .. _enum .. '"')
+         sb:add('   "' .. _enum .. '"')
       end
       sb:add("end")
 
    elseif type_info.t == tl.typecodes.RECORD then
+      sb:add("record " .. type_info.str)
+      for key, type_ref in pairs(type_info.fields) do
+         local type_ref_info = doc:resolve_type_ref(type_ref)
+         sb:add('   ' .. key .. ': ' .. type_ref_info.str)
+      end
+      sb:add("end")
 
    else
       sb:add(node_info.source .. ": " .. type_info.str)

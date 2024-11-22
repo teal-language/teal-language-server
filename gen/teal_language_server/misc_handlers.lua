@@ -191,18 +191,6 @@ function MiscHandlers:_on_completion(params, id)
 
    elseif node_info.type == "identifier" then
 
-
-
-
-
-
-
-
-
-
-
-
-
       if node_info.parent_type == "index" or
          node_info.parent_type == "method_index" or
          node_info.parent_type == "function_name" then
@@ -218,7 +206,9 @@ function MiscHandlers:_on_completion(params, id)
 
 
 
-      if node_info.parent_type == "var" or node_info.parent_type == "simple_type" or node_info.parent_type == "table_type" then
+      if node_info.parent_type == "var" or
+         node_info.parent_type == "simple_type" or
+         node_info.parent_type == "table_type" then
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
@@ -301,6 +291,7 @@ function MiscHandlers:_on_completion(params, id)
    })
 end
 
+function MiscHandlers:_on_signature_help(params, id)
 
 
 
@@ -322,43 +313,59 @@ end
 
 
 
+   local pos = params.position
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
 
+   local output = {}
+   tracing.warning(_module_name, "Got nodeinfo: {}", node_info)
 
+   local tks
 
+   if node_info.type == "(" then
+      tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
+      tracing.warning(_module_name, "Received request for signature help at character: {}", { tks })
+   else
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
 
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
+   if type_info == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
 
+   output.signatures = {}
+   if type_info.t == tl.typecodes.POLY then
+      for _, type_ref in ipairs(type_info.types) do
+         type_info = doc:resolve_type_ref(type_ref)
+         local args = doc:get_function_args_string(type_info)
+         if args ~= nil then
+            local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
+            table.insert(output.signatures, { label = func_str })
+         else
+            table.insert(output.signatures, { label = type_info.str })
+         end
+      end
+   else
+      local args = doc:get_function_args_string(type_info)
+      if args ~= nil then
+         local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
+         table.insert(output.signatures, { label = func_str })
+      else
+         table.insert(output.signatures, { label = type_info.str })
+      end
+   end
 
+   tracing.warning(_module_name, "[_on_signature_help] Found type info: {}", { type_info })
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+   self._lsp_reader_writer:send_rpc(id, output)
+end
 
 
 
@@ -489,7 +496,7 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/didSave", self._on_did_save)
    self:_add_handler("textDocument/didChange", self._on_did_change)
    self:_add_handler("textDocument/completion", self._on_completion)
-
+   self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
    self:_add_handler("textDocument/hover", self._on_hover)
 
 

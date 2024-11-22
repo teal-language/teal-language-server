@@ -190,19 +190,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
    elseif node_info.type == "identifier" then
-      -- there may be other situations for completions...
-      -- also, maybe a better way to handle these cases
-
-      --[[
-      if node_info.parent_type == "ERROR" or
-         node_info.parent_type == "arguments" or
-         node_info.parent_type == "bin_op" then
-         tks = split_by_symbols(node_info.source, node_info.self_type)
-      else
-         tks = split_by_symbols(node_info.parent_source, node_info.self_type)
-      end]]
-
-      -- the types that we would need to index to get type info from
+      -- the types that we would need to index into to get type info from
       if node_info.parent_type == "index" or
          node_info.parent_type == "method_index" or
          node_info.parent_type == "function_name" then
@@ -218,7 +206,9 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
       -- trying to define something new, probably don't want the in-scope thing to popup
       -- we could probably help complete simple types
-      if node_info.parent_type == "var" or node_info.parent_type == "simple_type" or node_info.parent_type == "table_type" then
+      if node_info.parent_type == "var" or 
+         node_info.parent_type == "simple_type" or 
+         node_info.parent_type == "table_type" then
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
@@ -301,33 +291,28 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    })
 end
 
-
-
---[[
 function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):nil
-   local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
-   local output: lsp_formatter.SignatureHelp = {}
-
-   if not doc then
-      tracing.warning(_module_name, "No doc found for completion request", {})
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
-   end
-
    local pos = params.position as lsp.Position
-   pos.character = pos.character - 2
-
-   tracing.warning(_module_name, "Received request for completion at position: {}", {pos})
-
-   local tks, ends_with_colon <const> = doc:token_at(pos)
-   if #tks == 0 then
-      tracing.warning(_module_name, "Could not find token at given position", {})
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks)
+   local output: lsp_formatter.SignatureHelp = {}
+   tracing.warning(_module_name, "Got nodeinfo: {}", node_info)
+
+   local tks: {string}
+
+   if node_info.type == "(" then
+      tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
+      tracing.warning(_module_name, "Received request for signature help at character: {}", {tks})
+   else
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if type_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -340,8 +325,9 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
          type_info = doc:resolve_type_ref(type_ref)
          local args = doc:get_function_args_string(type_info)
          if args ~= nil then
-            local func_str = lsp_formatter.create_function_string(type_info.str, args, tks[#tks].tk)
+            local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
             table.insert(output.signatures, {label = func_str})
+
          else
             table.insert(output.signatures, {label = type_info.str})
          end
@@ -349,7 +335,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    else
       local args = doc:get_function_args_string(type_info)
       if args ~= nil then
-         local func_str = lsp_formatter.create_function_string(type_info.str, args, tks[#tks].tk)
+         local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
          table.insert(output.signatures, {label = func_str})
       else
          table.insert(output.signatures, {label = type_info.str})
@@ -361,6 +347,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
+--[[
 function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    local td <const> = params.textDocument as lsp.TextDocument
    local doc <const> = self._document_manager:get(Uri.parse(td.uri))
@@ -489,7 +476,7 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/didSave", self._on_did_save)
    self:_add_handler("textDocument/didChange", self._on_did_change)
    self:_add_handler("textDocument/completion", self._on_completion)
-   -- self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
+   self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
    self:_add_handler("textDocument/hover", self._on_hover)
 
    -- planning to figure out what defintion/declaration vs type definition/declaration should go to

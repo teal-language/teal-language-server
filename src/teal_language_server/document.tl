@@ -487,6 +487,7 @@ function Document:_parser_token(y: integer, x: integer): Document.NodeInfo
          parent_source = parent_node:source()
       }
 
+      -- for completion
       if node:type() == "." or node:type() == ":" then
          -- considered an error and need to get the previous symbol
          local prev = node:prev_sibling()
@@ -499,6 +500,24 @@ function Document:_parser_token(y: integer, x: integer): Document.NodeInfo
                out.preceded_by = parent_node:child(parent_node:child_count()-1):source()
             else
                out.preceded_by = parent_node:source()
+            end
+         end
+
+      -- for function signature
+      elseif node:type() == "(" then
+         if parent_node:type() == "arguments" then
+            self._tree_cursor:goto_parent()
+            local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
+            if function_call then
+               out.preceded_by = function_call:source()
+            end
+
+         elseif parent_node:type() == "ERROR" then
+            for child in parent_node:children() do
+               if child:name() == "index" then
+                  out.preceded_by = child:source()
+                  break
+               end
             end
          end
       end
@@ -537,11 +556,6 @@ function Document:_parser_token(y: integer, x: integer): Document.NodeInfo
    while moved do
       start_point = node:start_point()
       end_point = node:end_point()
-
-      -- print(node:type())
-      -- print("start", start_point.column, start_point.row)
-      -- print("end", end_point.column, end_point.row)
-      -- print()
 
       if y == start_point.row and y == end_point.row then
          if x >= start_point.column and x <= end_point.column then
