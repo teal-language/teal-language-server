@@ -292,27 +292,6 @@ function MiscHandlers:_on_completion(params, id)
 end
 
 function MiscHandlers:_on_signature_help(params, id)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
    local pos = params.position
    local node_info, doc = self:_get_node_info(params, pos)
    if node_info == nil then
@@ -348,6 +327,7 @@ function MiscHandlers:_on_signature_help(params, id)
          if args ~= nil then
             local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
             table.insert(output.signatures, { label = func_str })
+
          else
             table.insert(output.signatures, { label = type_info.str })
          end
@@ -367,58 +347,66 @@ function MiscHandlers:_on_signature_help(params, id)
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
+function MiscHandlers:_on_definition(params, id)
+   local pos = params.position
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
 
+   tracing.trace(_module_name, "Received request for hover at position: {}", { pos })
 
+   local tks = {}
+   if node_info.type == "identifier" then
 
+      if node_info.parent_type == "index" or
+         node_info.parent_type == "method_index" or
+         node_info.parent_type == "function_name" then
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
+      end
+   else
+      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
 
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
+   if not type_info or type_info.file == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
 
+   tracing.trace(_module_name, "[on_definition] Found type type_info: {}", { type_info })
 
+   local file_uri
 
+   if #type_info.file == 0 then
+      file_uri = doc.uri
+   else
+      local full_path
 
+      if Path(type_info.file):is_absolute() then
+         full_path = type_info.file
+      else
+         full_path = self._server_state.teal_project_root_dir.value .. "/" .. type_info.file
+      end
 
+      local file_path = Path(full_path)
+      file_uri = Uri.uri_from_path(file_path.value)
+   end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+   self._lsp_reader_writer:send_rpc(id, {
+      uri = Uri.tostring(file_uri),
+      range = {
+         start = lsp.position(type_info.y - 1, type_info.x - 1),
+         ["end"] = lsp.position(type_info.y - 1, type_info.x - 1),
+      },
+   })
+end
 
 function MiscHandlers:_on_hover(params, id)
    local pos = params.position
@@ -500,7 +488,7 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/hover", self._on_hover)
 
 
-
+   self:_add_handler("textDocument/definition", self._on_definition)
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {})

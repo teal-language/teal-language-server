@@ -19,6 +19,12 @@ local class <const> = require("teal_language_server.class")
 local tl <const> = require("tl")
 local lsp_formatter <const> = require("teal_language_server.lsp_formatter")
 
+local indexable_parent_types <const>: {string:boolean} = {
+   ["index"] = true,
+   ["method_index"] = true,
+   ["function_name"] = true
+}
+
 local record MiscHandlers
    _env_updater: EnvUpdater
    _trace_stream: TraceStream
@@ -191,9 +197,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
    elseif node_info.type == "identifier" then
       -- the types that we would need to index into to get type info from
-      if node_info.parent_type == "index" or
-         node_info.parent_type == "method_index" or
-         node_info.parent_type == "function_name" then
+      if indexable_parent_types[node_info.parent_type] then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type)
       else
          tks = split_by_symbols(node_info.source, node_info.self_type)
@@ -347,44 +351,50 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
---[[
 function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
-   local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
-
-   if not doc then
-      tracing.trace(_module_name, "[on_definition] No document found for given uri", {})
-      return
-   end
-
    local pos <const> = params.position as lsp.Position
-   local tks <const> = doc:token_at(pos)
-   if #tks == 0 then
-      tracing.trace(_module_name, "[on_definition] No token found at given position", {})
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local info <const> = doc:type_information_for_tokens(tks)
+   tracing.trace(_module_name, "Received request for hover at position: {}", {pos})
 
-   if not info or info.file == nil then
+   local tks: {string} = {}
+   if node_info.type == "identifier" then
+      -- parent types that show up with multiparts
+      if indexable_parent_types[node_info.parent_type] then
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
+      end
+   else
+      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   tracing.trace(_module_name, "[on_definition] Found type info: {}", {info})
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+
+   if not type_info or type_info.file == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   tracing.trace(_module_name, "[on_definition] Found type type_info: {}", {type_info})
 
    local file_uri: Uri
 
-   if #info.file == 0 then
+   if #type_info.file == 0 then
       file_uri = doc.uri
    else
       local full_path: string
 
-      if Path(info.file):is_absolute() then
-         full_path = info.file
+      if Path(type_info.file):is_absolute() then
+         full_path = type_info.file
       else
-         full_path = self._server_state.teal_project_root_dir.value .. "/" .. info.file
+         full_path = self._server_state.teal_project_root_dir.value .. "/" .. type_info.file
       end
 
       local file_path = Path(full_path)
@@ -394,12 +404,12 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    self._lsp_reader_writer:send_rpc(id, {
       uri = Uri.tostring(file_uri),
       range = {
-         start = lsp.position(info.y - 1, info.x - 1),
-         ["end"] = lsp.position(info.y - 1, info.x - 1),
+         start = lsp.position(type_info.y - 1, type_info.x - 1),
+         ["end"] = lsp.position(type_info.y - 1, type_info.x - 1),
       },
    })
 end
-]]
+
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
    local pos <const> = params.position as lsp.Position
    local node_info, doc = self:_get_node_info(params, pos)
@@ -419,9 +429,7 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
    local tks: {string} = {}
    if node_info.type == "identifier" then
       -- parent types that show up with multiparts
-      if node_info.parent_type == "index" or
-         node_info.parent_type == "method_index" or
-         node_info.parent_type == "function_name" then
+      if indexable_parent_types[node_info.parent_type] then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
       else
          tks = split_by_symbols(node_info.source, node_info.self_type)
@@ -480,7 +488,7 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/hover", self._on_hover)
 
    -- planning to figure out what defintion/declaration vs type definition/declaration should go to
-   -- self:_add_handler("textDocument/definition", self._on_definition)
+   self:_add_handler("textDocument/definition", self._on_definition)
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {

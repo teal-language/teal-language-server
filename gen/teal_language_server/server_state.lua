@@ -39,7 +39,7 @@ local capabilities = {
       },
    },
    hoverProvider = true,
-   definitionProvider = false,
+   definitionProvider = true,
    completionProvider = {
       triggerCharacters = { ".", ":" },
    },
