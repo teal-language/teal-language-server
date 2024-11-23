@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
 
 local ServerState = require("teal_language_server.server_state")
 local Uri = require("teal_language_server.uri")
@@ -111,29 +111,6 @@ local function filter(t, pred)
    return pass, fail
 end
 
-local function binary_search(list, item, cmp)
-   local len = #list
-   local mid
-   local s, e = 1, len
-   while s <= e do
-      mid = math.floor((s + e) / 2)
-      local val = list[mid]
-      local res = cmp(val, item)
-      if res then
-         if mid == len then
-            return mid, val
-         else
-            if not cmp(list[mid + 1], item) then
-               return mid, val
-            end
-         end
-         s = mid + 1
-      else
-         e = mid - 1
-      end
-   end
-end
-
 local function is_lua(fname)
    return fname:sub(-4) == ".lua"
 end
@@ -230,50 +207,6 @@ function Document:update_text(text, version)
 
    self._tree = teal_parser:parse_string(self._content)
    self._tree_cursor = self._tree:root():create_cursor()
-end
-
-
-
-
-local function get_token_at(tks, y, x)
-   local output = {}
-   local separators = {}
-   local i, found = binary_search(
-   tks, nil,
-   function(tk)
-      return tk.y < y or (tk.y == y and tk.x <= x)
-   end)
-
-
-
-
-
-   if tks[i + 1] and tks[i + 1].kind == ":" then separators[1] = ":" end
-
-   if found then
-
-      while found.kind == "identifier" or found.kind == "." or found.kind == ":" do
-         if found.kind == "identifier" then
-            table.insert(output, 1, found)
-         else
-            table.insert(separators, 1, found.kind)
-         end
-         i = i - 1
-         found = tks[i]
-      end
-
-
-
-
-      if #separators > 1 and separators[1] == ":" and
-         found.kind == "keyword" and found.tk == "local" or found.tk == "global" then
-         table.remove(output, 1)
-         table.remove(separators, 1)
-      end
-
-   end
-
-   return output, separators[#separators] == ":"
 end
 
 local get_raw_token_at = tl.get_token_at
@@ -462,14 +395,6 @@ function Document:type_information_for_tokens(tokens, y, x)
 
    tracing.warning(_module_name, "Failed to find type info at given position", {})
    return nil
-end
-
-function Document:token_at(where)
-   return get_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
-end
-
-function Document:raw_token_at(where)
-   return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 function Document:_parser_token(y, x)

@@ -19,6 +19,12 @@ local class = require("teal_language_server.class")
 local tl = require("tl")
 local lsp_formatter = require("teal_language_server.lsp_formatter")
 
+local indexable_parent_types = {
+   ["index"] = true,
+   ["method_index"] = true,
+   ["function_name"] = true,
+}
+
 local MiscHandlers = {}
 
 
@@ -191,9 +197,7 @@ function MiscHandlers:_on_completion(params, id)
 
    elseif node_info.type == "identifier" then
 
-      if node_info.parent_type == "index" or
-         node_info.parent_type == "method_index" or
-         node_info.parent_type == "function_name" then
+      if indexable_parent_types[node_info.parent_type] then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type)
       else
          tks = split_by_symbols(node_info.source, node_info.self_type)
@@ -360,9 +364,7 @@ function MiscHandlers:_on_definition(params, id)
    local tks = {}
    if node_info.type == "identifier" then
 
-      if node_info.parent_type == "index" or
-         node_info.parent_type == "method_index" or
-         node_info.parent_type == "function_name" then
+      if indexable_parent_types[node_info.parent_type] then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
       else
          tks = split_by_symbols(node_info.source, node_info.self_type)
@@ -427,9 +429,7 @@ function MiscHandlers:_on_hover(params, id)
    local tks = {}
    if node_info.type == "identifier" then
 
-      if node_info.parent_type == "index" or
-         node_info.parent_type == "method_index" or
-         node_info.parent_type == "function_name" then
+      if indexable_parent_types[node_info.parent_type] then
          tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
       else
          tks = split_by_symbols(node_info.source, node_info.self_type)

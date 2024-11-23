@@ -111,29 +111,6 @@ local function filter<Value>(t: {Value}, pred: function(Value): boolean): {Value
    return pass, fail
 end
 
-local function binary_search<T, U>(list: {T}, item: U, cmp: function(T, U): boolean): integer, T
-   local len <const> = #list
-   local mid: integer
-   local s, e = 1, len
-   while s <= e do
-      mid = math.floor((s + e) / 2)
-      local val <const> = list[mid]
-      local res <const> = cmp(val, item)
-      if res then
-         if mid == len then
-            return mid, val
-         else
-            if not cmp(list[mid + 1], item) then
-               return mid, val
-            end
-         end
-         s = mid + 1
-      else
-         e = mid - 1
-      end
-   end
-end
-
 local function is_lua(fname: string): boolean
    return fname:sub(-4) == ".lua"
 end
@@ -230,50 +207,6 @@ function Document:update_text(text: string, version: integer)
    -- update tree and tree cursor as well
    self._tree = teal_parser:parse_string(self._content)
    self._tree_cursor = self._tree:root():create_cursor()
-end
-
--- This is slightly modified version of tl.get_token_at
--- that returns the full token (not just the token string)
--- and backtracks to a non-identifier
-local function get_token_at(tks: {Token}, y: integer, x: integer): {Token}, boolean
-   local output: {Token} = {}
-   local separators: {string} = {}
-   local i, found = binary_search(
-      tks, nil,
-      function(tk: Token): boolean
-         return tk.y < y or (tk.y == y and tk.x <= x)
-      end
-   )
-
-   -- so we can properly handle completion with . vs :
-   -- Could not remove the pos.character = pos.character - 2 in misc_handler.tl: _on_completion
-   -- so just do a lookahead to see if it starts with a colon
-   if tks[i+1] and tks[i+1].kind == ":" then separators[1] = ":" end
-
-   if found then
-      -- would have to look into how this works for table access via brackets
-      while found.kind == "identifier" or found.kind == "." or found.kind == ":" do
-         if found.kind == "identifier" then
-            table.insert(output, 1, found)
-         else
-            table.insert(separators, 1, found.kind)
-         end
-         i = i - 1
-         found = tks[i]
-      end
-
-      -- "local thing: lsp.fruit" (remove thing and : from the lists, otherwise we get thing:lsp.fruit, which is not correct)
-      -- but we want to keep "local thing" if that's what is hovered on
-      -- if the token is local or global, remove the _next_ token in the list.
-      if #separators > 1 and separators[1] == ":" and
-         found.kind == "keyword" and found.tk == "local" or found.tk == "global" then
-         table.remove(output, 1)
-         table.remove(separators, 1)
-      end
-
-   end
-
-   return output, separators[#separators] == ":"
 end
 
 local get_raw_token_at <const> = tl.get_token_at as function({Token}, number, number): string
@@ -462,14 +395,6 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
 
    tracing.warning(_module_name, "Failed to find type info at given position", {})
    return nil
-end
-
-function Document:token_at(where: lsp.Position): {Token}, boolean
-   return get_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
-end
-
-function Document:raw_token_at(where: lsp.Position): string
-   return get_raw_token_at(self:_get_tokens(), where.line + 1, where.character + 1)
 end
 
 function Document:_parser_token(y: integer, x: integer): Document.NodeInfo
