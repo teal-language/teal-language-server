@@ -50,21 +50,21 @@ local function _split_not_in_parenthesis(str: string, start: integer, finish: in
 end
 
 function lsp_formatter.create_function_string(type_string: string, arg_names: {string}, tk?: string): string
-    local _, _, types, args, returns = type_string:find("^function(.-)(%b())(.-)$") as (integer, integer, string, string, string)
-    local output: {string} = {}
-    if tk then output[1] = tk else output[1] = "function" end
-    output[2] = types
-    output[3] = "("
+   local _, _, types, args, returns = type_string:find("^function(.-)(%b())(.-)$") as (integer, integer, string, string, string)
+   local output: {string} = {}
+   if tk then output[1] = tk else output[1] = "function" end
+   output[2] = types
+   output[3] = "("
 
-    for i, argument in ipairs(_split_not_in_parenthesis(args, 2, #args-2)) do
-        output[#output+1] = arg_names[i]
-        output[#output+1] = ": "
-        output[#output+1] = argument
-        output[#output+1] = " "
-    end
-    output[#output] = ")"
-    output[#output+1] = returns
-    return table.concat(output)
+   for i, argument in ipairs(_split_not_in_parenthesis(args, 2, #args-2)) do
+      output[#output+1] = arg_names[i]
+      output[#output+1] = ": "
+      output[#output+1] = argument
+      output[#output+1] = " "
+   end
+   output[#output] = ")"
+   output[#output+1] = returns
+   return table.concat(output)
 end
 
 local record StringBuilder
@@ -90,6 +90,23 @@ function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.Typ
          sb:add("function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
       else
          sb:add(node_info.source .. ": " .. type_info.str)
+      end
+
+   elseif type_info.t == tl.typecodes.POLY then
+      for i, type_ref in ipairs(type_info.types) do
+         local func_info = doc:resolve_type_ref(type_ref)
+         local args = doc:get_function_args_string(func_info)
+         if args ~= nil then
+            sb:add("function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
+         else
+            local replaced_function = func_info.str:gsub("^function", node_info.source)
+            sb:add(replaced_function)
+         end
+         if i < #type_info.types then
+            sb:add("```")
+            sb:add("or")
+            sb:add("```teal")
+         end
       end
 
    elseif type_info.t == tl.typecodes.ENUM then

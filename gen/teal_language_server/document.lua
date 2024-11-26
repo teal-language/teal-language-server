@@ -448,7 +448,9 @@ function Document:_parser_token(y, x)
       end
 
       if out.preceded_by == "self" or
-         out.source:find("self[%.%:]") or out.parent_source:find("self[%.%:]") then
+         out.source:find("self[%.%:]") or
+         out.parent_source:find("self[%.%:]") then
+
          while parent_node:type() ~= "program" do
             self._tree_cursor:goto_parent()
             parent_node = self._tree_cursor:current_node()
@@ -469,6 +471,7 @@ function Document:_parser_token(y, x)
                end
             end
          end
+
       end
 
       return out

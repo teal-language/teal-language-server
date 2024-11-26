@@ -92,6 +92,23 @@ function lsp_formatter.show_type(node_info, type_info, doc)
          table.insert(sb.strings, node_info.source .. ": " .. type_info.str)
       end
 
+   elseif type_info.t == tl.typecodes.POLY then
+      for i, type_ref in ipairs(type_info.types) do
+         local func_info = doc:resolve_type_ref(type_ref)
+         local args = doc:get_function_args_string(func_info)
+         if args ~= nil then
+            table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
+         else
+            local replaced_function = func_info.str:gsub("^function", node_info.source)
+            table.insert(sb.strings, replaced_function)
+         end
+         if i < #type_info.types then
+            table.insert(sb.strings, "```")
+            table.insert(sb.strings, "or")
+            table.insert(sb.strings, "```teal")
+         end
+      end
+
    elseif type_info.t == tl.typecodes.ENUM then
       table.insert(sb.strings, "enum " .. type_info.str)
       for _, _enum in ipairs(type_info.enums) do
