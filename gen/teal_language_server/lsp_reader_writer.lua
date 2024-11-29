@@ -2,7 +2,7 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 local StdinReader = require("teal_language_server.stdin_reader")
 local lsp = require("teal_language_server.lsp")
-local json = require("dkjson")
+local json = require("cjson")
 local uv = require("luv")
 local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")

@@ -2,7 +2,7 @@ local _module_name = "lsp_reader_writer"
 
 local StdinReader <const> = require("teal_language_server.stdin_reader")
 local lsp <const> = require("teal_language_server.lsp")
-local json <const> = require("dkjson")
+local json <const> = require("cjson")
 local uv <const> = require("luv")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")

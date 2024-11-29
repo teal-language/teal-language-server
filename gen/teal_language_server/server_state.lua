@@ -40,9 +40,11 @@ local capabilities = {
    },
    hoverProvider = true,
    definitionProvider = true,
-
    completionProvider = {
       triggerCharacters = { ".", ":" },
+   },
+   signatureHelpProvider = {
+      triggerCharacters = { "(" },
    },
 }
 
@@ -200,7 +202,9 @@ end
 
 function ServerState:_load_config(root_dir)
    local config_path = root_dir:join("tlconfig.lua")
-   asserts.that(config_path:exists())
+   if config_path:exists() == false then
+      return {}
+   end
 
    local success, result = pcall(dofile, config_path.value)
 
