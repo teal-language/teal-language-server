@@ -29,6 +29,9 @@ jobs:
       - name: Lint
         run: scripts/lint_teal.sh
 
+      - name: Test
+        run: luarocks test
+
       - name: Check for untracked or modified files
         run: |
           if [ -n "$(git status --porcelain)" ]; then
