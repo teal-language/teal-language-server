@@ -1,16 +1,20 @@
 rockspec_format = "3.0"
+
 package = "teal-language-server"
 version = "0.0.5-1"
+
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
    branch = "main"
 }
+
 description = {
    summary = "A language server for the Teal language",
    detailed = "A language server for the Teal language",
    homepage = "https://github.com/teal-language/teal-language-server",
    license = "MIT"
 }
+
 dependencies = {
    "luafilesystem",
    "tl",
@@ -19,7 +23,18 @@ dependencies = {
    "inspect",
    "luv",
    "lusc_luv >= 4.0",
+   "ltreesitter",
+   "tree-sitter-cli",
+   "tree-sitter-teal",
 }
+
+test_dependencies = { "busted~>2" }
+
+test = {
+   type = "busted",
+   flags = {"-m", "gen/?.lua"},
+}
+
 build = {
    type = "builtin",
    modules = {
