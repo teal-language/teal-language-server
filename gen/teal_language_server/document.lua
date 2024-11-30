@@ -9,7 +9,7 @@ local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
 
 local ltreesitter = require("ltreesitter")
-local teal_parser = ltreesitter.load("./teal.so", "teal")
+local teal_parser = ltreesitter.require("parser/teal", "teal")
 
 local tl = require("tl")
 
@@ -397,7 +397,7 @@ function Document:type_information_for_tokens(tokens, y, x)
    return nil
 end
 
-function Document:_parser_token(y, x)
+function Document:_tree_sitter_token(y, x)
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
 
@@ -487,11 +487,11 @@ function Document:_parser_token(y, x)
 
       if y == start_point.row and y == end_point.row then
          if x >= start_point.column and x <= end_point.column then
-            return self:_parser_token(y, x)
+            return self:_tree_sitter_token(y, x)
          end
 
       elseif y >= start_point.row and y <= end_point.row then
-         return self:_parser_token(y, x)
+         return self:_tree_sitter_token(y, x)
       end
 
       moved = self._tree_cursor:goto_next_sibling()
@@ -499,9 +499,9 @@ function Document:_parser_token(y, x)
    end
 end
 
-function Document:parser_token(y, x)
+function Document:tree_sitter_token(y, x)
    self._tree_cursor:reset(self._tree:root())
-   return self:_parser_token(y, x)
+   return self:_tree_sitter_token(y, x)
 end
 
 class.setup(Document, "Document", {

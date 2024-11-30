@@ -167,7 +167,7 @@ function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position
    end
 
    tracing.warning(_module_name, "Received request for completion at position: {}", {pos})
-   local node_info = doc:parser_token(pos.line, pos.character)
+   local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
       return nil
