@@ -4,10 +4,13 @@ set -e
 # Navigate to the root of the repo
 cd "$(dirname "$0")/.."
 
-luarocks init --tree=./luarocks_tree
-
 # Set the local LuaRocks path
 LUAROCKS_TREE="$(pwd)/luarocks_tree"
+
+# setup local LuaRocks
+luarocks init --tree="$LUAROCKS_TREE"
+PATH="$LUAROCKS_TREE/bin":"$PATH"
+export PATH
 
 # Install project dependencies from the rockspec
 echo "Installing project dependencies..."
