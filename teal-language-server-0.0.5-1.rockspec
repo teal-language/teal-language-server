@@ -23,8 +23,8 @@ dependencies = {
    "inspect",
    "luv",
    "lusc_luv >= 4.0",
-   "ltreesitter",
-   "tree-sitter-cli",
+   "ltreesitter-ts==0.0.1",
+   "tree-sitter-cli==0.24.4",
    "tree-sitter-teal",
 }
 
@@ -47,6 +47,7 @@ build = {
       ["teal_language_server.env_updater"] = "gen/teal_language_server/env_updater.lua",
       ["teal_language_server.lsp"] = "gen/teal_language_server/lsp.lua",
       ["teal_language_server.lsp_events_manager"] = "gen/teal_language_server/lsp_events_manager.lua",
+      ["teal_language_server.lsp_formatter"] = "gen/teal_language_server/lsp_formatter.lua",
       ["teal_language_server.lsp_reader_writer"] = "gen/teal_language_server/lsp_reader_writer.lua",
       ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
       ["teal_language_server.misc_handlers"] = "gen/teal_language_server/misc_handlers.lua",
