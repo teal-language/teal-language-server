@@ -24,9 +24,6 @@ dependencies = {
    "luv",
    "lusc_luv >= 4.0",
    "ltreesitter-ts==0.0.1",
-   -- install script works locally for me and installs via LuaRocks via hererocks without this line.
-   -- trying to work with the CI/CD pipeline, hopefully this is all that's needed
-   "luarocks-build-tree-sitter-cli==0.0.2", 
    "tree-sitter-cli==0.24.4",
    "tree-sitter-teal",
 }
