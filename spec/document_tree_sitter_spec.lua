@@ -65,7 +65,7 @@ dir.
       assert.same(node_info.parent_type, "ERROR")
       assert.same(node_info.preceded_by, "dir")
    end)
-   
+
    it("should recognize when at a :", function()
       local content = [[
 local t = "fruit"
@@ -85,12 +85,12 @@ t:
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(0, 14)
+      local node_info = doc:tree_sitter_token(0, 13)
       assert.same(node_info.type, ".")
       assert.same(node_info.parent_type, "ERROR")
       assert.same(node_info.preceded_by, "t")
 
-      local node_info = doc:tree_sitter_token(0, 7)
+      local node_info = doc:tree_sitter_token(0, 6)
       assert.same(node_info.type, ".")
       assert.same(node_info.parent_type, "index")
       assert.same(node_info.preceded_by, "string")
@@ -154,7 +154,7 @@ end
       assert.same(node_info.parent_type, "function_name")
       assert.same(node_info.source, "move")
 
-      local node_info = doc:tree_sitter_token(0, 34)
+      local node_info = doc:tree_sitter_token(0, 33)
       assert.same(node_info.parent_type, "arg")
       assert.same(node_info.source, "dy")
 
@@ -174,7 +174,7 @@ end
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(2, 10)
+      local node_info = doc:tree_sitter_token(2, 9)
       assert.same(node_info.type, "identifier")
       assert.same(node_info.source, "_something")
       assert.same(node_info.parent_type, "function_name")
@@ -188,7 +188,7 @@ end
       assert.same(node_info.parent_source, "self._something:fruit")
       assert.same(node_info.self_type, "Document")
 
-      local node_info = doc:tree_sitter_token(2, 16)
+      local node_info = doc:tree_sitter_token(2, 15)
       assert.same(node_info.type, ":")
       assert.same(node_info.source, ":")
       assert.same(node_info.parent_type, "function_name")
@@ -207,14 +207,14 @@ end
       assert.same(node_info.source, "orange")
       assert.same(node_info.parent_type, "index")
       assert.same(node_info.parent_source, "lsp.orange")
-        
+
       local node_info = doc:tree_sitter_token(0, 13)
       assert.same(node_info.type, "identifier")
       assert.same(node_info.source, "depot")
       assert.same(node_info.parent_type, "index")
       assert.same(node_info.parent_source, "lsp.orange.depot")
-        
-      local node_info = doc:tree_sitter_token(0, 17)
+
+      local node_info = doc:tree_sitter_token(0, 16)
       assert.same(node_info.type, ".")
       assert.same(node_info.source, ".")
       assert.same(node_info.parent_type, "index")
@@ -228,7 +228,7 @@ end
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(0, 22)
+      local node_info = doc:tree_sitter_token(0, 21)
       assert.same(node_info.type, ":")
       assert.same(node_info.source, ":")
       assert.same(node_info.parent_type, "ERROR")
@@ -264,7 +264,7 @@ end
 
    end)
 
-   
+
    it("should work with more real use cases", function()
       local content = [[
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
@@ -289,20 +289,20 @@ end]]
       assert.same(node_info.source, "params")
       assert.same(node_info.parent_type, "arg")
       assert.same(node_info.parent_source, "params:lsp.Method.Params")
-        
+
       local node_info = doc:tree_sitter_token(1, 35)
       assert.same(node_info.type, "identifier")
       assert.same(node_info.source, "position")
       assert.same(node_info.parent_type, "index")
       assert.same(node_info.parent_source, "params.position")
-        
+
       local node_info = doc:tree_sitter_token(2, 35)
       assert.same(node_info.type, "identifier")
       assert.same(node_info.source, "_get_node_info")
       assert.same(node_info.parent_type, "method_index")
       assert.same(node_info.parent_source, "self:_get_node_info")
       assert.same(node_info.self_type, "MiscHandlers")
-        
+
       local node_info = doc:tree_sitter_token(8, 52)
       assert.same(node_info.type, "identifier")
       assert.same(node_info.source, "character")
@@ -316,7 +316,7 @@ end]]
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(0, 16)
+      local node_info = doc:tree_sitter_token(0, 15)
       assert.same(node_info.type, "(")
       assert.same(node_info.source, "(")
       assert.same(node_info.parent_type, "arguments")
