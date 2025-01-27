@@ -58,6 +58,7 @@ build = {
       ["teal_language_server.trace_entry"] = "gen/teal_language_server/trace_entry.lua",
       ["teal_language_server.trace_stream"] = "gen/teal_language_server/trace_stream.lua",
       ["teal_language_server.tracing"] = "gen/teal_language_server/tracing.lua",
+      ["teal_language_server.tracing_util"] = "gen/teal_language_server/tracing_util.lua",
       ["teal_language_server.uri"] = "gen/teal_language_server/uri.lua",
       ["teal_language_server.util"] = "gen/teal_language_server/util.lua",
    },
