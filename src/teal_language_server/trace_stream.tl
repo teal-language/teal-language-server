@@ -6,7 +6,6 @@ local TraceEntry <const> = require("teal_language_server.trace_entry")
 local json <const> = require("cjson")
 local uv <const> = require("luv")
 local class <const> = require("teal_language_server.class")
-local inspect <const> = require("inspect")
 
 local record TraceStream
    _file_stream:FILE
@@ -150,40 +149,9 @@ function TraceStream:log_entry(entry:TraceEntry):nil
       self:initialize()
    end
 
-   local serializable_fields = {}
-   for key, value in pairs(entry.fields) do
-      asserts.that(type(key) == "string")
-      local value_type = type(value)
-
-      if value_type == "thread" then
-         value = "<thread>"
-      elseif value_type == "function" then
-         value = "<function>"
-      elseif value_type == "userdata" then
-         value = tostring(value)
-      elseif value_type == "table" then
-         value = inspect(value, { newline = ' ' })
-      else
-         -- These are all serializable so value is fine as is
-         asserts.that(value_type == "string" or value_type == "number" or value_type == "nil" or value_type == "boolean")
-      end
-
-      serializable_fields[key] = value
-   end
-
    asserts.is_not_nil(self._file_stream)
-   local old_fields = entry.fields
-   entry.fields = serializable_fields
 
-   util.try {
-      action = function():nil
-         self._file_stream:write(json.encode(entry) .. "\n")
-      end,
-      finally = function():nil
-         entry.fields = old_fields
-      end
-   }
-
+   self._file_stream:write(json.encode(entry) .. "\n")
    self._file_stream:flush()
 end
 

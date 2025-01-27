@@ -23,5 +23,6 @@ luarocks_tree/bin/tl gen src/teal_language_server/teal_project_config.tl -o gen/
 luarocks_tree/bin/tl gen src/teal_language_server/trace_entry.tl -o gen/teal_language_server/trace_entry.lua
 luarocks_tree/bin/tl gen src/teal_language_server/trace_stream.tl -o gen/teal_language_server/trace_stream.lua
 luarocks_tree/bin/tl gen src/teal_language_server/tracing.tl -o gen/teal_language_server/tracing.lua
+luarocks_tree/bin/tl gen src/teal_language_server/tracing_util.tl -o gen/teal_language_server/tracing_util.lua
 luarocks_tree/bin/tl gen src/teal_language_server/uri.tl -o gen/teal_language_server/uri.lua
 luarocks_tree/bin/tl gen src/teal_language_server/util.tl -o gen/teal_language_server/util.lua

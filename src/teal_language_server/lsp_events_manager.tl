@@ -44,7 +44,7 @@ function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Par
       if ok then
          tracing.debug(_module_name, "Successfully handled request with method {}", {method})
       else
-         tracing.error(_module_name, "Error in handler for request with method {method}: {error}", {method, err})
+         tracing.error(_module_name, "Error in handler for request with method {}: {}", {method, err})
       end
    else
       tracing.warning(_module_name, "No handler found for event with method {}", {method})

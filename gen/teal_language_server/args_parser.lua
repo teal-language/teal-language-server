@@ -1,7 +1,7 @@
 
 local asserts = require("teal_language_server.asserts")
 
-local args_parser = {CommandLineArgs = {}, }
+local args_parser = { CommandLineArgs = {} }
 
 
 

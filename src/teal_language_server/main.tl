@@ -65,9 +65,9 @@ local function main()
 
    cached_entries = nil
 
-   tracing.info(_module_name, "Started new instance teal-language-server. Lua Version: {version}. Platform: {platform}", {_VERSION, util.get_platform()})
+   tracing.info(_module_name, "Started new instance teal-language-server. Lua Version: {}. Platform: {}", {_VERSION, util.get_platform()})
    tracing.info(_module_name, "Received command line args: {}", {args})
-   tracing.info(_module_name, "CWD = {cwd}", {uv.cwd()})
+   tracing.info(_module_name, "CWD = {}", {uv.cwd()})
 
    local disposables:{IDisposable}
 
@@ -118,7 +118,7 @@ local function main()
          generate_debug_names = true,
          on_completed = function(err:lusc.ErrorGroup)
             if err ~= nil then
-               tracing.error(_module_name, "Received on_completed request with error:\n{error}", {err})
+               tracing.error(_module_name, "Received on_completed request with error:\n{}", {err})
             else
                tracing.info(_module_name, "Received on_completed request")
             end
@@ -145,7 +145,7 @@ local function main()
       uv.walk(function(handle:uv.Handle)
          if not handle:is_closing() then
             local handle_type = handle:get_type()
-            tracing.warning(_module_name, "Found unclosed handle of type '{handle_type}', closing it.", {handle_type})
+            tracing.warning(_module_name, "Found unclosed handle of type '{}', closing it.", {handle_type})
             handle:close()
          end
       end)
@@ -162,7 +162,7 @@ local function main()
    util.try {
       action = run_luv,
       catch = function(err:string):nil
-         tracing.error(_module_name, "Error: {error}", {err})
+         tracing.error(_module_name, "Error: {}", {err})
          error(err)
       end,
    }

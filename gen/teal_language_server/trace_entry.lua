@@ -1,6 +1,5 @@
 
-local TraceEntry = {Source = {}, }
-
+local TraceEntry = { Source = {} }
 
 
 

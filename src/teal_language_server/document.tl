@@ -13,25 +13,11 @@ local teal_parser = ltreesitter.require("parser/teal", "teal")
 
 local tl <const> = require("tl")
 
--- Token nor tl.Node not exposed :((((
-local record Token
-   x: integer
-   y: integer
-   tk: string
-   kind: string
-end
-
-local interface Node
-   kind: string
-   x: integer
-   y: integer
-end
-
 local record Cache
-   tokens: {Token}
+   tokens: {tl.Token}
    err_tokens: {tl.Error}
 
-   ast: {Node}
+   ast: tl.Node
    parse_errors: {tl.Error}
 
    result: tl.Result
@@ -63,7 +49,7 @@ local record Document
    metamethod __call: function(self: Document, uri: Uri, content: string, version: integer, lsp_reader_writer: LspReaderWriter, server_state: ServerState): Document
 end
 
-local record ArgListNode is Node
+local record ArgListNode is tl.Node
     record ArgType
         typename: string
     end
@@ -115,10 +101,10 @@ local function is_lua(fname: string): boolean
    return fname:sub(-4) == ".lua"
 end
 
-function Document:_get_tokens(): {Token}, {tl.Error}
+function Document:_get_tokens(): {tl.Token}, {tl.Error}
    local cache = self._cache
    if not cache.tokens then
-      cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path) as ({Token}, {tl.Error})
+      cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path)
       if not cache.err_tokens then
          cache.err_tokens = {}
       end
@@ -126,29 +112,30 @@ function Document:_get_tokens(): {Token}, {tl.Error}
    return cache.tokens, cache.err_tokens
 end
 
-local parse_prog = tl.parse_program as function({Token}, {tl.Error}, ?string): {Node}, {string}
-function Document:_get_ast(tokens?: {Token}): {Node}, {tl.Error}
+function Document:_get_ast(tokens?: {tl.Token}): tl.Node, {tl.Error}
    local cache = self._cache
    if not cache.ast then
       local _: any
       cache.parse_errors = {}
-      cache.ast, _ = parse_prog(tokens, cache.parse_errors)
-      tracing.debug(_module_name, "parse_prog errors: " .. #cache.parse_errors)
+      cache.ast, _ = tl.parse_program(tokens, cache.parse_errors, self._uri.path)
+      tracing.debug(_module_name, "parse_prog errors: {}", {#cache.parse_errors})
    end
    return cache.ast, cache.parse_errors
 end
 
-local type_check <const> = tl.type_check as function({Node}, tl.TypeCheckOptions): tl.Result
-
-function Document:_get_result(ast: {Node}): tl.Result
+function Document:_get_result(ast: tl.Node): tl.Result
    local cache = self._cache
    if not cache.result then
-      tracing.info(_module_name, "Type checking document {}", {self._uri.path})
-      cache.result = type_check(ast, {
-         lax = is_lua(self._uri.path),
-         filename = self._uri.path,
-         env = self._server_state:get_env(),
-      })
+      local lax = is_lua(self._uri.path)
+      tracing.info(_module_name, "Type checking document{} {}", {lax and " (lax)" or "", self._uri.path})
+
+      local opts: tl.CheckOptions = {
+         feat_lax = lax and "on" or "off",
+         feat_arity = "on",
+      }
+
+      cache.result = tl.check(
+         ast, self._uri.path, opts, self._server_state:get_env())
    end
    return cache.result
 end
@@ -158,7 +145,7 @@ function Document:get_type_report(): tl.TypeReport
    return env.reporter:get_report()
 end
 
-local function _get_node_at(ast: {Node}, y: integer, x: integer): Node
+local function _get_node_at(ast: tl.Node, y: integer, x: integer): tl.Node
    for _, node in ipairs(ast) do
       if node.y == y and node.x == x then
          return node
@@ -166,14 +153,14 @@ local function _get_node_at(ast: {Node}, y: integer, x: integer): Node
    end
 end
 
-function Document:get_ast_node_at(type_info: tl.TypeInfo): Node
+function Document:get_ast_node_at(type_info: tl.TypeInfo): tl.Node
    if type_info.file == "" then
       return _get_node_at(self:_get_ast(), type_info.y, type_info.x)
    end
 
    local loaded_file = self._server_state:get_env().loaded[type_info.file]
    if loaded_file == nil then return nil end
-   return _get_node_at(loaded_file.ast as {Node}, type_info.y, type_info.x)
+   return _get_node_at(loaded_file.ast, type_info.y, type_info.x)
 end
 
 function Document:get_function_args_string(type_info: tl.TypeInfo): {string}
@@ -188,7 +175,7 @@ end
 
 function Document:clear_cache()
    self._cache = {}
-   tracing.debug(_module_name, "Cleared cache for document {}", {self._uri})
+   tracing.debug(_module_name, "Cleared cache for document {@}", {self._uri})
 end
 
 function Document:update_text(text: string, version: integer)
@@ -209,10 +196,9 @@ function Document:update_text(text: string, version: integer)
    self._tree_cursor = self._tree:root():create_cursor()
 end
 
-local get_raw_token_at <const> = tl.get_token_at as function({Token}, number, number): string
-local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
+local function make_diagnostic_from_error(tks: {tl.Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
    local x <const>, y <const> = err.x, err.y
-   local err_tk <const> = get_raw_token_at(tks, y, x)
+   local err_tk <const> = tl.get_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -229,7 +215,7 @@ local function make_diagnostic_from_error(tks: {Token}, err: tl.Error, severity:
    }
 end
 
-local function insert_errs(fname: string, diags: {lsp.Diagnostic}, tks: {Token}, errs: {tl.Error}, sev: lsp.Severity)
+local function insert_errs(fname: string, diags: {lsp.Diagnostic}, tks: {tl.Token}, errs: {tl.Error}, sev: lsp.Severity)
    for _, err in ipairs(errs or {}) do
       if fname == err.filename then
          table.insert(diags, make_diagnostic_from_error(tks, err, sev))
@@ -256,6 +242,7 @@ end
 
 function Document:process_and_publish_results()
    local tks, err_tks = self:_get_tokens()
+   tracing.debug(_module_name, "Detected {} lex errors", {#err_tks})
    if #err_tks > 0 then
       self:_publish_diagnostics(imap(err_tks, function(t: tl.Error): lsp.Diagnostic
          return {
@@ -271,6 +258,7 @@ function Document:process_and_publish_results()
    end
 
    local ast, parse_errs = self:_get_ast(tks)
+   tracing.debug(_module_name, "Detected {} parse errors", {#parse_errs})
    if #parse_errs > 0 then
       self:_publish_diagnostics(imap(parse_errs, function(e: tl.Error): lsp.Diagnostic
          return make_diagnostic_from_error(tks, e, "Error")
@@ -281,6 +269,8 @@ function Document:process_and_publish_results()
    local diags <const>: {lsp.Diagnostic} = {}
    local fname <const> = self._uri.path
    local result = self:_get_result(ast)
+
+   tracing.debug(_module_name, "Detected {} type errors", {#result.type_errors})
 
    local config = self._server_state.config
    local disabled_warnings <const> = set(config.disable_warnings or {})
@@ -313,36 +303,37 @@ function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    end
 end
 
-function Document:_quick_get(tr: tl.TypeReport, last_token: Token): tl.TypeInfo
-   -- this is _really_ hacky... Gotta figure out these weird off by one errors...
-   local file = tr.by_pos[self._uri.path]
-   if file == nil then
-      tracing.warning(_module_name, "selfchecker: the file dissappeared?")
-      return nil
-   end
-
-   local line = file[last_token.y] or file[last_token.y-1] or file[last_token.y+1]
-   if line == nil then
-      tracing.warning(_module_name, "selfchecker: the file dissappeared?")
-      return nil
-   end
-
-   local type_ref = line[last_token.x] or line[last_token.x-1] or line[last_token.x+1]
-   if type_ref == nil then
-      tracing.warning(_module_name, "selfchecker: couldn't find the typeref")
-      return nil
-   end
-   return self:resolve_type_ref(type_ref)
-end
-
 function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
 
-   -- try the quick get (works well for self and raw types)
-   local type_info: tl.TypeInfo
+   -- try the quick get first (works well for self and raw types)
+   -- also seems to be necessary when type changes in the middle
+   -- of scope (eg. when using assert(x is Foo))
 
+   -- (Commented out because this breaks things more often than it helps currently)
+   -- local quick_pos_info = tr.by_pos[self._uri.path]
+
+   -- if quick_pos_info ~= nil then
+   --    local quick_line_info = quick_pos_info[y+1]
+
+   --    if quick_line_info ~= nil then
+   --       local type_ref = quick_line_info[x+1]
+
+   --       if type_ref ~= nil then
+   --          local type_info = self:resolve_type_ref(type_ref)
+
+   --          if type_info ~= nil then
+   --             tracing.info(_module_name, "Found via quick match at {}, {}", {y, x})
+   --             return type_info
+   --          end
+   --       end
+   --    end
+   -- end
+
+   local type_info: tl.TypeInfo
    -- try and find it in scope
    local scope_symbols <const> = tl.symbols_in_scope(tr, y+1, x+1, self._uri.path)
+   tracing.trace(_module_name, "Looked up symbols at {}, {} for file {} with result: {@}", {y+1, x+1, self._uri.path, scope_symbols})
    if #tokens == 0 then
       local out = {}
       for key, value in pairs(scope_symbols) do out[key] = value end
@@ -352,26 +343,35 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
       }
       return type_info
    end
-   local type_id <const> = scope_symbols[tokens[1]]
-   tracing.warning(_module_name, "tokens[1]: " .. tokens[1])
+   local raw_token = tokens[1]
+   tracing.trace(_module_name, "Processing token {} (all: {@})", {raw_token, tokens})
+   local type_id <const> = scope_symbols[raw_token]
+   if type_id == nil then
+      tracing.warning(_module_name, "Failed to find type id for token {}", {raw_token})
+   end
    if type_id ~= nil then
+      tracing.trace(_module_name, "Matched token {} to type id {}", {raw_token, type_id})
       type_info = self:resolve_type_ref(type_id)
+
+      if type_info == nil then
+         tracing.warning(_module_name, "Failed to resolve type ref for id {}", {})
+      end
    end
 
    -- might be global instead
    if type_info == nil then
-      type_info = tr.types[tr.globals[tokens[1]] ]
+      type_info = tr.types[tr.globals[raw_token] ]
+
+      if type_info == nil then
+         tracing.warning(_module_name, "Unable to find type info in global table as well..")
+      end
    end
 
-   if type_info == nil then
-      tracing.warning(_module_name, "Unable to find type info in global table as well..")
-   end
-
-   tracing.warning(_module_name, "What is this type_info:" .. tostring(type_info))
+   tracing.debug(_module_name, "Got type info: {@}", {type_info})
 
    if type_info and #tokens > 1 then
       for i = 2, #tokens do
-         tracing.trace(_module_name, "tokens[i]: " .. tokens[i])
+         tracing.trace(_module_name, "tokens[i]: {}", {tokens[i]})
 
          if type_info.fields then
             type_info = self:resolve_type_ref(type_info.fields[tokens[i]])
@@ -403,12 +403,13 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
 
    if moved == false then
       self._tree_cursor:goto_parent()
+
       local parent_node = self._tree_cursor:current_node()
 
       local out: Document.NodeInfo = {
-         type = node:type(), 
-         source = node:source(), 
-         parent_type = parent_node:type(), 
+         type = node:type(),
+         source = node:source(),
+         parent_type = parent_node:type(),
          parent_source = parent_node:source()
       }
 
@@ -447,10 +448,10 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
          end
       end
 
-      if out.preceded_by == "self" or 
-         out.source:find("self[%.%:]") or 
+      if out.preceded_by == "self" or
+         out.source:find("self[%.%:]") or
          out.parent_source:find("self[%.%:]") then
-         
+
          while parent_node:type() ~= "program" do
             self._tree_cursor:goto_parent()
             parent_node = self._tree_cursor:current_node()
@@ -486,7 +487,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
       end_point = node:end_point()
 
       if y == start_point.row and y == end_point.row then
-         if x >= start_point.column and x <= end_point.column then
+         if x >= start_point.column and x < end_point.column then
             return self:_tree_sitter_token(y, x)
          end
 

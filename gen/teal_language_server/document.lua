@@ -23,21 +23,7 @@ local tl = require("tl")
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-local Document = {NodeInfo = {}, }
+local Document = { NodeInfo = {} }
 
 
 
@@ -126,29 +112,30 @@ function Document:_get_tokens()
    return cache.tokens, cache.err_tokens
 end
 
-local parse_prog = tl.parse_program
 function Document:_get_ast(tokens)
    local cache = self._cache
    if not cache.ast then
       local _
       cache.parse_errors = {}
-      cache.ast, _ = parse_prog(tokens, cache.parse_errors)
-      tracing.debug(_module_name, "parse_prog errors: " .. #cache.parse_errors)
+      cache.ast, _ = tl.parse_program(tokens, cache.parse_errors, self._uri.path)
+      tracing.debug(_module_name, "parse_prog errors: {}", { #cache.parse_errors })
    end
    return cache.ast, cache.parse_errors
 end
 
-local type_check = tl.type_check
-
 function Document:_get_result(ast)
    local cache = self._cache
    if not cache.result then
-      tracing.info(_module_name, "Type checking document {}", { self._uri.path })
-      cache.result = type_check(ast, {
-         lax = is_lua(self._uri.path),
-         filename = self._uri.path,
-         env = self._server_state:get_env(),
-      })
+      local lax = is_lua(self._uri.path)
+      tracing.info(_module_name, "Type checking document{} {}", { lax and " (lax)" or "", self._uri.path })
+
+      local opts = {
+         feat_lax = lax and "on" or "off",
+         feat_arity = "on",
+      }
+
+      cache.result = tl.check(
+      ast, self._uri.path, opts, self._server_state:get_env())
    end
    return cache.result
 end
@@ -188,7 +175,7 @@ end
 
 function Document:clear_cache()
    self._cache = {}
-   tracing.debug(_module_name, "Cleared cache for document {}", { self._uri })
+   tracing.debug(_module_name, "Cleared cache for document {@}", { self._uri })
 end
 
 function Document:update_text(text, version)
@@ -209,10 +196,9 @@ function Document:update_text(text, version)
    self._tree_cursor = self._tree:root():create_cursor()
 end
 
-local get_raw_token_at = tl.get_token_at
 local function make_diagnostic_from_error(tks, err, severity)
    local x, y = err.x, err.y
-   local err_tk = get_raw_token_at(tks, y, x)
+   local err_tk = tl.get_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -256,6 +242,7 @@ end
 
 function Document:process_and_publish_results()
    local tks, err_tks = self:_get_tokens()
+   tracing.debug(_module_name, "Detected {} lex errors", { #err_tks })
    if #err_tks > 0 then
       self:_publish_diagnostics(imap(err_tks, function(t)
          return {
@@ -271,6 +258,7 @@ function Document:process_and_publish_results()
    end
 
    local ast, parse_errs = self:_get_ast(tks)
+   tracing.debug(_module_name, "Detected {} parse errors", { #parse_errs })
    if #parse_errs > 0 then
       self:_publish_diagnostics(imap(parse_errs, function(e)
          return make_diagnostic_from_error(tks, e, "Error")
@@ -281,6 +269,8 @@ function Document:process_and_publish_results()
    local diags = {}
    local fname = self._uri.path
    local result = self:_get_result(ast)
+
+   tracing.debug(_module_name, "Detected {} type errors", { #result.type_errors })
 
    local config = self._server_state.config
    local disabled_warnings = set(config.disable_warnings or {})
@@ -313,36 +303,37 @@ function Document:resolve_type_ref(type_number)
    end
 end
 
-function Document:_quick_get(tr, last_token)
-
-   local file = tr.by_pos[self._uri.path]
-   if file == nil then
-      tracing.warning(_module_name, "selfchecker: the file dissappeared?")
-      return nil
-   end
-
-   local line = file[last_token.y] or file[last_token.y - 1] or file[last_token.y + 1]
-   if line == nil then
-      tracing.warning(_module_name, "selfchecker: the file dissappeared?")
-      return nil
-   end
-
-   local type_ref = line[last_token.x] or line[last_token.x - 1] or line[last_token.x + 1]
-   if type_ref == nil then
-      tracing.warning(_module_name, "selfchecker: couldn't find the typeref")
-      return nil
-   end
-   return self:resolve_type_ref(type_ref)
-end
-
 function Document:type_information_for_tokens(tokens, y, x)
    local tr = self:get_type_report()
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
    local type_info
 
-
    local scope_symbols = tl.symbols_in_scope(tr, y + 1, x + 1, self._uri.path)
+   tracing.trace(_module_name, "Looked up symbols at {}, {} for file {} with result: {@}", { y + 1, x + 1, self._uri.path, scope_symbols })
    if #tokens == 0 then
       local out = {}
       for key, value in pairs(scope_symbols) do out[key] = value end
@@ -352,26 +343,35 @@ function Document:type_information_for_tokens(tokens, y, x)
       }
       return type_info
    end
-   local type_id = scope_symbols[tokens[1]]
-   tracing.warning(_module_name, "tokens[1]: " .. tokens[1])
+   local raw_token = tokens[1]
+   tracing.trace(_module_name, "Processing token {} (all: {@})", { raw_token, tokens })
+   local type_id = scope_symbols[raw_token]
+   if type_id == nil then
+      tracing.warning(_module_name, "Failed to find type id for token {}", { raw_token })
+   end
    if type_id ~= nil then
+      tracing.trace(_module_name, "Matched token {} to type id {}", { raw_token, type_id })
       type_info = self:resolve_type_ref(type_id)
+
+      if type_info == nil then
+         tracing.warning(_module_name, "Failed to resolve type ref for id {}", {})
+      end
    end
 
 
    if type_info == nil then
-      type_info = tr.types[tr.globals[tokens[1]]]
+      type_info = tr.types[tr.globals[raw_token]]
+
+      if type_info == nil then
+         tracing.warning(_module_name, "Unable to find type info in global table as well..")
+      end
    end
 
-   if type_info == nil then
-      tracing.warning(_module_name, "Unable to find type info in global table as well..")
-   end
-
-   tracing.warning(_module_name, "What is this type_info:" .. tostring(type_info))
+   tracing.debug(_module_name, "Got type info: {@}", { type_info })
 
    if type_info and #tokens > 1 then
       for i = 2, #tokens do
-         tracing.trace(_module_name, "tokens[i]: " .. tokens[i])
+         tracing.trace(_module_name, "tokens[i]: {}", { tokens[i] })
 
          if type_info.fields then
             type_info = self:resolve_type_ref(type_info.fields[tokens[i]])
@@ -403,6 +403,7 @@ function Document:_tree_sitter_token(y, x)
 
    if moved == false then
       self._tree_cursor:goto_parent()
+
       local parent_node = self._tree_cursor:current_node()
 
       local out = {
@@ -486,7 +487,7 @@ function Document:_tree_sitter_token(y, x)
       end_point = node:end_point()
 
       if y == start_point.row and y == end_point.row then
-         if x >= start_point.column and x <= end_point.column then
+         if x >= start_point.column and x < end_point.column then
             return self:_tree_sitter_token(y, x)
          end
 
