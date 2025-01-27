@@ -60,7 +60,7 @@ dir.
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(1, 4)
+      local node_info = doc:tree_sitter_token(1, 3)
       assert.same(node_info.type, ".")
       assert.same(node_info.parent_type, "ERROR")
       assert.same(node_info.preceded_by, "dir")
@@ -74,7 +74,7 @@ t:
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(1, 2)
+      local node_info = doc:tree_sitter_token(1, 1)
       assert.same(node_info.type, ":")
       assert.same(node_info.parent_type, "ERROR")
       assert.same(node_info.preceded_by, "t")
@@ -101,18 +101,18 @@ t:
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(0, 23)
+      local node_info = doc:tree_sitter_token(0, 22)
       assert.same(node_info.type, ".")
       assert.same(node_info.parent_type, "ERROR")
       assert.same(node_info.preceded_by, "lsp.completion_context")
 
-      local node_info = doc:tree_sitter_token(0, 20)
+      local node_info = doc:tree_sitter_token(0, 19)
       assert.same(node_info.type, "identifier")
       assert.same(node_info.parent_type, "index")
       assert.same(node_info.parent_source, "lsp.completion_context")
       assert.is_nil(node_info.preceded_by)
 
-      local node_info = doc:tree_sitter_token(0, 4)
+      local node_info = doc:tree_sitter_token(0, 3)
       assert.same(node_info.type, ".")
       assert.same(node_info.parent_type, "index")
       assert.same(node_info.preceded_by, "lsp")
@@ -255,7 +255,7 @@ end
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(8, 8)
+      local node_info = doc:tree_sitter_token(8, 7)
       assert.same(node_info.type, ":")
       assert.same(node_info.source, ":")
       assert.same(node_info.parent_type, "method_index")
@@ -329,7 +329,7 @@ end]]
 
       local doc = Document("test-uri", content, 1, {}, ServerState())
 
-      local node_info = doc:tree_sitter_token(0, 16)
+      local node_info = doc:tree_sitter_token(0, 15)
       assert.same(node_info.type, "(")
       assert.same(node_info.source, "(")
       assert.same(node_info.parent_type, "ERROR")
