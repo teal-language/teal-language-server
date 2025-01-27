@@ -13,6 +13,7 @@ luarocks_tree/bin/tl gen src/teal_language_server/document_manager.tl -o gen/tea
 luarocks_tree/bin/tl gen src/teal_language_server/env_updater.tl -o gen/teal_language_server/env_updater.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp.tl -o gen/teal_language_server/lsp.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp_events_manager.tl -o gen/teal_language_server/lsp_events_manager.lua
+luarocks_tree/bin/tl gen src/teal_language_server/lsp_formatter.tl -o gen/teal_language_server/lsp_formatter.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp_reader_writer.tl -o gen/teal_language_server/lsp_reader_writer.lua
 luarocks_tree/bin/tl gen src/teal_language_server/main.tl -o gen/teal_language_server/main.lua
 luarocks_tree/bin/tl gen src/teal_language_server/misc_handlers.tl -o gen/teal_language_server/misc_handlers.lua
