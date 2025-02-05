@@ -311,6 +311,10 @@ end
 
 function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):nil
    local pos = params.position as lsp.Position
+
+   -- Subtract one to get function identifier instead of bracket
+   pos.character = pos.character - 1
+
    local node_info, doc = self:_get_node_info(params, pos)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
