@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "path"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local _module_name = "path"
 
 local asserts = require("teal_language_server.asserts")
 local class = require("teal_language_server.class")
@@ -8,7 +8,7 @@ local uv = require("luv")
 
 local default_dir_permissions = tonumber('755', 8)
 
-local Path = {WriteTextOpts = {}, CreateDirectoryArgs = {}, }
+local Path = { WriteTextOpts = {}, CreateDirectoryArgs = {} }
 
 
 
@@ -281,7 +281,7 @@ end
 function Path:delete_file()
    asserts.that(self:is_file(), "Called delete_file for non-file at path '{}'", self._value)
    assert(uv.fs_unlink(self._value))
-   tracing.trace(_module_name, "Deleted file at path '{path}'", { self._value })
+   tracing.trace(_module_name, "Deleted file at path '{}'", { self._value })
 end
 
 function Path:create_directory(args)

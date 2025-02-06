@@ -17,7 +17,6 @@ local record TraceEntry
    level: TraceEntry.Level
    timestamp: integer -- unix timestamp in seconds
    time: number -- seconds since start of application
-   fields: {string:any}
 
    message:string
 end

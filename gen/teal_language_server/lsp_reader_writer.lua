@@ -48,7 +48,7 @@ function LspReaderWriter:_parse_header(lines)
 
       asserts.that(key ~= nil and val ~= nil, "invalid header: " .. line)
 
-      tracing.trace(_module_name, "Request Header: {key}: {val}", { key, val })
+      tracing.trace(_module_name, "Request Header: {}: {}", { key, val })
 
       if key == "Content-Length" then
          asserts.is_nil(len)
@@ -106,9 +106,9 @@ end
 function LspReaderWriter:receive_rpc()
    local header_info = self:_decode_header()
 
-   tracing.trace(_module_name, "Successfully read LSP rpc header: {header_info}\nWaiting to receive body...", { header_info })
+   tracing.trace(_module_name, "Successfully read LSP rpc header: {}\nWaiting to receive body...", { header_info })
    local body_line = self._stdin_reader:read(header_info.length)
-   tracing.trace(_module_name, "Received request Body: {body_line}", { body_line })
+   tracing.trace(_module_name, "Received request Body: {}", { body_line })
 
    local data = json.decode(body_line)
 
@@ -126,7 +126,7 @@ function LspReaderWriter:_encode(t)
    local content = "Content-Length: " .. tostring(#msg) .. "\r\n\r\n" .. msg
    assert(self._stdout:write(content))
 
-   tracing.trace(_module_name, "Sending data: {content}", { content })
+   tracing.trace(_module_name, "Sending data: {}", { content })
 end
 
 function LspReaderWriter:send_rpc(id, t)

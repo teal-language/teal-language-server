@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local string = _tl_compat and _tl_compat.string or string
 local util = require("teal_language_server.util")
 local asserts = require("teal_language_server.asserts")
 local Path = require("teal_language_server.path")
@@ -6,7 +6,6 @@ local TraceEntry = require("teal_language_server.trace_entry")
 local json = require("cjson")
 local uv = require("luv")
 local class = require("teal_language_server.class")
-local inspect = require("inspect")
 
 local TraceStream = {}
 
@@ -150,40 +149,9 @@ function TraceStream:log_entry(entry)
       self:initialize()
    end
 
-   local serializable_fields = {}
-   for key, value in pairs(entry.fields) do
-      asserts.that(type(key) == "string")
-      local value_type = type(value)
-
-      if value_type == "thread" then
-         value = "<thread>"
-      elseif value_type == "function" then
-         value = "<function>"
-      elseif value_type == "userdata" then
-         value = tostring(value)
-      elseif value_type == "table" then
-         value = inspect(value, { newline = ' ' })
-      else
-
-         asserts.that(value_type == "string" or value_type == "number" or value_type == "nil" or value_type == "boolean")
-      end
-
-      serializable_fields[key] = value
-   end
-
    asserts.is_not_nil(self._file_stream)
-   local old_fields = entry.fields
-   entry.fields = serializable_fields
 
-   util.try({
-      action = function()
-         self._file_stream:write(json.encode(entry) .. "\n")
-      end,
-      finally = function()
-         entry.fields = old_fields
-      end,
-   })
-
+   self._file_stream:write(json.encode(entry) .. "\n")
    self._file_stream:flush()
 end
 

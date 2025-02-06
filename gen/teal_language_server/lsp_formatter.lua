@@ -2,7 +2,7 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 local Document = require("teal_language_server.document")
 
-local lsp_formatter = {Documentation = {}, SignatureHelp = {SignatureParameter = {}, Signature = {}, }, }
+local lsp_formatter = { Documentation = {}, SignatureHelp = { SignatureParameter = {}, Signature = {} } }
 
 
 

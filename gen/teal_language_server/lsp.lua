@@ -5,7 +5,7 @@
 
 local tl = require("tl")
 
-local lsp = {Message = {ResponseError = {}, }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {}, }
+local lsp = { Message = { ResponseError = {} }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {} }
 
 
 

@@ -62,7 +62,7 @@ function StdinReader:read_line()
          local line = self._buffer:sub(1, i - 1)
          self._buffer = self._buffer:sub(i + 1)
          line = line:gsub("\r$", "")
-         tracing.trace(_module_name, "Successfully parsed line from buffer: {line}.  Buffer is now: {buffer}", { line, self._buffer })
+         tracing.trace(_module_name, "Successfully parsed line from buffer: {}.  Buffer is now: {}", { line, self._buffer })
          return line
       else
          tracing.trace(_module_name, "No line available yet.  Waiting for more data...", {})
@@ -74,7 +74,7 @@ end
 
 function StdinReader:read(len)
    asserts.that(not self._disposed)
-   tracing.trace(_module_name, "Attempting to read {len} characters from stdin...", { len })
+   tracing.trace(_module_name, "Attempting to read {} characters from stdin...", { len })
 
    asserts.that(lusc.is_available())
 

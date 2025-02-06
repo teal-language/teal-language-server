@@ -125,7 +125,7 @@ end
 
 function MiscHandlers:_on_did_change(params:lsp.Method.Params):nil
    local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))   
+   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
    if not doc then
       tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
       return
@@ -166,25 +166,32 @@ function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position
       return nil
    end
 
-   tracing.warning(_module_name, "Received request for completion at position: {}", {pos})
+   tracing.debug(_module_name, "Looking up node info at position: {@}", {pos})
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
       return nil
    end
-   tracing.warning(_module_name, "Found node info at pos", node_info)
+   tracing.debug(_module_name, "Found node info: {@}", {node_info})
    return node_info, doc
 end
 
 function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    local pos = params.position as lsp.Position
+   tracing.info(_module_name, "Received request for completion at position: {@}", {pos})
+
+   -- Subtract one since neovim passes the character where the cursor is, which is after the '.' / ':'
+   -- and this position doesn't exist in the doc so can lead to tree sitter query fails
+   pos.character = pos.character - 1
+
    local node_info, doc = self:_get_node_info(params, pos)
    if node_info == nil then
+      tracing.trace(_module_name, "No node found at given position", {})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   tracing.warning(_module_name, "Got nodeinfo: {}", node_info)
+   tracing.debug(_module_name, "Found node info: {@}", {node_info})
 
    local tks: {string}
 
@@ -192,8 +199,8 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    -- preceded_by should have everything we need in it.
    if node_info.type == "." or node_info.type == ":" then
       tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.warning(_module_name, "Received request for completion at character: {}", {tks})
-   
+      tracing.debug(_module_name, "Received request for completion at character: {@}", {tks})
+
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
    elseif node_info.type == "identifier" then
       -- the types that we would need to index into to get type info from
@@ -210,13 +217,12 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
       -- trying to define something new, probably don't want the in-scope thing to popup
       -- we could probably help complete simple types
-      if node_info.parent_type == "var" or 
-         node_info.parent_type == "simple_type" or 
+      if node_info.parent_type == "var" or
+         node_info.parent_type == "simple_type" or
          node_info.parent_type == "table_type" then
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
-      
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -230,7 +236,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    end
 
    if type_info then
-      tracing.warning(_module_name, "Successfully found type type_info '{}'", type_info)
+      tracing.debug(_module_name, "Successfully found type_info {@}", {type_info})
       local tr = doc:get_type_report()
 
       if type_info.ref then
@@ -243,29 +249,37 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
       end
 
       -- this seemed to be the best way to compare the first arg with itself when comparing ":",
-      -- sometimes the types come in as nominal and don't resolve all the way back, so the name is 
+      -- sometimes the types come in as nominal and don't resolve all the way back, so the name is
       -- what seems to work the most reliably
       local original_str = type_info.str
 
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
+            local was_added:boolean
             -- self based access should only show functions
             if node_info.type == ":" then
                if type_info.t == tl.typecodes.FUNCTION then
                   -- local args = doc:get_function_args_string(type_info)
                   if type_info.args and #type_info.args >= 1 then
                      local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF or (first_arg_type.t == tl.typecodes.NOMINAL and first_arg_type.str == original_str) then
-                        tracing.warning(_module_name, "adding " .. key, {})
+                     if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) then
+                        tracing.debug(_module_name, "Adding self method {}", {key})
                         table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                        was_added = true
                      else
-                        tracing.warning(_module_name, "type info str: " .. original_str .. "first arg str: " .. first_arg_type.str, {})
+                        tracing.debug(_module_name, "Ignoring method {} with arg type {0x%08x}, type info str {}, first arg str {}", {
+                           key, first_arg_type.t, original_str, first_arg_type.str})
                      end
                   end
                end
             else
                table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+               was_added = true
+            end
+
+            if not was_added then
+               tracing.trace(_module_name, "Ignoring field {}", {key})
             end
          end
 
@@ -287,7 +301,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
       table.insert(items, {label = "(none)"})
    end
 
-   tracing.warning(_module_name, "Sending " .. #items .. " back to client", {})
+   tracing.debug(_module_name, "Sending {} back to client", {#items})
 
    self._lsp_reader_writer:send_rpc(id, {
       isIncomplete = false,
@@ -297,6 +311,10 @@ end
 
 function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):nil
    local pos = params.position as lsp.Position
+
+   -- Subtract one to get function identifier instead of bracket
+   pos.character = pos.character - 1
+
    local node_info, doc = self:_get_node_info(params, pos)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -304,13 +322,13 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    end
 
    local output: lsp_formatter.SignatureHelp = {}
-   tracing.warning(_module_name, "Got nodeinfo: {}", node_info)
+   tracing.debug(_module_name, "Got nodeinfo: {}", {node_info})
 
    local tks: {string}
 
    if node_info.type == "(" then
       tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.warning(_module_name, "Received request for signature help at character: {}", {tks})
+      tracing.debug(_module_name, "Received request for signature help at character: {}", {tks})
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -346,7 +364,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
       end
    end
 
-   tracing.warning(_module_name, "[_on_signature_help] Found type info: {}", {type_info})
+   tracing.debug(_module_name, "[_on_signature_help] Found type info: {}", {type_info})
 
    self._lsp_reader_writer:send_rpc(id, output)
 end
@@ -359,7 +377,7 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   tracing.trace(_module_name, "Received request for hover at position: {}", {pos})
+   tracing.trace(_module_name, "Received request for on_definition at position: {@}", {pos})
 
    local tks: {string} = {}
    if node_info.type == "identifier" then
@@ -370,7 +388,7 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
          tks = split_by_symbols(node_info.source, node_info.self_type)
       end
    else
-      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
+      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", {node_info.type})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
@@ -412,6 +430,7 @@ end
 
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
    local pos <const> = params.position as lsp.Position
+   tracing.trace(_module_name, "Received request for hover at position: {@}", {pos})
    local node_info, doc = self:_get_node_info(params, pos)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, {
@@ -424,8 +443,6 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   tracing.trace(_module_name, "Received request for hover at position: {}", {pos})
-
    local tks: {string} = {}
    if node_info.type == "identifier" then
       -- parent types that show up with multiparts
@@ -435,7 +452,7 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
          tks = split_by_symbols(node_info.source, node_info.self_type)
       end
    else
-      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm" .. node_info.type, {})
+      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", {node_info.type})
       self._lsp_reader_writer:send_rpc(id, {
          contents = { node_info.parent_type, ":", node_info.type },
          range = {
@@ -460,7 +477,7 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   tracing.warning(_module_name, "Successfully found type_info: {}", {type_info})
+   tracing.debug(_module_name, "Successfully found type_info: {@}", {type_info})
 
    local type_str <const> = lsp_formatter.show_type(node_info, type_info, doc)
    self._lsp_reader_writer:send_rpc(id, {

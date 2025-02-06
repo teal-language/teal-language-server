@@ -105,7 +105,7 @@ function util.get_platform():util.PlatformType
       elseif raw_os_name:find("windows") ~= nil or raw_os_name:find("mingw") ~= nil then
          _os_type = "windows"
       else
-         tracing.warning(_module_name, "Unrecognized platform '{}'", {raw_os_name})
+         tracing.warning(_module_name, "Unrecognized platform {}", {raw_os_name})
          _os_type = "unknown"
       end
    end
