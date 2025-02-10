@@ -23,7 +23,7 @@ jobs:
       - name: Install LuaRocks
         uses: leafo/gh-actions-luarocks@v4
         with:
-          luarocksVersion: "3.10.0"
+          luarocksVersion: "3.11.1"
 
       - name: Build
         run: scripts/setup_local_luarocks.sh
