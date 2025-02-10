@@ -17,15 +17,16 @@ description = {
 
 dependencies = {
    "luafilesystem",
-   "tl",
+   "tl == 0.24.4",
    "lua-cjson",
    "argparse",
    "inspect",
-   "luv",
+   "luv ~> 1",
    "lusc_luv >= 4.0",
-   "ltreesitter-ts==0.0.1",
-   "tree-sitter-cli==0.24.4",
-   "tree-sitter-teal",
+   "ltreesitter-ts == 0.0.1", -- can be removed when ltreesitter updates
+   "tree-sitter-cli == 0.24.4",
+   "luarocks-build-treesitter-parser >= 6.0.0", -- can be removed when tree-sitter-teal specifies this version >= 6
+   "tree-sitter-teal == 0.0.33",
 }
 
 test_dependencies = { "busted~>2" }
