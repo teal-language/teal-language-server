@@ -5,7 +5,7 @@ version = "0.1.0-1"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   branch = "main"
+   tag = "0.1.0"
 }
 
 description = {
