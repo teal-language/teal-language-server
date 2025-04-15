@@ -296,7 +296,7 @@ end
 function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
    local type_info = tr.types[type_number]
-   if type_info.ref then
+   if type_info and type_info.ref then
       return self:resolve_type_ref(type_info.ref)
    else
       return type_info
