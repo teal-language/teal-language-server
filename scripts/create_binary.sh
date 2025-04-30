@@ -7,11 +7,16 @@ set -e
 pip install hererocks
 hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 
+if [[ "$OSTYPE" == "msys" ]]; then
+source tls/bin/activate.bat
+else
 source tls/bin/activate
+fi
+
 luarocks install teal-language-server
-#rm ./tls/bin/activate* ./tls/bin/get_deactivated_path.lua
-#rm ./tls/bin/tree-sitter ./tls/bin/json2lua ./tls/bin/lua2json
-#rm ./tls/bin/luarocks ./tls/bin/luarocks-admin ./tls/bin/tl
+rm -f ./tls/bin/activate* ./tls/bin/get_deactivated_path.lua
+rm -f ./tls/bin/tree-sitter ./tls/bin/json2lua ./tls/bin/lua2json
+rm -f ./tls/bin/luarocks ./tls/bin/luarocks-admin ./tls/bin/tl
 
 #tls_dir="$(pwd)/tls/"
 #sed -i '' -e '2i\
