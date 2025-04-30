@@ -7,7 +7,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux, macos, macos-arm64, windows]
+        #os: [linux, macos, macos-arm64, windows]
+        os: [windows]
         include:
         - os: linux
           runner: ubuntu-22.04
