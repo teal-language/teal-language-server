@@ -4,7 +4,7 @@
 
 set -e
 
-# python3 -m pip install hererocks
+python3 -m pip install hererocks
 hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 
 source tls/bin/activate
