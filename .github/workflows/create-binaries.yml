@@ -10,12 +10,12 @@ jobs:
         #os: [linux, macos, macos-arm64, windows]
         os: [windows]
         include:
-        - os: linux
-          runner: ubuntu-22.04
-        - os: macos
-          runner: macos-13
-        - os: macos-arm64
-          runner: macos-14
+        # - os: linux
+        #   runner: ubuntu-22.04
+        # - os: macos
+        #   runner: macos-13
+        # - os: macos-arm64
+        #   runner: macos-14
         - os: windows
           runner: windows-2022
     name: ${{ matrix.os }}
