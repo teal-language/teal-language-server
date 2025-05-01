@@ -3,34 +3,57 @@ name: Create Binary
 on: [push, pull_request]
 
 jobs:
-  lua:
+  # lua:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       #os: [linux, macos, macos-arm64, windows]
+  #       os: [windows]
+  #       include:
+  #       # - os: linux
+  #       #   runner: ubuntu-22.04
+  #       # - os: macos
+  #       #   runner: macos-13
+  #       # - os: macos-arm64
+  #       #   runner: macos-14
+  #       - os: windows
+  #         runner: windows-2022
+  #   name: ${{ matrix.os }}
+  #   runs-on: ${{ matrix.runner }}
+  #   steps:
+  #     # Checks-out the repository under $GITHUB_WORKSPACE.
+  #     - uses: actions/checkout@v4
+  #     - name: Build teal-language-server (${{ matrix.os }})
+  #       shell: bash
+  #       run: |
+  #         cd scripts
+  #         ./create_binary.sh
+  #     - uses: actions/upload-artifact@v4
+  #       if: always()
+  #       with:
+  #         name: tls-${{matrix.os}}
+  #         path: "./scripts/tls"
+  
+  windows:
     strategy:
       fail-fast: false
       matrix:
-        #os: [linux, macos, macos-arm64, windows]
-        os: [windows]
-        include:
-        # - os: linux
-        #   runner: ubuntu-22.04
-        # - os: macos
-        #   runner: macos-13
-        # - os: macos-arm64
-        #   runner: macos-14
-        - os: windows
-          runner: windows-2022
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.runner }}
+        target: [mingw,vs]
+    runs-on: windows-2022
     steps:
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
-      - name: Build teal-language-server (${{ matrix.os }})
-        shell: bash
+      - name: Install Lua (${{ matrix.lua }})
         run: |
-          cd scripts
-          ./create_binary.sh
+          pip install hererocks
+          hererocks lua_install -r "@v3.11.1" --"@5.4.7" --target ${{ matrix.target }}
+      - name: Build teal-language-server
+        run: |
+          .\lua_install\bin\activate
+          luarocks install teal-language-server
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tls-${{matrix.os}}
-          path: "./scripts/tls"
+          name: tls-windows-${{ matrix.target }}
+          path: "lua_install"
 
