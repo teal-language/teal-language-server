@@ -29,6 +29,7 @@ jobs:
           cd scripts
           ./create_binary.sh
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: tls-${{matrix.os}}
           path: "./scripts/tls"
