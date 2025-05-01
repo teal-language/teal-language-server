@@ -37,20 +37,15 @@ jobs:
   windows:
     strategy:
       fail-fast: false
-      matrix:
-        target: [mingw,vs]
     runs-on: windows-2022
     steps:
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
-      - name: Install Lua (${{ matrix.lua }})
-        run: |
-          pip install hererocks
-          hererocks lua_install -r "@v3.11.1" -l "@v5.4.7" --target ${{ matrix.target }}
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: leafo/gh-actions-lua@v11
+      - uses: leafo/gh-actions-luarocks@v5
       - name: Build teal-language-server
-        run: |
-          .\lua_install\bin\activate
-          luarocks install teal-language-server
+        run: luarocks install teal-language-server
       - uses: actions/upload-artifact@v4
         if: always()
         with:
