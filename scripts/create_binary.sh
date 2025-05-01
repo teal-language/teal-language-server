@@ -8,10 +8,8 @@ pip install hererocks
 hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 
 if [[ "$OSTYPE" == "msys" ]]; then
-ls .
-ls ./tls
 ls ./tls/bin
-./tls/bin/activate
+./tls/bin/activate.bat
 else
 source tls/bin/activate
 fi
