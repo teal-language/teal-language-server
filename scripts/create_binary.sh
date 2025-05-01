@@ -8,9 +8,7 @@ pip install hererocks
 hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 
 if [[ "$OSTYPE" == "msys" ]]; then
-ls ./tls/bin
-./tls/bin/activate.bat
-luarocks.bat install teal-language-server
+./tls/bin/luarocks.bat install teal-language-server
 
 else
 source tls/bin/activate
