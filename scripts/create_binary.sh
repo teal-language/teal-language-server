@@ -10,11 +10,13 @@ hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 if [[ "$OSTYPE" == "msys" ]]; then
 ls ./tls/bin
 ./tls/bin/activate.bat
+luarocks.bat install teal-language-server
+
 else
 source tls/bin/activate
+luarocks install teal-language-server
 fi
 
-luarocks install teal-language-server
 rm -f ./tls/bin/activate* ./tls/bin/get_deactivated_path.lua
 rm -f ./tls/bin/tree-sitter ./tls/bin/json2lua ./tls/bin/lua2json
 rm -f ./tls/bin/luarocks ./tls/bin/luarocks-admin ./tls/bin/tl
