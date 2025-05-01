@@ -11,7 +11,7 @@ if [[ "$OSTYPE" == "msys" ]]; then
 ./tls/bin/luarocks.bat install teal-language-server
 
 else
-source tls/bin/activate
+export PATH=./tls/bin:$PATH
 luarocks install teal-language-server
 fi
 
