@@ -42,20 +42,18 @@ jobs:
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
-      - uses: leafo/gh-actions-lua@v11
-      - uses: luarocks/gh-actions-luarocks@v5
-        with:
-          luaRocksVersion: "3.11.1"
-      - name: install tree-sitter-cli
-        run: npm install -g tree-sitter-cli@0.24.4
-      - name: luarocks workaround for tree-sitter # waiting on new luarocks release for fix
-        run: luarocks config --lua-version 5.4 rocks_provided.tree-sitter-cli 0.24.4-2
+      - name: Install Lua
+        run: |
+          pip install hererocks
+          hererocks lua_install -r@28f9d98 -l "@v5.4.7" --target vs
       - name: Build teal-language-server
-        run: ./scripts/setup_local_luarocks.bat
+        run: |
+          .\lua_install\bin\activate
+          luarocks install teal-language-server
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: debug
-          path: "."
+          path: "lua_install"
           include-hidden-files: true
 
