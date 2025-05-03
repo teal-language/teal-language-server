@@ -42,11 +42,10 @@ jobs:
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
-      - uses: microsoft/setup-msbuild@v2
       - name: Install Lua
         run: |
           pip install hererocks
-          hererocks lua_install -r@28f9d98 -l "@v5.4.7" --target vs
+          hererocks lua_install -r@28f9d98 -j "@v2.1"
       - name: Build teal-language-server
         run: |
           .\lua_install\bin\activate
