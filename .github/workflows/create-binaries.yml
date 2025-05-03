@@ -42,8 +42,6 @@ jobs:
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          vsversion: 2015
       - name: Install Lua
         run: |
           pip install hererocks
@@ -51,6 +49,7 @@ jobs:
       - name: Build teal-language-server
         run: |
           .\lua_install\bin\activate
+          set VS=17
           luarocks install teal-language-server
       - uses: actions/upload-artifact@v4
         if: always()
