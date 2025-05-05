@@ -49,8 +49,10 @@ jobs:
       
       # waiting on new luarocks release for fix
       - name: install tree-sitter-cli
-        run: npm install -g tree-sitter-cli@0.24.4
-      - name: luarocks workaround for tree-sitte
+        run: cargo install tree-sitter-cli --version 0.24.4
+      - name: verify tree-sitter-cli is installed on path
+        run: tree-sitter-cli --version
+      - name: luarocks workaround for tree-sitter
         run: luarocks config --lua-version 5.4 rocks_provided.tree-sitter-cli 0.24.4-2
       
       - name: Build teal-language-server
