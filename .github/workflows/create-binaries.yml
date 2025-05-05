@@ -52,7 +52,7 @@ jobs:
         run: |
           npm install -g tree-sitter-cli@0.24.4
           npm list -g
-          C:\npm\prefix\bin >> $GITHUB_PATH 
+          echo "C:\npm\prefix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: verify tree-sitter-cli is installed on path
         run: tree-sitter-cli --version
       - name: luarocks workaround for tree-sitter
