@@ -60,7 +60,8 @@ jobs:
       
       - name: Build teal-language-server
         run: | 
-          luarocks install teal-language-server
+          luarocks init --tree=.\luarocks
+          luarocks install teal-language-server --tree=.\luarocks
       
       - uses: actions/upload-artifact@v4
         if: always()
