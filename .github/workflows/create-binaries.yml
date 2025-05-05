@@ -49,7 +49,10 @@ jobs:
       
       # waiting on new luarocks release for fix
       - name: install tree-sitter-cli
-        run: cargo install tree-sitter-cli --version 0.24.4
+        run: |
+          npm install -g tree-sitter-cli@0.24.4
+          npm list -g
+          Add-Content $env:GITHUB_PATH %USERPROFILE%\AppData\Roaming\npm\node_modules
       - name: verify tree-sitter-cli is installed on path
         run: tree-sitter-cli --version
       - name: luarocks workaround for tree-sitter
