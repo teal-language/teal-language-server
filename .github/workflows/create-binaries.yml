@@ -60,7 +60,10 @@ jobs:
         run: luarocks config --lua-version 5.4 rocks_provided.tree-sitter-cli 0.24.4-2
       
       - name: Build teal-language-server
-        run: luarocks install teal-language-server
+        run: | 
+          luarocks init --tree=./luarocks
+          set "LUAROCKS_TREE=%~dp0\..\luarocks"
+          luarocks install teal-language-server --tree=!LUAROCKS_TREE!
       
       - uses: actions/upload-artifact@v4
         if: always()
