@@ -42,12 +42,11 @@ jobs:
 
 
       # waiting on new luarocks release for fix, so we don't need node
-      - uses: actions/setup-node@v4
+      # - uses: actions/setup-node@v4
       - name: install tree-sitter-cli
-        run: |
-          npm install tree-sitter-cli@0.24.4
+        run: npm install -g tree-sitter-cli@0.24.4
       - name: verify tree-sitter-cli is installed on path
-        run: tree-sitter-cli --version
+        run: tree-sitter --version
     
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
