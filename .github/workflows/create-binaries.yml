@@ -45,8 +45,7 @@ jobs:
       - uses: actions/setup-node@v4
       - name: install tree-sitter-cli
         run: |
-          npm install -g tree-sitter-cli@0.24.4
-          npm list -g
+          npm install tree-sitter-cli@0.24.4
       - name: verify tree-sitter-cli is installed on path
         run: tree-sitter-cli --version
     
