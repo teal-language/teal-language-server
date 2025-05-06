@@ -62,12 +62,13 @@ jobs:
         run: | 
           luarocks init --tree=.\luarocks
           luarocks install teal-language-server --tree=.\luarocks
+
+      - name: Run create_binary script
+        shell: bash
+        run: ./scripts/create_windows_binary.sh
       
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: debug
-          path: "."
-          include-hidden-files: true
-
-
+          name: tls-windows
+          path: "teal-language-server"
