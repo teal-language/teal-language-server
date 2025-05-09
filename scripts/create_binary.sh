@@ -10,8 +10,11 @@ hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 source tls/bin/activate
 luarocks install teal-language-server
 
+# TODO: see if we can just make this a build dependency?
+luarocks remove tree-sitter-cli
+
 rm -f ./tls/bin/activate* ./tls/bin/get_deactivated_path.lua
-rm -f ./tls/bin/tree-sitter ./tls/bin/json2lua ./tls/bin/lua2json
+rm -f ./tls/bin/json2lua ./tls/bin/lua2json
 rm -f ./tls/bin/luarocks ./tls/bin/luarocks-admin ./tls/bin/tl
 
 #tls_dir="$(pwd)/tls/"
