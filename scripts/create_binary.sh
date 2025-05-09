@@ -11,7 +11,7 @@ source tls/bin/activate
 luarocks install teal-language-server
 
 # TODO: see if we can just make this a build dependency?
-luarocks remove tree-sitter-cli
+luarocks remove --force tree-sitter-cli
 
 rm -f ./tls/bin/activate* ./tls/bin/get_deactivated_path.lua
 rm -f ./tls/bin/json2lua ./tls/bin/lua2json
