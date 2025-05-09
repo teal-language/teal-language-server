@@ -3,46 +3,40 @@ name: Create Binary
 on: [push, pull_request]
 
 jobs:
-  # lua:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       #os: [linux, macos, macos-arm64, windows]
-  #       os: [windows]
-  #       include:
-  #       # - os: linux
-  #       #   runner: ubuntu-22.04
-  #       # - os: macos
-  #       #   runner: macos-13
-  #       # - os: macos-arm64
-  #       #   runner: macos-14
-  #       - os: windows
-  #         runner: windows-2022
-  #   name: ${{ matrix.os }}
-  #   runs-on: ${{ matrix.runner }}
-  #   steps:
-  #     # Checks-out the repository under $GITHUB_WORKSPACE.
-  #     - uses: actions/checkout@v4
-  #     - name: Build teal-language-server (${{ matrix.os }})
-  #       shell: bash
-  #       run: |
-  #         cd scripts
-  #         ./create_binary.sh
-  #     - uses: actions/upload-artifact@v4
-  #       if: always()
-  #       with:
-  #         name: tls-${{matrix.os}}
-  #         path: "./scripts/tls"
+  lua:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, macos, macos-arm64]
+        include:
+        - os: linux
+          runner: ubuntu-22.04
+        - os: macos
+          runner: macos-13
+        - os: macos-arm64
+          runner: macos-14
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # Checks-out the repository under $GITHUB_WORKSPACE.
+      - uses: actions/checkout@v4
+      - name: Build teal-language-server (${{ matrix.os }})
+        shell: bash
+        run: |
+          cd scripts
+          ./create_binary.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tls-${{matrix.os}}
+          path: "./scripts/tls"
   
   windows:
     strategy:
       fail-fast: false
     runs-on: windows-2022
     steps:
-
-
-      # waiting on new luarocks release for fix, so we don't need node
-      # - uses: actions/setup-node@v4
+      # waiting on new luarocks release for fix, so we don't need to install via choco
       - name: install tree-sitter-cli
         run: | 
           choco install tree-sitter --version 0.24.4
