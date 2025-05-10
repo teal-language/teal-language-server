@@ -3,18 +3,16 @@ name: Create Binary
 on: [push, pull_request]
 
 jobs:
-  lua:
+  macos:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux, macos, macos-arm64]
+        os: [macos, macos-arm64]
         include:
-        - os: linux
-          runner: ubuntu-22.04
         - os: macos
           runner: macos-13
         - os: macos-arm64
-          runner: macos-14
+          runner: macos-latest
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.runner }}
     steps:
