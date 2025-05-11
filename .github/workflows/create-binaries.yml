@@ -1,6 +1,10 @@
-name: Create Binary
+name: Create Binaries
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - '**'
+  pull_request:
 
 jobs:
   macos:
