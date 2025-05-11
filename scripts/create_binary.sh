@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
-# yeah, this is kinda hacky and abusing hererocks, but it works!
+# yeah, this is a bit of a hack by utilizing hererocks and reconfigring it to be portable but it works!
 
 set -e
 
-pip3 install hererocks
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install hererocks
+
 hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 
 source tls/bin/activate

@@ -21,13 +21,12 @@ jobs:
       - name: Build teal-language-server (${{ matrix.os }})
         shell: bash
         run: |
-          cd scripts
-          ./create_binary.sh
+          ./scripts/create_binary.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: tls-${{matrix.os}}
-          path: "./scripts/tls"
+          path: "./tls"
   
   windows:
     strategy:
