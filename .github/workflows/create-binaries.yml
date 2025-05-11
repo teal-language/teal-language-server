@@ -53,7 +53,7 @@ jobs:
       - name: Build teal-language-server
         run: | 
           luarocks init --tree=.\luarocks
-          luarocks install teal-language-server --tree=.\luarocks
+          luarocks make --tree=.\luarocks
 
       - name: Run create_binary script
         shell: bash
