@@ -1,0 +1,69 @@
+name: Create Binaries
+
+on:
+  push:
+    tags:
+      - '**'
+  pull_request:
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos, macos-arm64]
+        include:
+        - os: macos
+          runner: macos-13
+        - os: macos-arm64
+          runner: macos-latest
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # Checks-out the repository under $GITHUB_WORKSPACE.
+      - uses: actions/checkout@v4
+      - name: Build teal-language-server (${{ matrix.os }})
+        shell: bash
+        run: |
+          ./scripts/create_binary.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tls-${{matrix.os}}
+          path: "./tls"
+  
+  windows:
+    strategy:
+      fail-fast: false
+    runs-on: windows-2022
+    steps:
+      # waiting on new luarocks release for fix, so we don't need to install via choco
+      - name: install tree-sitter-cli
+        run: | 
+          choco install tree-sitter --version 0.24.4
+      - name: verify tree-sitter-cli is installed on path
+        run: tree-sitter --version
+    
+      # Checks-out the repository under $GITHUB_WORKSPACE.
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: leafo/gh-actions-lua@v11
+      - uses: luarocks/gh-actions-luarocks@v5
+
+      - name: luarocks workaround for tree-sitter
+        run: luarocks config --lua-version 5.4 rocks_provided.tree-sitter-cli 0.24.4-2
+      
+      - name: Build teal-language-server
+        run: | 
+          luarocks init --tree=.\luarocks
+          luarocks make --tree=.\luarocks
+
+      - name: Run create_binary script
+        shell: bash
+        run: ./scripts/create_windows_binary.sh
+      
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tls-windows
+          path: "teal-language-server"
