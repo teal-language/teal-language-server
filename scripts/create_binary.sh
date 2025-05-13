@@ -13,7 +13,8 @@ hererocks -l "@v5.4.7" -r "@v3.11.1" tls
 source tls/bin/activate
 luarocks make
 
-# TODO: see if we can just make this a build dependency?
+# tree-sitter-cli can't be added temporarily (as like a build dep),
+# so we can just remove it since we don't need it after the fact
 luarocks remove --force tree-sitter-cli
 
 rm -f ./tls/bin/activate* ./tls/bin/get_deactivated_path.lua
