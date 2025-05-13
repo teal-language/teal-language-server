@@ -10,7 +10,7 @@ A language server for the [Teal language](https://github.com/teal-language/tl)
 ### From luarocks
 
 * `luarocks install teal-language-server`
-* `teal-language-server` should now be installed!
+* The `teal-language-server` program should be installed
 
 Tested on Linux and macOS. Currently a bit of a struggle to install via LuaRocks on Windows. We recommend using the binaries from the release on Windows.
 
@@ -43,7 +43,7 @@ local lspconfig = require("lspconfig")
 -- as long as teal-language-server is in your PATH this should work
 lspconfig.teal_ls.setup {}
 
--- if it's not in your path, you can specify a cmd as per the following:
+-- if it's not in your path, you can specify where teal-languag-server is by setting cmd. For example on Windows:
 -- lspconfig.teal_ls.setup({cmd = { 'C:\\opt\\tls-windows\\bin\\teal-language-server.bat' },})
 ```
 
