@@ -296,7 +296,7 @@ end
 function Document:resolve_type_ref(type_number)
    local tr = self:get_type_report()
    local type_info = tr.types[type_number]
-   if type_info.ref then
+   if type_info and type_info.ref then
       return self:resolve_type_ref(type_info.ref)
    else
       return type_info
@@ -459,8 +459,10 @@ function Document:_tree_sitter_token(y, x)
                local function_name = parent_node:child_by_field_name("name")
                if function_name then
                   local base_name = function_name:child_by_field_name("base")
-                  out.self_type = base_name:source()
-                  break
+                  if base_name then
+                     out.self_type = base_name:source()
+                     break
+                  end
                end
             elseif parent_node:type() == "ERROR" then
 
