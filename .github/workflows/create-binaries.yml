@@ -7,30 +7,32 @@ on:
   pull_request:
 
 jobs:
-  macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos, macos-arm64]
-        include:
-        - os: macos
-          runner: macos-13
-        - os: macos-arm64
-          runner: macos-latest
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.runner }}
-    steps:
-      # Checks-out the repository under $GITHUB_WORKSPACE.
-      - uses: actions/checkout@v4
-      - name: Build teal-language-server (${{ matrix.os }})
-        shell: bash
-        run: |
-          ./scripts/create_binary.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: tls-${{matrix.os}}
-          path: "./tls"
+  # Not doing macos for now, we can get back to it in https://github.com/teal-language/teal-language-server/issues/53
+  # macos:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os: [macos, macos-arm64]
+  #       include:
+  #       - os: macos
+  #         runner: macos-13
+  #       - os: macos-arm64
+  #         runner: macos-latest
+  #   name: ${{ matrix.os }}
+  #   runs-on: ${{ matrix.runner }}
+  #   steps:
+  #     # Checks-out the repository under $GITHUB_WORKSPACE.
+  #     - uses: actions/checkout@v4
+  #     - name: Build teal-language-server (${{ matrix.os }})
+  #       shell: bash
+  #       run: |
+  #         ./scripts/create_binary.sh
+  #         codesign -s - "./tls/bin/lua"
+  #     - uses: actions/upload-artifact@v4
+  #       if: always()
+  #       with:
+  #         name: tls-${{matrix.os}}
+  #         path: "./tls"
   
   windows:
     strategy:
@@ -40,7 +42,7 @@ jobs:
       # waiting on new luarocks release for fix, so we don't need to install via choco
       - name: install tree-sitter-cli
         run: | 
-          choco install tree-sitter --version 0.24.4
+          choco install tree-sitter --version 0.24.7
       - name: verify tree-sitter-cli is installed on path
         run: tree-sitter --version
     
@@ -51,7 +53,7 @@ jobs:
       - uses: luarocks/gh-actions-luarocks@v5
 
       - name: luarocks workaround for tree-sitter
-        run: luarocks config --lua-version 5.4 rocks_provided.tree-sitter-cli 0.24.4-2
+        run: luarocks config --lua-version 5.4 rocks_provided.tree-sitter-cli 0.24.7-2
       
       - name: Build teal-language-server
         run: | 
