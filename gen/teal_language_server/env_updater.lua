@@ -23,13 +23,11 @@ local EnvUpdater = {}
 
 
 
-
 function EnvUpdater:__init(server_state, root_nursery, document_manager)
    asserts.is_not_nil(document_manager)
 
    self._change_detected = lusc.new_sticky_event()
    self._server_state = server_state
-   self._substitutions = {}
    self._root_nursery = root_nursery
    self._document_manager = document_manager
 end
@@ -61,22 +59,6 @@ function EnvUpdater:_init_env_from_config(cfg)
       package.cpath
    end
 
-   local function esc_char(c)
-      return "%" .. c
-   end
-
-   local function str_esc(s, sub)
-      return s:gsub(
-      "[%^%$%(%)%%%.%[%]%*%+%-%?]",
-      sub or
-      esc_char)
-
-   end
-
-   local function add_module_substitute(source_dir, mod_name)
-      self._substitutions[source_dir] = "^" .. str_esc(mod_name)
-   end
-
    local function init_teal_env(gen_compat, gen_target, env_def)
       local opts = {
          defaults = {
@@ -93,12 +75,12 @@ function EnvUpdater:_init_env_from_config(cfg)
 
    cfg = cfg or {}
 
-   for dir in ivalues(cfg.include_dir or {}) do
-      prepend_to_lua_path(dir)
+   if cfg.source_dir then
+      prepend_to_lua_path(cfg.source_dir)
    end
 
-   if cfg.source_dir and cfg.module_name then
-      add_module_substitute(cfg.source_dir, cfg.module_name)
+   for dir in ivalues(cfg.include_dir or {}) do
+      prepend_to_lua_path(dir)
    end
 
    local env, err = init_teal_env(cfg.gen_compat, cfg.gen_target, cfg.global_env_def)
