@@ -39,6 +39,11 @@ scripts/lint_teal.sh     # or .bat on Windows
 scripts/run_tests.sh     # uses busted test framework
 ```
 
+**Run development version:**
+```bash
+scripts/run_dev_tls.sh   # compile, install, and run with latest changes
+```
+
 ## Architecture
 
 ### Core Components
@@ -72,11 +77,30 @@ The server implements:
 - `tlconfig.lua`: Teal compiler configuration (source_dir, build_dir, include_dir)
 - `teal-language-server-*.rockspec`: LuaRocks package specification
 
-## Testing
+## Development Workflow
+
+### Testing Your Changes
+
+The proper development cycle is:
+
+1. **Edit** `.tl` files in `src/`
+2. **Compile** Teal to Lua: `scripts/generate_lua.sh`
+3. **Install** to LuaRocks tree: `luarocks make --tree=luarocks_tree`
+4. **Test** using `luarocks_tree/bin/teal-language-server`
+
+Or use the convenience script that does all steps:
+```bash
+scripts/run_dev_tls.sh [arguments...]
+```
+
+**Important:** The `gen/` directory contains your compiled Lua files, but the language server needs dependencies from the LuaRocks tree. Simply running `lua` from `gen/` won't work - you must install via `luarocks make` to sync your changes with the dependency-aware LuaRocks environment.
+
+### Unit Testing
 
 Tests use the busted framework and are run with:
 ```bash
-luarocks test --tree=luarocks_tree
+scripts/run_tests.sh
+# or directly: luarocks test --tree=luarocks_tree
 ```
 
 Test files are located in `spec/` and the rockspec configures busted to load modules from `gen/?.lua`.
