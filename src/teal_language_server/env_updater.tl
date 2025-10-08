@@ -73,8 +73,6 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
       return env
    end
 
-   cfg = cfg or {}
-
    if cfg.source_dir then
       prepend_to_lua_path(cfg.source_dir)
    end
@@ -82,6 +80,9 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
    for dir in ivalues(cfg.include_dir or {}) do
       prepend_to_lua_path(dir)
    end
+
+   tracing.debug(_module_name, "Final package.path: {}", {package.path})
+   tracing.debug(_module_name, "Final package.cpath: {}", {package.cpath})
 
    local env, err = init_teal_env(cfg.gen_compat, cfg.gen_target, cfg.global_env_def)
    if not env then
