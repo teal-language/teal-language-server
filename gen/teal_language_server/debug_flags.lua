@@ -4,11 +4,11 @@ local debug_flags = {}
 
 
 
-debug_flags.trace_modules = {
-   "env_manager",
+debug_flags.trace_modules = {}
 
-}
-debug_flags.extra_debugging_enabled = true
+
+
+debug_flags.extra_debugging_enabled = false
 
 
 

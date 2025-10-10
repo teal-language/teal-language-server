@@ -5,10 +5,10 @@ local record debug_flags
 end
 
 debug_flags.trace_modules =  {
-   "env_manager",
+   -- "env_manager",
    -- "diagnostics_helper"
 }
-debug_flags.extra_debugging_enabled = true
+debug_flags.extra_debugging_enabled = false
 
 -- debug_flags.extra_debugging_enabled = false
 -- debug_flags.trace_modules = {}
