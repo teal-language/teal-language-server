@@ -8,6 +8,7 @@ local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
 local class = require("teal_language_server.class")
 
+
 local LspReaderWriter = {}
 
 
@@ -119,7 +120,7 @@ function LspReaderWriter:receive_rpc()
 end
 
 function LspReaderWriter:_encode(t)
-   assert(t.jsonrpc == "2.0", "Expected jsonrpc to be 2.0")
+   asserts.that(t.jsonrpc == "2.0", "Expected jsonrpc to be 2.0")
 
    local msg = json.encode(t)
 

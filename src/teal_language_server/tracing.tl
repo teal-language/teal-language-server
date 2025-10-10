@@ -2,6 +2,7 @@
 local TraceEntry <const> = require("teal_language_server.trace_entry")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing_util <const> = require("teal_language_server.tracing_util")
+local debug_flags <const> = require("teal_language_server.debug_flags")
 local uv <const> = require("luv")
 
 local record tracing
@@ -26,6 +27,12 @@ local level_order_from_str <const> :{TraceEntry.Level:integer} = {
 local _min_level:TraceEntry.Level = "TRACE"
 local _min_level_number:integer = level_order_from_str[_min_level]
 
+local trace_modules = {}
+
+for _, module_name in ipairs(debug_flags.trace_modules) do
+   trace_modules[module_name] = true
+end
+
 local function get_unix_timestamp():integer
    return os.time()
 end
@@ -45,16 +52,16 @@ local function get_relative_time():number
    return get_ref_time_seconds() - _load_start_time
 end
 
-function tracing._is_level_enabled(_log_module:string, level:integer):boolean
-   if _min_level_number > level then
-      return false
-   end
-
+function tracing._is_level_enabled(module:string, level:integer):boolean
    if #_streams == 0 then
       return false
    end
 
-   return true
+   if trace_modules[module] then
+      return true
+   end
+
+   return _min_level_number <= level
 end
 
 function tracing.add_stream(stream:function(TraceEntry))
@@ -98,6 +105,26 @@ function tracing.log(module:string, level:TraceEntry.Level, message:string, fiel
    for _, stream in ipairs(_streams) do
       stream(entry)
    end
+end
+
+function tracing.is_trace_enabled(module:string):boolean
+   return tracing._is_level_enabled(module, _level_trace)
+end
+
+function tracing.is_debug_enabled(module:string):boolean
+   return tracing._is_level_enabled(module, _level_debug)
+end
+
+function tracing.is_info_enabled(module:string):boolean
+   return tracing._is_level_enabled(module, _level_info)
+end
+
+function tracing.is_warning_enabled(module:string):boolean
+   return tracing._is_level_enabled(module, _level_warning)
+end
+
+function tracing.is_error_enabled(module:string):boolean
+   return tracing._is_level_enabled(module, _level_error)
 end
 
 function tracing.trace(module:string, message:string, fields?:{any})

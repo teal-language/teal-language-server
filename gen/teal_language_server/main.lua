@@ -1,13 +1,16 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local table = _tl_compat and _tl_compat.table or table; local _module_name = "main"
 
 
-local EnvUpdater = require("teal_language_server.env_updater")
-local DocumentManager = require("teal_language_server.document_manager")
+local EnvManager = require("teal_language_server.env_manager")
+local EnvFactory = require("teal_language_server.env_factory")
+local DiagnosticsHelper = require("teal_language_server.diagnostics_helper")
+local OpenDocumentRegistry = require("teal_language_server.open_document_registry")
 local ServerState = require("teal_language_server.server_state")
 local LspEventsManager = require("teal_language_server.lsp_events_manager")
 local lusc = require("lusc")
 local uv = require("luv")
 local TraceStream = require("teal_language_server.trace_stream")
+local debug_flags = require("teal_language_server.debug_flags")
 local args_parser = require("teal_language_server.args_parser")
 local MiscHandlers = require("teal_language_server.misc_handlers")
 local StdinReader = require("teal_language_server.stdin_reader")
@@ -15,12 +18,10 @@ local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
 local tracing = require("teal_language_server.tracing")
 local util = require("teal_language_server.util")
 local TraceEntry = require("teal_language_server.trace_entry")
+local ModuleInfoManager = require("teal_language_server.module_info_manager")
 
 
-
-
-
-local function init_logging(verbose)
+local function init_logging(verbose, very_verbose)
    local trace_stream = TraceStream()
    trace_stream:initialize()
 
@@ -28,8 +29,10 @@ local function init_logging(verbose)
       trace_stream:log_entry(entry)
    end)
 
-   if verbose then
+   if very_verbose then
       tracing.set_min_level("TRACE")
+   elseif verbose then
+      tracing.set_min_level("DEBUG")
    else
       tracing.set_min_level("INFO")
    end
@@ -51,7 +54,7 @@ local function main()
    local trace_stream
 
    if args.log_mode ~= "none" then
-      trace_stream = init_logging(args.verbose)
+      trace_stream = init_logging(args.verbose, args.very_verbose)
 
       for _, entry in ipairs(cached_entries) do
          trace_stream:log_entry(entry)
@@ -66,24 +69,33 @@ local function main()
    cached_entries = nil
 
    tracing.info(_module_name, "Started new instance teal-language-server. Lua Version: {}. Platform: {}", { _VERSION, util.get_platform() })
-   tracing.info(_module_name, "Received command line args: {}", { args })
+   tracing.info(_module_name, "Received command line args: {@}", { args })
    tracing.info(_module_name, "CWD = {}", { uv.cwd() })
 
-   local disposables
+   local disposables = {}
 
    local function initialize()
-      tracing.debug(_module_name, "Running object graph construction phase...", {})
+      tracing.trace(_module_name, "Running object graph construction phase...", {})
 
       local root_nursery = lusc.get_root_nursery()
       local stdin_reader = StdinReader()
+      table.insert(disposables, stdin_reader)
       local lsp_reader_writer = LspReaderWriter(stdin_reader)
+      table.insert(disposables, lsp_reader_writer)
       local lsp_events_manager = LspEventsManager(root_nursery, lsp_reader_writer)
       local server_state = ServerState()
-      local document_manager = DocumentManager(lsp_reader_writer, server_state)
-      local env_updater = EnvUpdater(server_state, root_nursery, document_manager)
-      local misc_handlers = MiscHandlers(lsp_events_manager, lsp_reader_writer, server_state, document_manager, trace_stream, args, env_updater)
+      local env_factory = EnvFactory(server_state)
+      local module_info_manager = ModuleInfoManager(server_state)
+      local diagnostics_helper = DiagnosticsHelper(server_state)
+      local open_document_registry = OpenDocumentRegistry(lsp_reader_writer, server_state)
+      local env_manager = EnvManager(
+      server_state, env_factory, module_info_manager, open_document_registry,
+      root_nursery, diagnostics_helper, lsp_reader_writer)
+      local misc_handlers = MiscHandlers(
+      lsp_events_manager, lsp_reader_writer, server_state, env_factory, open_document_registry,
+      trace_stream, args, env_manager, module_info_manager, diagnostics_helper)
 
-      tracing.debug(_module_name, "Running initialize phase...", {})
+      tracing.trace(_module_name, "Running initialize phase...", {})
       stdin_reader:initialize()
       lsp_reader_writer:initialize()
       lsp_events_manager:initialize()
@@ -93,10 +105,6 @@ local function main()
          tracing.info(_module_name, "Received shutdown request from client.  Cancelling all lusc tasks...", {})
          root_nursery.cancel_scope:cancel()
       end)
-
-      disposables = {
-         stdin_reader, lsp_reader_writer,
-      }
    end
 
    local function dispose()
@@ -114,8 +122,7 @@ local function main()
       tracing.trace(_module_name, "Received entry point call from luv")
 
       lusc.start({
-
-         generate_debug_names = true,
+         generate_debug_names = debug_flags.extra_debugging_enabled,
          on_completed = function(err)
             if err ~= nil then
                tracing.error(_module_name, "Received on_completed request with error:\n{}", { err })

@@ -2,6 +2,7 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 local TraceEntry = require("teal_language_server.trace_entry")
 local asserts = require("teal_language_server.asserts")
 local tracing_util = require("teal_language_server.tracing_util")
+local debug_flags = require("teal_language_server.debug_flags")
 local uv = require("luv")
 
 local tracing = {}
@@ -26,6 +27,12 @@ local level_order_from_str = {
 local _min_level = "TRACE"
 local _min_level_number = level_order_from_str[_min_level]
 
+local trace_modules = {}
+
+for _, module_name in ipairs(debug_flags.trace_modules) do
+   trace_modules[module_name] = true
+end
+
 local function get_unix_timestamp()
    return os.time()
 end
@@ -45,16 +52,16 @@ local function get_relative_time()
    return get_ref_time_seconds() - _load_start_time
 end
 
-function tracing._is_level_enabled(_log_module, level)
-   if _min_level_number > level then
-      return false
-   end
-
+function tracing._is_level_enabled(module, level)
    if #_streams == 0 then
       return false
    end
 
-   return true
+   if trace_modules[module] then
+      return true
+   end
+
+   return _min_level_number <= level
 end
 
 function tracing.add_stream(stream)
@@ -98,6 +105,26 @@ function tracing.log(module, level, message, fields)
    for _, stream in ipairs(_streams) do
       stream(entry)
    end
+end
+
+function tracing.is_trace_enabled(module)
+   return tracing._is_level_enabled(module, _level_trace)
+end
+
+function tracing.is_debug_enabled(module)
+   return tracing._is_level_enabled(module, _level_debug)
+end
+
+function tracing.is_info_enabled(module)
+   return tracing._is_level_enabled(module, _level_info)
+end
+
+function tracing.is_warning_enabled(module)
+   return tracing._is_level_enabled(module, _level_warning)
+end
+
+function tracing.is_error_enabled(module)
+   return tracing._is_level_enabled(module, _level_error)
 end
 
 function tracing.trace(module, message, fields)

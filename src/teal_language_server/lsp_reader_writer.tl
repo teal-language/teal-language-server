@@ -7,8 +7,9 @@ local uv <const> = require("luv")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
 local class <const> = require("teal_language_server.class")
+local type IDisposable <const> = require("teal_language_server.i_disposable")
 
-local record LspReaderWriter
+local record LspReaderWriter is IDisposable
    _stdin_reader:StdinReader
    _stdout: uv.Pipe
    _disposed: boolean
@@ -110,7 +111,7 @@ function LspReaderWriter:receive_rpc():{string:any}
    local body_line = self._stdin_reader:read(header_info.length)
    tracing.trace(_module_name, "Received request Body: {}", {body_line})
 
-   local data = json.decode(body_line)
+   local data = json.decode(body_line) as {string:any}
 
    asserts.that(data and type(data) == 'table', "Malformed json")
    asserts.that(data.jsonrpc == "2.0", "Incorrect jsonrpc version!  Got {} but expected 2.0", data.jsonrpc)
@@ -119,7 +120,7 @@ function LspReaderWriter:receive_rpc():{string:any}
 end
 
 function LspReaderWriter:_encode(t: {string:any})
-   assert(t.jsonrpc == "2.0", "Expected jsonrpc to be 2.0")
+   asserts.that(t.jsonrpc == "2.0", "Expected jsonrpc to be 2.0")
 
    local msg = json.encode(t)
 

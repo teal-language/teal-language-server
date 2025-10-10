@@ -1,6 +1,6 @@
 local tl <const> = require("tl")
 
-local Document <const> = require("teal_language_server.document")
+local OpenDocument <const> = require("teal_language_server.open_document")
 
 local record lsp_formatter
    record Documentation
@@ -79,13 +79,13 @@ local record StringBuilder
    end
 end
 
-function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.TypeInfo, doc: Document): lsp_formatter.Documentation
+function lsp_formatter.show_type(node_info: OpenDocument.NodeInfo, type_info: tl.TypeInfo, doc: OpenDocument, env: tl.Env): lsp_formatter.Documentation
    local output: lsp_formatter.Documentation = {kind="markdown"}
    local sb: StringBuilder = {strings = {}}
    sb:add("```teal")
 
    if type_info.t == tl.typecodes.FUNCTION then
-      local args = doc:get_function_args_string(type_info)
+      local args = doc:get_function_args_string(type_info, env)
       if args ~= nil then
          sb:add("function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
       else
@@ -94,8 +94,8 @@ function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.Typ
 
    elseif type_info.t == tl.typecodes.POLY then
       for i, type_ref in ipairs(type_info.types) do
-         local func_info = doc:resolve_type_ref(type_ref)
-         local args = doc:get_function_args_string(func_info)
+         local func_info = doc:resolve_type_ref(type_ref, env)
+         local args = doc:get_function_args_string(func_info, env)
          if args ~= nil then
             sb:add("function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
          else
@@ -119,7 +119,7 @@ function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.Typ
    elseif type_info.t == tl.typecodes.RECORD then
       sb:add("record " .. type_info.str)
       for key, type_ref in pairs(type_info.fields) do
-         local type_ref_info = doc:resolve_type_ref(type_ref)
+         local type_ref_info = doc:resolve_type_ref(type_ref, env)
          sb:add('   ' .. key .. ': ' .. type_ref_info.str)
       end
       sb:add("end")

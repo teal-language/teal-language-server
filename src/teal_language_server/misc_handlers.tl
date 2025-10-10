@@ -1,14 +1,16 @@
 local _module_name = "misc_handlers"
 
 -- <imports>
-local EnvUpdater <const> = require("teal_language_server.env_updater")
+local EnvManager <const> = require("teal_language_server.env_manager")
+local ModuleInfoManager <const> = require("teal_language_server.module_info_manager")
+local DiagnosticsHelper <const> = require("teal_language_server.diagnostics_helper")
 local args_parser <const> = require("teal_language_server.args_parser")
 local TraceStream <const> = require("teal_language_server.trace_stream")
-local DocumentManager <const> = require("teal_language_server.document_manager")
-local Document <const> = require("teal_language_server.document")
+local OpenDocumentRegistry <const> = require("teal_language_server.open_document_registry")
+local OpenDocument <const> = require("teal_language_server.open_document")
 local ServerState <const> = require("teal_language_server.server_state")
+local EnvFactory <const> = require("teal_language_server.env_factory")
 local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
-local Path <const> = require("teal_language_server.path")
 local Uri <const> = require("teal_language_server.uri")
 local lsp <const> = require("teal_language_server.lsp")
 local LspEventsManager <const> = require("teal_language_server.lsp_events_manager")
@@ -18,6 +20,8 @@ local tracing <const> = require("teal_language_server.tracing")
 local class <const> = require("teal_language_server.class")
 local tl <const> = require("tl")
 local lsp_formatter <const> = require("teal_language_server.lsp_formatter")
+local files_util <const> = require("teal_language_server.files_util")
+local path_util <const> = require("teal_language_server.path_util")
 
 local indexable_parent_types <const>: {string:boolean} = {
    ["index"] = true,
@@ -26,58 +30,64 @@ local indexable_parent_types <const>: {string:boolean} = {
 }
 
 local record MiscHandlers
-   _env_updater: EnvUpdater
    _trace_stream: TraceStream
-   _document_manager: DocumentManager
+   _document_manager: OpenDocumentRegistry
    _server_state: ServerState
+   _env_factory: EnvFactory
    _lsp_reader_writer: LspReaderWriter
    _lsp_events_manager: LspEventsManager
+   _env_manager: EnvManager
+   _module_content_registry: ModuleInfoManager
+   _diagnostics_publisher: DiagnosticsHelper
    _has_handled_initialize: boolean
    _cl_args: args_parser.CommandLineArgs
 
-   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_updater: EnvUpdater): MiscHandlers
+   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, env_factory: EnvFactory, open_document_registry: OpenDocumentRegistry, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_manager: EnvManager, module_info_manager: ModuleInfoManager, diagnostics_helper: DiagnosticsHelper): MiscHandlers
 end
 
-function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_updater: EnvUpdater)
-   asserts.is_not_nil(env_updater)
-
-   self._document_manager = document_manager
+function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, env_factory: EnvFactory, open_document_registry: OpenDocumentRegistry, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_manager: EnvManager, module_info_manager: ModuleInfoManager, diagnostics_helper: DiagnosticsHelper)
+   self._document_manager = open_document_registry
    self._server_state = server_state
+   self._env_factory = env_factory
    self._lsp_reader_writer = lsp_reader_writer
    self._lsp_events_manager = lsp_events_manager
+   self._env_manager = env_manager
    self._has_handled_initialize = false
    self._trace_stream = trace_stream
    self._cl_args = args
-   self._env_updater = env_updater
-
+   self._module_content_registry = module_info_manager
+   self._diagnostics_publisher = diagnostics_helper
 end
 
 function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
    asserts.that(not self._has_handled_initialize)
    self._has_handled_initialize= true
-   local root_dir_str:string
+   local root_path:string
 
    if params.rootUri then
-      root_dir_str = Uri.path_from_uri(params.rootUri as string)
+      root_path = Uri.to_file_path(Uri.parse(params.rootUri as string))
    else
-      root_dir_str = params.rootPath as string
+      root_path = path_util.canonicalize(params.rootPath as string)
    end
 
-   local root_path = Path(root_dir_str)
-   asserts.that(root_path:exists(), "Expected path to exist at '{}'", root_path.value)
+   asserts.that(files_util.is_directory(root_path), "Expected path to exist at '{}'", root_path)
 
    -- Now that we have the project path, rename log file so it is more discoverable
    -- so we can do project specific debugging more easily
    if self._cl_args.log_mode == "by_proj_path" then
       local pid = math.floor(uv.os_getpid())
-      local new_log_name = root_path.value:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
+      local new_log_name = root_path:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
       self._trace_stream:rename_output_file(new_log_name)
    end
 
-   tracing.info(_module_name, "Received initialize request from client. Teal project dir: {}", {root_path.value})
+   tracing.info(_module_name, "Received initialize request from client. Teal project dir: {}", {root_path})
 
    self._server_state:initialize(root_path)
-   self._env_updater:initialize()
+
+   local cwd = path_util.canonicalize(assert(uv.cwd()))
+   asserts.that(cwd == self._server_state.teal_project_root_dir)
+
+   self._env_factory:initialize()
 
    tracing.trace(_module_name, "Sending initialize response message...", {})
 
@@ -88,6 +98,9 @@ function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
          version = self._server_state.version,
       },
    })
+
+   self._module_content_registry:initialize()
+   self._env_manager:initialize()
 end
 
 function MiscHandlers:_on_initialized():nil
@@ -97,42 +110,61 @@ end
 function MiscHandlers:_on_did_open(params:lsp.Method.Params):nil
    local td <const> = params.textDocument as lsp.TextDocument
 
-   self._document_manager:open(Uri.parse(td.uri), td.text, td.version)
-      :process_and_publish_results()
-end
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
 
-function MiscHandlers:_on_did_close(params:lsp.Method.Params):nil
-   local td <const> = params.textDocument as lsp.TextDocument
-   self._document_manager:close(Uri.parse(td.uri))
+   local content = td.text
+
+   self._module_content_registry:on_opened(file_path, content, uri)
+
+   local module_info = self._module_content_registry:try_get_module_info(file_path)
+
+   if module_info == nil then
+      tracing.warning(_module_name, "Received 'didOpen' for unknown module at path: {}", {file_path})
+   else
+      tracing.debug(_module_name, "Received 'didOpen' for module {}", {module_info.module_name})
+      self._document_manager:open(file_path, uri, module_info)
+   end
 end
 
 function MiscHandlers:_on_did_save(params:lsp.Method.Params):nil
    local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
+   local uri = Uri.parse(td.uri)
 
-   if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
-      return
+   local file_path = Uri.to_file_path(uri)
+   local module_info = self._module_content_registry:try_get_module_info(file_path)
+
+   if module_info == nil then
+      tracing.warning(_module_name, "Received 'didSave' for unknown module at path: {}", {file_path})
+   else
+      tracing.debug(_module_name, "Received 'didSave' for module {}", {module_info.module_name})
    end
+end
 
-   doc:update_text(params.text as string, td.version)
-   -- Don't bother calling process_and_publish_results here because this
-   -- will happen anyway after the full env update
+function MiscHandlers:_on_did_close(params:lsp.Method.Params):nil
+   local td <const> = params.textDocument as lsp.TextDocument
 
-   tracing.debug(_module_name, "detected document file saved - enqueuing full env update", {})
-   self._env_updater:schedule_env_update()
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+
+   tracing.debug(_module_name, "Received 'didClose' for file at path: {}", {file_path})
+
+   self._module_content_registry:on_closed(file_path)
+
+   self._document_manager:close(file_path)
 end
 
 function MiscHandlers:_on_did_change(params:lsp.Method.Params):nil
    local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
-   if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
-      return
-   end
+   local uri = Uri.parse(td.uri)
    local changes <const> = params.contentChanges as {lsp.TextDocumentContentChangeEvent}
-   doc:update_text(changes[1].text as string, td.version)
-   doc:process_and_publish_results()
+   local content = changes[1].text as string
+
+   local file_path = Uri.to_file_path(uri)
+
+   tracing.debug(_module_name, "Received 'didChange' for file at path: {}", {file_path})
+
+   self._module_content_registry:on_changed(file_path, content, uri)
 end
 
 local function split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
@@ -150,7 +182,7 @@ local function split_by_symbols(input: string, self_type: string, stop_at?: stri
    return t
 end
 
-function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
+function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position): OpenDocument.NodeInfo, OpenDocument
    local context = params.context as lsp.CompletionContext
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
@@ -159,26 +191,30 @@ function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position
    end
 
    local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = self._document_manager:get(Uri.parse(td.uri))
+
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+
+   local doc <const> = self._document_manager:try_get(file_path)
 
    if not doc then
       tracing.warning(_module_name, "No doc found for completion request", {})
       return nil
    end
 
-   tracing.debug(_module_name, "Looking up node info at position: {@}", {pos})
+   tracing.trace(_module_name, "Looking up node info at position: {@}", {pos})
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
       return nil
    end
-   tracing.debug(_module_name, "Found node info: {@}", {node_info})
+   tracing.trace(_module_name, "Found node info: {@}", {node_info})
    return node_info, doc
 end
 
 function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    local pos = params.position as lsp.Position
-   tracing.info(_module_name, "Received request for completion at position: {@}", {pos})
+   tracing.debug(_module_name, "Received request for completion at position: {@}", {pos})
 
    -- Subtract one since neovim passes the character where the cursor is, which is after the '.' / ':'
    -- and this position doesn't exist in the doc so can lead to tree sitter query fails
@@ -192,6 +228,8 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    end
 
    tracing.debug(_module_name, "Found node info: {@}", {node_info})
+
+   local env = self._env_manager:get_env()
 
    local tks: {string}
 
@@ -229,7 +267,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
    end
 
    local items:{any} = { }
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
@@ -237,10 +275,10 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
    if type_info then
       tracing.debug(_module_name, "Successfully found type_info {@}", {type_info})
-      local tr = doc:get_type_report()
+      local tr = env.reporter:get_report()
 
       if type_info.ref then
-         type_info = doc:resolve_type_ref(type_info.ref)
+         type_info = doc:resolve_type_ref(type_info.ref, env)
       end
 
       -- string
@@ -255,20 +293,20 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
-            type_info = doc:resolve_type_ref(v)
+            type_info = doc:resolve_type_ref(v, env)
             local was_added:boolean
             -- self based access should only show functions
             if node_info.type == ":" then
                if type_info.t == tl.typecodes.FUNCTION then
                   -- local args = doc:get_function_args_string(type_info)
                   if type_info.args and #type_info.args >= 1 then
-                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
+                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1], env)
                      if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) then
-                        tracing.debug(_module_name, "Adding self method {}", {key})
+                        tracing.trace(_module_name, "Adding self method {}", {key})
                         table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
                         was_added = true
                      else
-                        tracing.debug(_module_name, "Ignoring method {} with arg type {0x%08x}, type info str {}, first arg str {}", {
+                        tracing.trace(_module_name, "Ignoring method {} with arg type {0x%08x}, type info str {}, first arg str {}", {
                            key, first_arg_type.t, original_str, first_arg_type.str})
                      end
                   end
@@ -285,7 +323,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
       -- at a table, we might be able to help resolve the keys!
       elseif type_info.keys then
-         type_info = doc:resolve_type_ref(type_info.keys)
+         type_info = doc:resolve_type_ref(type_info.keys, env)
 
          if type_info.enums then
             for _, enum_value in ipairs(type_info.enums) do
@@ -322,19 +360,20 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    end
 
    local output: lsp_formatter.SignatureHelp = {}
-   tracing.debug(_module_name, "Got nodeinfo: {}", {node_info})
+   tracing.trace(_module_name, "Got nodeinfo: {}", {node_info})
 
    local tks: {string}
 
    if node_info.type == "(" then
       tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.debug(_module_name, "Received request for signature help at character: {}", {tks})
+      tracing.trace(_module_name, "Received request for signature help at character: {}", {tks})
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local env = self._env_manager:get_env()
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if type_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -344,8 +383,8 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    output.signatures = {}
    if type_info.t == tl.typecodes.POLY then
       for _, type_ref in ipairs(type_info.types) do
-         type_info = doc:resolve_type_ref(type_ref)
-         local args = doc:get_function_args_string(type_info)
+         type_info = doc:resolve_type_ref(type_ref, env)
+         local args = doc:get_function_args_string(type_info, env)
          if args ~= nil then
             local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
             table.insert(output.signatures, {label = func_str})
@@ -355,7 +394,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
          end
       end
    else
-      local args = doc:get_function_args_string(type_info)
+      local args = doc:get_function_args_string(type_info, env)
       if args ~= nil then
          local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
          table.insert(output.signatures, {label = func_str})
@@ -393,7 +432,8 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local env = self._env_manager:get_env()
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info or type_info.file == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -409,14 +449,13 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    else
       local full_path: string
 
-      if Path(type_info.file):is_absolute() then
+      if path_util.is_absolute(type_info.file) then
          full_path = type_info.file
       else
-         full_path = self._server_state.teal_project_root_dir.value .. "/" .. type_info.file
+         full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
       end
 
-      local file_path = Path(full_path)
-      file_uri = Uri.uri_from_path(file_path.value)
+      file_uri = Uri.uri_from_path(full_path)
    end
 
    self._lsp_reader_writer:send_rpc(id, {
@@ -426,6 +465,57 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
          ["end"] = lsp.position(type_info.y - 1, type_info.x - 1),
       },
    })
+end
+
+
+function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params, id:integer):nil
+   tracing.debug(_module_name, "Received workspace/diagnostic request", {})
+
+   local workspace_params = params as lsp.WorkspaceDiagnosticParams
+   local previous_result_id = workspace_params.previousResultId
+   local current_result_id = self._server_state:get_workspace_diagnostic_result_id()
+
+   -- Check if we can return unchanged result for incremental updates
+   if previous_result_id and previous_result_id == current_result_id then
+      tracing.debug(_module_name, "Returning unchanged workspace diagnostics (same result ID: {})", {current_result_id})
+      self._lsp_reader_writer:send_rpc(id, {
+         items = {{
+            kind = lsp.diagnostic_kind.unchanged,
+            resultId = current_result_id,
+         }}
+      } as lsp.WorkspaceDiagnosticReport)
+      return
+   end
+
+   -- Generate new result ID for this diagnostic run
+   local new_result_id = self._server_state:update_workspace_diagnostic_result_id()
+
+   tracing.debug(_module_name, "Running full workspace build for diagnostics...", {})
+   local all_modules = self._env_manager:do_full_build()
+
+   local workspace_items: {lsp.WorkspaceDiagnosticReportItem} = {}
+
+   for _, module_info in ipairs(all_modules) do
+      local uri = module_info.uri
+      if not uri then
+         -- Create URI for unopened files
+         uri = Uri.uri_from_path(module_info.path)
+      end
+
+      local diagnostics = self._diagnostics_publisher:create_diagnostics(module_info)
+      table.insert(workspace_items, {
+         uri = Uri.tostring(uri),
+         kind = lsp.diagnostic_kind.full,
+         resultId = new_result_id,
+         items = diagnostics,
+      })
+   end
+
+   tracing.info(_module_name, "Returning workspace diagnostics for {} files with result ID {}", {#workspace_items, new_result_id})
+
+   self._lsp_reader_writer:send_rpc(id, {
+      items = workspace_items
+   } as lsp.WorkspaceDiagnosticReport)
 end
 
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
@@ -463,7 +553,8 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local env = self._env_manager:get_env()
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type info based on token", {})
@@ -477,9 +568,9 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   tracing.debug(_module_name, "Successfully found type_info: {@}", {type_info})
+   tracing.trace(_module_name, "Successfully found type_info: {@}", {type_info})
 
-   local type_str <const> = lsp_formatter.show_type(node_info, type_info, doc)
+   local type_str <const> = lsp_formatter.show_type(node_info, type_info, doc, env)
    self._lsp_reader_writer:send_rpc(id, {
       contents = type_str,
       range = {
@@ -503,8 +594,9 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/completion", self._on_completion)
    self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
    self:_add_handler("textDocument/hover", self._on_hover)
+   self:_add_handler("workspace/diagnostic", self._on_workspace_diagnostic)
 
-   -- planning to figure out what defintion/declaration vs type definition/declaration should go to
+   -- TODO - figure out what defintion/declaration vs type definition/declaration should go to
    self:_add_handler("textDocument/definition", self._on_definition)
 end
 

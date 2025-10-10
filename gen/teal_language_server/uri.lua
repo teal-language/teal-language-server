@@ -1,6 +1,7 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string
 local asserts = require("teal_language_server.asserts")
 local util = require("teal_language_server.util")
+local path_util = require("teal_language_server.path_util")
 
 
 
@@ -95,10 +96,9 @@ function Uri.parse(text)
    return parsed
 end
 
-function Uri.path_from_uri(s)
-   local parsed = Uri.parse(s)
-   asserts.that(parsed.scheme == "file", "uri " .. tostring(s) .. " is not a file")
-   return parsed.path
+function Uri.to_file_path(uri)
+   asserts.that(uri.scheme == "file", "Only file:// URIs are supported, got: {}", uri.scheme)
+   return path_util.canonicalize(uri.path)
 end
 
 function Uri.uri_from_path(path)

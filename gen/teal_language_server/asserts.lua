@@ -1,4 +1,5 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string
+local tracing_util = require("teal_language_server.tracing_util")
+
 local asserts = {}
 
 
@@ -6,12 +7,13 @@ local function _raise(format, ...)
    if format == nil then
       error("Assert hit!")
    else
+      local args = { ... }
 
-      if format:find("%%s") ~= nil then
-         error("Unexpected assert string - should use {} instead of %s")
+      if #args == 0 then
+         error(format)
+      else
+         error(tracing_util.custom_format(format, { ... }))
       end
-      format = format:gsub("{}", "%%s")
-      error(string.format(format, ...))
    end
 end
 

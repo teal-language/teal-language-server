@@ -1,11 +1,12 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local string = _tl_compat and _tl_compat.string or string
 local util = require("teal_language_server.util")
 local asserts = require("teal_language_server.asserts")
-local Path = require("teal_language_server.path")
 local TraceEntry = require("teal_language_server.trace_entry")
 local json = require("cjson")
 local uv = require("luv")
 local class = require("teal_language_server.class")
+local path_util = require("teal_language_server.path_util")
+local files_util = require("teal_language_server.files_util")
 
 local TraceStream = {}
 
@@ -39,37 +40,44 @@ local function _open_write_file_append(path)
 end
 
 function TraceStream:_cleanup_old_logs(dir)
-   if not dir:is_directory() then
-      dir:create_directory()
+
+   if not files_util.is_directory(dir) then
+      files_util.create_directory(dir)
    end
 
    local current_time_sec = os.time()
    local max_age_sec = 60 * 60 * 24
 
-   for _, file_path in ipairs(dir:get_sub_files()) do
-      local stats = assert(uv.fs_stat(file_path.value))
-      local mod_time_sec = stats.mtime.sec
+   for _, sub_path in ipairs(files_util.get_sub_paths(dir)) do
+      if not files_util.is_file(sub_path) then
+         goto continue
+      end
+
+      local mod_time_sec = files_util.get_modification_time_sec(sub_path)
 
       if current_time_sec - mod_time_sec > max_age_sec then
          util.try({
             action = function()
-               file_path:delete_file()
+               files_util.delete_file(sub_path)
             end,
             catch = function()
 
             end,
          })
       end
+
+      ::continue::
    end
 end
 
 function TraceStream:_get_log_dir()
-   local homedir = Path(assert(uv.os_homedir()))
-   asserts.that(homedir:exists())
-   local log_dir = homedir:join(".cache"):join("teal-language-server")
+   local homedir = path_util.canonicalize(assert(uv.os_homedir()))
+   asserts.that(files_util.is_directory(homedir))
 
-   if not log_dir:is_directory() then
-      log_dir:create_directory()
+   local log_dir = homedir .. "/.cache/teal-language-server"
+
+   if not files_util.is_directory(log_dir) then
+      files_util.create_directory(log_dir)
    end
 
    return log_dir
@@ -82,7 +90,7 @@ function TraceStream:_choose_log_file_path()
    local date = os.date("*t")
    local pid = uv.os_getpid()
 
-   return log_dir:join(string.format("%d-%d-%d_%d.txt", date.year, date.month, date.day, pid))
+   return log_dir .. string.format("/%d-%d-%d_%d.txt", date.year, date.month, date.day, pid)
 end
 
 function TraceStream:initialize()
@@ -94,7 +102,7 @@ function TraceStream:initialize()
 
    asserts.is_nil(self._file_stream)
 
-   self._file_stream = _open_write_file(self.log_path.value)
+   self._file_stream = _open_write_file(self.log_path)
    self._is_initializing = false
 end
 
@@ -108,10 +116,10 @@ function TraceStream:rename_output_file(new_name)
       self:_close_file()
    end
 
-   local new_path = self:_get_log_dir():join(new_name .. ".log")
-   uv.fs_rename(self._log_path.value, new_path.value)
+   local new_path = self:_get_log_dir() .. "/" .. new_name .. ".log"
+   uv.fs_rename(self._log_path, new_path)
    self._log_path = new_path
-   self._file_stream = _open_write_file_append(self._log_path.value)
+   self._file_stream = _open_write_file_append(self._log_path)
 end
 
 function TraceStream:flush()

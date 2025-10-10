@@ -31,7 +31,7 @@ function LspEventsManager:set_handler(method:lsp.Method.Name, handler:function(l
 end
 
 function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Params, id:integer)
-   tracing.info(_module_name, "Received request from client for method {}", {method})
+   tracing.trace(_module_name, "Received request from client for method {}", {method})
 
    if self._handlers[method] then
       local ok: boolean
@@ -42,7 +42,7 @@ function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Par
          debug.traceback as function) as (boolean, string)
 
       if ok then
-         tracing.debug(_module_name, "Successfully handled request with method {}", {method})
+         tracing.trace(_module_name, "Successfully handled request with method {}", {method})
       else
          tracing.error(_module_name, "Error in handler for request with method {}: {}", {method, err})
       end
