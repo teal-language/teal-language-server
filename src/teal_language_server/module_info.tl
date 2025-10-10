@@ -47,6 +47,7 @@ function ModuleInfo:__init(path: string, module_name: string)
    self._path = path
    self._module_name = module_name
    self.dependents = {}
+   self.dependencies = {}
    self._hash = 0
    self.is_opened = false
 end
@@ -61,7 +62,7 @@ function ModuleInfo:clear_teal_cache()
    -- Note that check_result is controlled elsewhere
 end
 
-local function hash_string(str:string): integer
+local function slow_hash(str:string): integer
     local hash = 2166136261
     for i = 1, #str do
         local byte = string.byte(str, i)
@@ -78,7 +79,7 @@ function ModuleInfo:try_update_content(content: string): boolean
    if content == nil then
       new_hash = 0
    else
-      new_hash = hash_string(content)
+      new_hash = slow_hash(content)
       asserts.is_not_nil(new_hash)
    end
 
@@ -162,7 +163,6 @@ class.setup(ModuleInfo, "ModuleInfo",  {
          return self._parse_errors
       end,
       content = function(self: ModuleInfo): string
-         asserts.is_not_nil(self._content)
          return self._content
       end,
       required_modules = function(self: ModuleInfo): {string}

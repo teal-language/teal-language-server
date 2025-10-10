@@ -1,5 +1,6 @@
 local _module_name = "lsp_events_manager"
-
+-- <imports>
+local debug_flags <const> = require("teal_language_server.debug_flags")
 local lsp <const> = require("teal_language_server.lsp")
 local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
 local lusc <const> = require("lusc")
@@ -44,7 +45,11 @@ function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Par
       if ok then
          tracing.trace(_module_name, "Successfully handled request with method {}", {method})
       else
-         tracing.error(_module_name, "Error in handler for request with method {}: {}", {method, err})
+         if debug_flags.quit_on_error then
+            asserts.fail("Error in handler for request with method {}: {}", method, err)
+         else
+            tracing.error(_module_name, "Error in handler for request with method {}: {}", {method, err})
+         end
       end
    else
       tracing.warning(_module_name, "No handler found for event with method {}", {method})

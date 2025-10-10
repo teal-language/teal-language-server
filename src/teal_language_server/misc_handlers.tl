@@ -227,7 +227,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   tracing.debug(_module_name, "Found node info: {@}", {node_info})
+   tracing.trace(_module_name, "Found node info: {@}", {node_info})
 
    local env = self._env_manager:get_env()
 
@@ -339,7 +339,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
       table.insert(items, {label = "(none)"})
    end
 
-   tracing.debug(_module_name, "Sending {} back to client", {#items})
+   tracing.debug(_module_name, "Sending {} completion items back to client", {#items})
 
    self._lsp_reader_writer:send_rpc(id, {
       isIncomplete = false,

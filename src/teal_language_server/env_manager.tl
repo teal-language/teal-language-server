@@ -345,10 +345,6 @@ function EnvManager:_build_common(project_subset: {ModuleInfo})
 
    for _, info in ipairs(subset_with_deps) do
       if info.check_result == nil then
-         if info.content == nil then
-            tracing.warning(_module_name, "Attempting to type check module {} but it has no content (file may have been deleted?)", {info.module_name})
-         end
-
          -- Need to fully regenerate the ast, tokens, etc.
          -- since teal seems to mutate these every time we type check
          info:clear_teal_cache()
@@ -362,7 +358,11 @@ function EnvManager:_build_common(project_subset: {ModuleInfo})
             self._env.loaded[info.path] = nil
          end
 
-         table.insert(modules_to_build, info)
+         if info.content == nil then
+            tracing.warning(_module_name, "Attempting to type check module {} but it has no content (file may have been deleted)", {info.module_name})
+         else
+            table.insert(modules_to_build, info)
+         end
       end
    end
 

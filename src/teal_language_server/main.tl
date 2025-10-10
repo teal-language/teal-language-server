@@ -118,6 +118,8 @@ local function main()
    end
 
    local lusc_timer = uv.new_timer()
+   local encountered_error = false
+
    lusc_timer:start(0, 0, function()
       tracing.trace(_module_name, "Received entry point call from luv")
 
@@ -126,6 +128,7 @@ local function main()
          on_completed = function(err:lusc.ErrorGroup)
             if err ~= nil then
                tracing.error(_module_name, "Received on_completed request with error:\n{}", {err})
+               encountered_error = true
             else
                tracing.info(_module_name, "Received on_completed request")
             end
@@ -170,9 +173,13 @@ local function main()
       action = run_luv,
       catch = function(err:string):nil
          tracing.error(_module_name, "Error: {}", {err})
-         error(err)
+         encountered_error = true
       end,
    }
+
+   if encountered_error then
+      os.exit(1)
+   end
 end
 
 main()
