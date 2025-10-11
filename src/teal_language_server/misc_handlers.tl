@@ -1,7 +1,6 @@
 local _module_name = "misc_handlers"
 
 -- <imports>
-local ModuleInfo <const> = require("teal_language_server.module_info")
 local DiagnosticsPublisher <const> = require("teal_language_server.diagnostics_publisher")
 local BuildHandler <const> = require("teal_language_server.build_handler")
 local ModuleInfoManager <const> = require("teal_language_server.module_info_manager")
@@ -472,20 +471,6 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    })
 end
 
-function MiscHandlers:_get_all_modules(): {ModuleInfo}
-   local all_files = {}
-
-   for _, source_dir in ipairs(self._server_state.source_dirs) do
-      for _, file_path in ipairs(files_util.get_sub_paths_recursive(source_dir, ".tl")) do
-         local info = self._module_info_manager:try_get_or_create_module_info(file_path)
-         asserts.is_not_nil(info)
-         table.insert(all_files, info)
-      end
-   end
-
-   return all_files
-end
-
 function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params, id:integer):nil
    tracing.debug(_module_name, "Received workspace/diagnostic request", {})
 
@@ -510,13 +495,16 @@ function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params, id:inte
 
    tracing.debug(_module_name, "Running full workspace build for diagnostics...", {})
 
-   local all_modules = self:_get_all_modules()
-   local sorted_modules = self._build_handler:build(all_modules)
+   local all_modules = self._build_handler:get_all_modules()
+   local build_result = self._build_handler:build(all_modules, nil)
+
+   self._build_handler:sort_files_by_dependency_order(
+      all_modules, build_result.global_dep_paths)
 
    local workspace_items: {lsp.WorkspaceDiagnosticReportItem} = {}
 
    -- Use sorted modules so that diagnostics related to dependencies appear first
-   for _, module_info in ipairs(sorted_modules) do
+   for _, module_info in ipairs(all_modules) do
       local uri = module_info.uri
       if not uri then
          -- Create URI for unopened files

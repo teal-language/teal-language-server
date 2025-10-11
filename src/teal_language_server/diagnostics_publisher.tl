@@ -54,7 +54,8 @@ function DiagnosticsPublisher:_build()
       end
    end
 
-   self._build_handler:build(all_open_files)
+   local all_modules = self._build_handler:get_all_modules()
+   self._build_handler:build(all_modules, all_open_files)
 
    for _, info in ipairs(all_open_files) do
       asserts.is_not_nil(info.uri)

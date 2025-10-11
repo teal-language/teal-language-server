@@ -22,6 +22,11 @@ local record BuildHandler
    _open_document_registry: OpenDocumentRegistry
    _has_built: boolean
 
+   record BuildResult
+      built_modules: {ModuleInfo}  -- Modules that were actually built
+      global_dep_paths: {string: boolean}  -- Set of all global dependency paths
+   end
+
    metamethod __call: function(
       self: BuildHandler, server_state: ServerState, env_factory: EnvFactory,
       module_info_manager: ModuleInfoManager, open_document_registry: OpenDocumentRegistry): BuildHandler
@@ -87,7 +92,7 @@ function BuildHandler:_on_module_changed(info: ModuleInfo, old_dependencies: {st
    self:_invalidate_build_cache_for_module_and_dependents(info)
 end
 
-function BuildHandler:_sort_files_by_dependency_order(modules: {ModuleInfo}, global_dep_paths: {string: boolean})
+function BuildHandler:sort_files_by_dependency_order(modules: {ModuleInfo}, global_dep_paths: {string: boolean})
    local dep_counts: {string:integer} = {}
 
    local function get_total_dep_count(file_path: ModuleInfo, visited: {string:boolean}): integer
@@ -285,31 +290,39 @@ function BuildHandler:_get_global_infos():{ModuleInfo}
    return all_global_infos
 end
 
-function BuildHandler:_invalidate_all()
-   for _, info in pairs(self._module_info_manager.modules) do
-      info.requires_build = true
-      if not info.is_opened then
-         asserts.is_nil(self._open_document_registry:try_get(info.path))
-         self:_try_update_unopened_file_with_changes(info)
+function BuildHandler:get_all_modules(): {ModuleInfo}
+   local all_files = {}
+
+   for _, source_dir in ipairs(self._server_state.source_dirs) do
+      for _, file_path in ipairs(files_util.get_sub_paths_recursive(source_dir, ".tl")) do
+         local info = self._module_info_manager:try_get_or_create_module_info(file_path)
+         asserts.is_not_nil(info)
+         table.insert(all_files, info)
       end
    end
-   tracing.debug(_module_name, "Invalidated all modules", {})
+
+   return all_files
 end
 
--- Returns all related modules in build order
-function BuildHandler:build(project_subset: {ModuleInfo}): {ModuleInfo}
-   local global_infos = self:_get_global_infos()
-
-   local subset_with_deps = self:_collect_all_dependencies(project_subset, global_infos)
-
-   tracing.debug(_module_name, "Found {} modules to consider for build (including dependencies)", {#subset_with_deps})
-
-   for _, info in ipairs(subset_with_deps) do
+function BuildHandler:build(all_modules: {ModuleInfo}, project_subset: {ModuleInfo}): BuildHandler.BuildResult
+   for _, info in ipairs(all_modules) do
       if not info.is_opened then
          asserts.is_nil(self._open_document_registry:try_get(info.path))
          self:_check_unopened_file_for_invalidation(info)
       end
    end
+
+   local global_infos = self:_get_global_infos()
+
+   local subset_with_deps:{ModuleInfo}
+
+   if project_subset == nil then
+      subset_with_deps = all_modules
+   else
+      subset_with_deps = self:_collect_all_dependencies(project_subset, global_infos)
+   end
+
+   tracing.debug(_module_name, "Found {} modules to consider for build (including dependencies)", {#subset_with_deps})
 
    if self._has_built then
       local has_invalidated_global = false
@@ -323,9 +336,12 @@ function BuildHandler:build(project_subset: {ModuleInfo}): {ModuleInfo}
       end
 
       if has_invalidated_global then
-         self:_invalidate_all()
-         self._env = self._env_factory:generate_env()
+         for _, info in ipairs(all_modules) do
+            info.requires_build = true
+         end
+         tracing.debug(_module_name, "Invalidated all modules", {})
 
+         self._env = self._env_factory:generate_env()
          tracing.warning(_module_name, "Global environment changed, re-creating env from scratch", {})
       end
    end
@@ -337,11 +353,6 @@ function BuildHandler:build(project_subset: {ModuleInfo}): {ModuleInfo}
    for _, info in ipairs(global_infos) do
       global_dep_paths[info.path] = true
    end
-
-   -- build dependencies first
-   -- we could also just sort modules_to_build instead but it's useful
-   -- for calling code to get this sorted list to process results
-   self:_sort_files_by_dependency_order(subset_with_deps, global_dep_paths)
 
    local modules_to_build = {}
 
@@ -369,12 +380,17 @@ function BuildHandler:build(project_subset: {ModuleInfo}): {ModuleInfo}
       end
    end
 
+   self:sort_files_by_dependency_order(modules_to_build, global_dep_paths)
+
    for _, info in ipairs(modules_to_build) do
       self:_type_check_module(info)
    end
 
    tracing.debug(_module_name, "Ran type check on {} modules", {#modules_to_build})
-   return subset_with_deps
+   return  {
+      built_modules = modules_to_build,
+      global_dep_paths = global_dep_paths,
+   }
 end
 
 function BuildHandler:initialize()
