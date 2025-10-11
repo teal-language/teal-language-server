@@ -1,4 +1,4 @@
-local _module_name = "env_manager"
+local _module_name = "build_handler"
 
 -- <imports>
 local tracing <const> = require("teal_language_server.tracing")
@@ -10,45 +10,35 @@ local EnvFactory <const> = require("teal_language_server.env_factory")
 local tl <const> = require("tl")
 local ModuleInfoManager <const> = require("teal_language_server.module_info_manager")
 local OpenDocumentRegistry <const> = require("teal_language_server.open_document_registry")
-local DiagnosticsHelper <const> = require("teal_language_server.diagnostics_helper")
-local lusc <const> = require("lusc")
-local uv <const> = require("luv")
 local files_util <const> = require("teal_language_server.files_util")
-local Uri <const> = require("teal_language_server.uri")
-local lsp <const> = require("teal_language_server.lsp")
-local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
 local path_util <const> = require("teal_language_server.path_util")
 
-local record EnvManager
+local record BuildHandler
    _server_state: ServerState
    _env_factory: EnvFactory
    _env: tl.Env
    _has_initialized: boolean
    _module_info_manager: ModuleInfoManager
    _open_document_registry: OpenDocumentRegistry
-   _diagnostics_publisher: DiagnosticsHelper
-   _root_nursery:lusc.Nursery
-   _change_detected: lusc.StickyEvent
-   _lsp_reader_writer: LspReaderWriter
    _has_built: boolean
 
-   metamethod __call: function(self: EnvManager, server_state: ServerState, env_factory: EnvFactory, module_info_manager: ModuleInfoManager, open_document_registry: OpenDocumentRegistry, root_nursery:lusc.Nursery, diagnostics_helper: DiagnosticsHelper, lsp_reader_writer: LspReaderWriter): EnvManager
+   metamethod __call: function(
+      self: BuildHandler, server_state: ServerState, env_factory: EnvFactory,
+      module_info_manager: ModuleInfoManager, open_document_registry: OpenDocumentRegistry): BuildHandler
 end
 
-function EnvManager:__init(server_state: ServerState, env_factory: EnvFactory, module_info_manager: ModuleInfoManager, open_document_registry: OpenDocumentRegistry, root_nursery:lusc.Nursery, diagnostics_helper: DiagnosticsHelper, lsp_reader_writer: LspReaderWriter)
+function BuildHandler:__init(
+      server_state: ServerState, env_factory: EnvFactory, module_info_manager: ModuleInfoManager,
+      open_document_registry: OpenDocumentRegistry)
    self._server_state = server_state
-   self._lsp_reader_writer = lsp_reader_writer
    self._env_factory = env_factory
    self._has_initialized = false
    self._module_info_manager = module_info_manager
    self._open_document_registry = open_document_registry
-   self._root_nursery = root_nursery
-   self._diagnostics_publisher = diagnostics_helper
-   self._change_detected = lusc.new_sticky_event()
    self._has_built = false
 end
 
-function EnvManager:_invalidate_build_cache_for_module_and_dependents(start_info: ModuleInfo)
+function BuildHandler:_invalidate_build_cache_for_module_and_dependents(start_info: ModuleInfo)
    local module_queue: {ModuleInfo} = {}
    local has_processed: {string:boolean} = {}
 
@@ -59,27 +49,23 @@ function EnvManager:_invalidate_build_cache_for_module_and_dependents(start_info
       local module_info = table.remove(module_queue, 1)
       asserts.that(has_processed[module_info.path])
 
-      if module_info.check_result == nil then
-         -- already invalidated, can skip
-      else
-         for dependent_path, _ in pairs(module_info.dependents) do
-            if has_processed[dependent_path] == nil then
-               has_processed[dependent_path] = true
+      for dependent_path, _ in pairs(module_info.dependents) do
+         if has_processed[dependent_path] == nil then
+            has_processed[dependent_path] = true
 
-               local dep_info = self._module_info_manager:try_get_or_create_module_info(dependent_path)
+            local dep_info = self._module_info_manager:try_get_or_create_module_info(dependent_path)
 
-               if dep_info ~= nil then
-                  table.insert(module_queue, dep_info)
-               end
+            if dep_info ~= nil then
+               table.insert(module_queue, dep_info)
             end
          end
-
-         module_info.check_result = nil
       end
+
+      module_info.requires_build = true
    end
 end
 
-function EnvManager:_on_module_changed(info: ModuleInfo, old_dependencies: {string: boolean})
+function BuildHandler:_on_module_changed(info: ModuleInfo, old_dependencies: {string: boolean})
    if old_dependencies then
       for dep_path, _ in pairs(old_dependencies) do
          local dep_info = self._module_info_manager:try_get_or_create_module_info(dep_path)
@@ -99,10 +85,9 @@ function EnvManager:_on_module_changed(info: ModuleInfo, old_dependencies: {stri
    end
 
    self:_invalidate_build_cache_for_module_and_dependents(info)
-   self._change_detected:set()
 end
 
-function EnvManager:_sort_files_by_dependency_order(modules: {ModuleInfo}, global_dep_paths: {string: boolean})
+function BuildHandler:_sort_files_by_dependency_order(modules: {ModuleInfo}, global_dep_paths: {string: boolean})
    local dep_counts: {string:integer} = {}
 
    local function get_total_dep_count(file_path: ModuleInfo, visited: {string:boolean}): integer
@@ -165,7 +150,7 @@ function EnvManager:_sort_files_by_dependency_order(modules: {ModuleInfo}, globa
    end
 end
 
-function EnvManager:_type_check_module(info: ModuleInfo)
+function BuildHandler:_type_check_module(info: ModuleInfo)
    tracing.debug(_module_name, "Type checking module {}", {info.module_name})
 
    local is_lua = info.path:sub(-4) == ".lua"
@@ -174,22 +159,23 @@ function EnvManager:_type_check_module(info: ModuleInfo)
       feat_lax = is_lua and "on" or "off",
    }
 
+   asserts.is_nil(info.check_result)
+   asserts.that(info.requires_build)
+
    info.check_result = tl.check(
       info.ast, info.path, opts, self._env)
 
    asserts.is_not_nil(info.check_result)
+
+   info.requires_build = false
 end
 
-function EnvManager:_invalidate_unopened_file_if_necessary(info: ModuleInfo)
-   if info.check_result == nil then
-      return
-   end
-
+function BuildHandler:_try_update_unopened_file_with_changes(info: ModuleInfo):boolean
    local modification_time = files_util.try_get_modification_time_ms(info.path)
 
    if modification_time == info.modification_time then
       tracing.trace(_module_name, "Type checking module {} skipped (unopened file with no changes)", {info.module_name})
-      return
+      return false
    end
 
    info.modification_time = modification_time
@@ -202,14 +188,20 @@ function EnvManager:_invalidate_unopened_file_if_necessary(info: ModuleInfo)
 
    if not info:try_update_content(content) then
       tracing.trace(_module_name, "Type checking module {} skipped (unopened file with no content changes)", {info.module_name})
-      return
+      return false
    end
 
-   tracing.trace(_module_name, "Detected content change in unopened file {}, updating modification time", {info.path})
-   self:_invalidate_build_cache_for_module_and_dependents(info)
+   return true
 end
 
-function EnvManager:_collect_all_dependencies(subset1: {ModuleInfo}, subset2: {ModuleInfo}): {ModuleInfo}
+function BuildHandler:_check_unopened_file_for_invalidation(info: ModuleInfo)
+   if self:_try_update_unopened_file_with_changes(info) then
+      tracing.trace(_module_name, "Detected content change in unopened file {}, updating modification time", {info.path})
+      self:_invalidate_build_cache_for_module_and_dependents(info)
+   end
+end
+
+function BuildHandler:_collect_all_dependencies(subset1: {ModuleInfo}, subset2: {ModuleInfo}): {ModuleInfo}
    local was_queued:{string: boolean} = {}
    local process_queue: {ModuleInfo} = {}
 
@@ -251,7 +243,7 @@ function EnvManager:_collect_all_dependencies(subset1: {ModuleInfo}, subset2: {M
    return subset_with_deps
 end
 
-function EnvManager:_get_global_infos():{ModuleInfo}
+function BuildHandler:_get_global_infos():{ModuleInfo}
    local config = self._server_state.config
    local global_module = config.global_env_def
 
@@ -293,14 +285,19 @@ function EnvManager:_get_global_infos():{ModuleInfo}
    return all_global_infos
 end
 
-function EnvManager:_invalidate_all()
+function BuildHandler:_invalidate_all()
    for _, info in pairs(self._module_info_manager.modules) do
-      info.check_result = nil
+      info.requires_build = true
+      if not info.is_opened then
+         asserts.is_nil(self._open_document_registry:try_get(info.path))
+         self:_try_update_unopened_file_with_changes(info)
+      end
    end
    tracing.debug(_module_name, "Invalidated all modules", {})
 end
 
-function EnvManager:_build_common(project_subset: {ModuleInfo})
+-- Returns all related modules in build order
+function BuildHandler:build(project_subset: {ModuleInfo}): {ModuleInfo}
    local global_infos = self:_get_global_infos()
 
    local subset_with_deps = self:_collect_all_dependencies(project_subset, global_infos)
@@ -310,7 +307,7 @@ function EnvManager:_build_common(project_subset: {ModuleInfo})
    for _, info in ipairs(subset_with_deps) do
       if not info.is_opened then
          asserts.is_nil(self._open_document_registry:try_get(info.path))
-         self:_invalidate_unopened_file_if_necessary(info)
+         self:_check_unopened_file_for_invalidation(info)
       end
    end
 
@@ -318,7 +315,7 @@ function EnvManager:_build_common(project_subset: {ModuleInfo})
       local has_invalidated_global = false
 
       for _, info in ipairs(global_infos) do
-         if info.check_result == nil then
+         if info.requires_build then
             has_invalidated_global = true
             tracing.debug(_module_name, "Global module {} needs rechecking, invalidating all", {info.module_name})
             break
@@ -335,19 +332,25 @@ function EnvManager:_build_common(project_subset: {ModuleInfo})
 
    self._has_built = true
 
-   local modules_to_build = {}
-
    local global_dep_paths: {string: boolean} = {}
 
    for _, info in ipairs(global_infos) do
       global_dep_paths[info.path] = true
    end
 
+   -- build dependencies first
+   -- we could also just sort modules_to_build instead but it's useful
+   -- for calling code to get this sorted list to process results
+   self:_sort_files_by_dependency_order(subset_with_deps, global_dep_paths)
+
+   local modules_to_build = {}
+
    for _, info in ipairs(subset_with_deps) do
-      if info.check_result == nil then
+      if info.requires_build then
          -- Need to fully regenerate the ast, tokens, etc.
          -- since teal seems to mutate these every time we type check
          info:clear_teal_cache()
+         info.check_result = nil
 
          -- I'm not sure how to properly invalidate global definitions
          -- Teal seems to store these separtely in the env from other things
@@ -366,93 +369,15 @@ function EnvManager:_build_common(project_subset: {ModuleInfo})
       end
    end
 
-   -- build dependencies first
-   self:_sort_files_by_dependency_order(modules_to_build, global_dep_paths)
-
    for _, info in ipairs(modules_to_build) do
       self:_type_check_module(info)
    end
 
    tracing.debug(_module_name, "Ran type check on {} modules", {#modules_to_build})
+   return subset_with_deps
 end
 
-function EnvManager:_build()
-   local all_open_files = {}
-
-   for file_path, _ in pairs(self._open_document_registry.docs) do
-      local info = self._module_info_manager:try_get_or_create_module_info(file_path)
-      if info ~= nil then
-         table.insert(all_open_files, info)
-      end
-   end
-
-   self:_build_common(all_open_files)
-
-   for _, info in ipairs(all_open_files) do
-      asserts.is_not_nil(info.uri)
-
-      local diagnostics = self._diagnostics_publisher:create_diagnostics(info)
-
-      if #diagnostics > 0 then
-         tracing.trace(_module_name, "Publishing {} diagnostics for {}: {@}", {#diagnostics, info.module_name, diagnostics})
-      end
-
-      tracing.trace(_module_name, "Publishing diagnostics for {}...", {info.uri.path})
-      self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
-         uri = Uri.tostring(info.uri),
-         diagnostics = diagnostics,
-         version = nil,
-      } as lsp.Method.Params)
-   end
-end
-
-function EnvManager:do_full_build(): {ModuleInfo}
-   local all_files = {}
-
-   for _, source_dir in ipairs(self._server_state.source_dirs) do
-      for _, file_path in ipairs(files_util.get_sub_paths_recursive(source_dir, ".tl")) do
-         local info = self._module_info_manager:try_get_or_create_module_info(file_path)
-         asserts.is_not_nil(info)
-         table.insert(all_files, info)
-      end
-   end
-
-   self:_build_common(all_files)
-   return all_files
-end
-
-function EnvManager:_update_env_on_changes()
-   local required_delay_without_saves_sec = 0.1
-
-   while true do
-      self._change_detected:await()
-      self._change_detected:unset()
-
-      -- it is common for many changes to occur at once, so delay
-      -- slightly so we just perform one build
-      while true do
-         lusc.await_sleep(required_delay_without_saves_sec)
-         if self._change_detected.is_set then
-            tracing.debug(_module_name, "Detected consecutive change events, waiting again...", {})
-            self._change_detected:unset()
-         else
-            tracing.trace(_module_name, "Successfully waited for buffer time. Now updating env...", {})
-            break
-         end
-      end
-
-      tracing.trace(_module_name, "Now updating env...", {})
-
-      local start_time = uv.hrtime()
-
-      self:_build()
-
-      local elapsed_time_ms = (uv.hrtime() - start_time) / 1e6
-      tracing.debug(_module_name, "Completed env update in {} ms", {elapsed_time_ms})
-   end
-end
-
-function EnvManager:initialize()
+function BuildHandler:initialize()
    asserts.that(not self._has_initialized)
    self._has_initialized = true
 
@@ -462,20 +387,14 @@ function EnvManager:initialize()
    self._module_info_manager:observe_changes(function(info: ModuleInfo, old_dependencies: {string: boolean})
       self:_on_module_changed(info, old_dependencies)
    end)
-
-   self._root_nursery:start_soon(function()
-      self:_update_env_on_changes()
-   end)
-
-   self._change_detected:set()
 end
 
-function EnvManager:get_env(): tl.Env
+function BuildHandler:get_env(): tl.Env
    asserts.that(self._has_initialized)
    return self._env
 end
 
-class.setup(EnvManager, "EnvManager", {
+class.setup(BuildHandler, "BuildHandler", {
    nilable_members = { '_env' }
 })
-return EnvManager
+return BuildHandler

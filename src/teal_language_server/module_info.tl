@@ -27,6 +27,7 @@ local record ModuleInfo
    tree: ltreesitter.Tree
    tree_cursor: ltreesitter.Cursor
    is_opened: boolean
+   requires_build: boolean
 
    _module_name: string
    _path: string
@@ -50,6 +51,7 @@ function ModuleInfo:__init(path: string, module_name: string)
    self.dependencies = {}
    self._hash = 0
    self.is_opened = false
+   self.requires_build = true
 end
 
 function ModuleInfo:clear_teal_cache()

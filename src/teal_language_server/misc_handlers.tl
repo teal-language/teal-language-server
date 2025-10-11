@@ -1,7 +1,9 @@
 local _module_name = "misc_handlers"
 
 -- <imports>
-local EnvManager <const> = require("teal_language_server.env_manager")
+local ModuleInfo <const> = require("teal_language_server.module_info")
+local DiagnosticsPublisher <const> = require("teal_language_server.diagnostics_publisher")
+local BuildHandler <const> = require("teal_language_server.build_handler")
 local ModuleInfoManager <const> = require("teal_language_server.module_info_manager")
 local DiagnosticsHelper <const> = require("teal_language_server.diagnostics_helper")
 local args_parser <const> = require("teal_language_server.args_parser")
@@ -36,27 +38,29 @@ local record MiscHandlers
    _env_factory: EnvFactory
    _lsp_reader_writer: LspReaderWriter
    _lsp_events_manager: LspEventsManager
-   _env_manager: EnvManager
-   _module_content_registry: ModuleInfoManager
-   _diagnostics_publisher: DiagnosticsHelper
+   _build_handler: BuildHandler
+   _module_info_manager: ModuleInfoManager
+   _diagnostics_helper: DiagnosticsHelper
+   _diagnostics_publisher: DiagnosticsPublisher
    _has_handled_initialize: boolean
    _cl_args: args_parser.CommandLineArgs
 
-   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, env_factory: EnvFactory, open_document_registry: OpenDocumentRegistry, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_manager: EnvManager, module_info_manager: ModuleInfoManager, diagnostics_helper: DiagnosticsHelper): MiscHandlers
+   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, env_factory: EnvFactory, open_document_registry: OpenDocumentRegistry, trace_stream: TraceStream, args:args_parser.CommandLineArgs, build_handler: BuildHandler, module_info_manager: ModuleInfoManager, diagnostics_helper: DiagnosticsHelper, diagnostics_publisher: DiagnosticsPublisher): MiscHandlers
 end
 
-function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, env_factory: EnvFactory, open_document_registry: OpenDocumentRegistry, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_manager: EnvManager, module_info_manager: ModuleInfoManager, diagnostics_helper: DiagnosticsHelper)
+function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, env_factory: EnvFactory, open_document_registry: OpenDocumentRegistry, trace_stream: TraceStream, args:args_parser.CommandLineArgs, build_handler: BuildHandler, module_info_manager: ModuleInfoManager, diagnostics_helper: DiagnosticsHelper, diagnostics_publisher: DiagnosticsPublisher)
    self._document_manager = open_document_registry
    self._server_state = server_state
    self._env_factory = env_factory
    self._lsp_reader_writer = lsp_reader_writer
    self._lsp_events_manager = lsp_events_manager
-   self._env_manager = env_manager
+   self._build_handler = build_handler
    self._has_handled_initialize = false
    self._trace_stream = trace_stream
    self._cl_args = args
-   self._module_content_registry = module_info_manager
-   self._diagnostics_publisher = diagnostics_helper
+   self._module_info_manager = module_info_manager
+   self._diagnostics_helper = diagnostics_helper
+   self._diagnostics_publisher = diagnostics_publisher
 end
 
 function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
@@ -99,8 +103,9 @@ function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
       },
    })
 
-   self._module_content_registry:initialize()
-   self._env_manager:initialize()
+   self._module_info_manager:initialize()
+   self._build_handler:initialize()
+   self._diagnostics_publisher:initialize()
 end
 
 function MiscHandlers:_on_initialized():nil
@@ -115,9 +120,9 @@ function MiscHandlers:_on_did_open(params:lsp.Method.Params):nil
 
    local content = td.text
 
-   self._module_content_registry:on_opened(file_path, content, uri)
+   self._module_info_manager:on_opened(file_path, content, uri)
 
-   local module_info = self._module_content_registry:try_get_module_info(file_path)
+   local module_info = self._module_info_manager:try_get_module_info(file_path)
 
    if module_info == nil then
       tracing.warning(_module_name, "Received 'didOpen' for unknown module at path: {}", {file_path})
@@ -132,7 +137,7 @@ function MiscHandlers:_on_did_save(params:lsp.Method.Params):nil
    local uri = Uri.parse(td.uri)
 
    local file_path = Uri.to_file_path(uri)
-   local module_info = self._module_content_registry:try_get_module_info(file_path)
+   local module_info = self._module_info_manager:try_get_module_info(file_path)
 
    if module_info == nil then
       tracing.warning(_module_name, "Received 'didSave' for unknown module at path: {}", {file_path})
@@ -149,7 +154,7 @@ function MiscHandlers:_on_did_close(params:lsp.Method.Params):nil
 
    tracing.debug(_module_name, "Received 'didClose' for file at path: {}", {file_path})
 
-   self._module_content_registry:on_closed(file_path)
+   self._module_info_manager:on_closed(file_path)
 
    self._document_manager:close(file_path)
 end
@@ -164,7 +169,7 @@ function MiscHandlers:_on_did_change(params:lsp.Method.Params):nil
 
    tracing.debug(_module_name, "Received 'didChange' for file at path: {}", {file_path})
 
-   self._module_content_registry:on_changed(file_path, content, uri)
+   self._module_info_manager:on_changed(file_path, content, uri)
 end
 
 local function split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
@@ -229,7 +234,7 @@ function MiscHandlers:_on_completion(params:lsp.Method.Params, id:integer):nil
 
    tracing.trace(_module_name, "Found node info: {@}", {node_info})
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
 
    local tks: {string}
 
@@ -372,7 +377,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
       return
    end
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if type_info == nil then
@@ -432,7 +437,7 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info or type_info.file == nil then
@@ -467,6 +472,19 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    })
 end
 
+function MiscHandlers:_get_all_modules(): {ModuleInfo}
+   local all_files = {}
+
+   for _, source_dir in ipairs(self._server_state.source_dirs) do
+      for _, file_path in ipairs(files_util.get_sub_paths_recursive(source_dir, ".tl")) do
+         local info = self._module_info_manager:try_get_or_create_module_info(file_path)
+         asserts.is_not_nil(info)
+         table.insert(all_files, info)
+      end
+   end
+
+   return all_files
+end
 
 function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params, id:integer):nil
    tracing.debug(_module_name, "Received workspace/diagnostic request", {})
@@ -491,18 +509,21 @@ function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params, id:inte
    local new_result_id = self._server_state:update_workspace_diagnostic_result_id()
 
    tracing.debug(_module_name, "Running full workspace build for diagnostics...", {})
-   local all_modules = self._env_manager:do_full_build()
+
+   local all_modules = self:_get_all_modules()
+   local sorted_modules = self._build_handler:build(all_modules)
 
    local workspace_items: {lsp.WorkspaceDiagnosticReportItem} = {}
 
-   for _, module_info in ipairs(all_modules) do
+   -- Use sorted modules so that diagnostics related to dependencies appear first
+   for _, module_info in ipairs(sorted_modules) do
       local uri = module_info.uri
       if not uri then
          -- Create URI for unopened files
          uri = Uri.uri_from_path(module_info.path)
       end
 
-      local diagnostics = self._diagnostics_publisher:create_diagnostics(module_info)
+      local diagnostics = self._diagnostics_helper:create_diagnostics(module_info)
       table.insert(workspace_items, {
          uri = Uri.tostring(uri),
          kind = lsp.diagnostic_kind.full,
@@ -553,7 +574,7 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
       return
    end
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info then
