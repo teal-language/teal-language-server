@@ -9,11 +9,12 @@ cp src/teal_language_server/class.lua gen/teal_language_server/class.lua
 
 luarocks_tree/bin/tl gen src/teal_language_server/args_parser.tl -o gen/teal_language_server/args_parser.lua
 luarocks_tree/bin/tl gen src/teal_language_server/asserts.tl -o gen/teal_language_server/asserts.lua
+luarocks_tree/bin/tl gen src/teal_language_server/build_handler.tl.tl -o gen/teal_language_server/build_handler.tl.lua
 luarocks_tree/bin/tl gen src/teal_language_server/constants.tl -o gen/teal_language_server/constants.lua
 luarocks_tree/bin/tl gen src/teal_language_server/debug_flags.tl -o gen/teal_language_server/debug_flags.lua
 luarocks_tree/bin/tl gen src/teal_language_server/diagnostics_helper.tl -o gen/teal_language_server/diagnostics_helper.lua
+luarocks_tree/bin/tl gen src/teal_language_server/diagnostics_publisher.tl -o gen/teal_language_server/diagnostics_publisher.lua
 luarocks_tree/bin/tl gen src/teal_language_server/env_factory.tl -o gen/teal_language_server/env_factory.lua
-luarocks_tree/bin/tl gen src/teal_language_server/env_manager.tl -o gen/teal_language_server/env_manager.lua
 luarocks_tree/bin/tl gen src/teal_language_server/files_util.tl -o gen/teal_language_server/files_util.lua
 luarocks_tree/bin/tl gen src/teal_language_server/i_disposable.tl -o gen/teal_language_server/i_disposable.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp.tl -o gen/teal_language_server/lsp.lua
