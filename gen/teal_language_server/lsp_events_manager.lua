@@ -1,5 +1,6 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp_events_manager"
 
+local debug_flags = require("teal_language_server.debug_flags")
 local lsp = require("teal_language_server.lsp")
 local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
 local lusc = require("lusc")
@@ -44,7 +45,11 @@ function LspEventsManager:_trigger(method, params, id)
       if ok then
          tracing.trace(_module_name, "Successfully handled request with method {}", { method })
       else
-         tracing.error(_module_name, "Error in handler for request with method {}: {}", { method, err })
+         if debug_flags.quit_on_error then
+            asserts.fail("Error in handler for request with method {}: {}", method, err)
+         else
+            tracing.error(_module_name, "Error in handler for request with method {}: {}", { method, err })
+         end
       end
    else
       tracing.warning(_module_name, "No handler found for event with method {}", { method })

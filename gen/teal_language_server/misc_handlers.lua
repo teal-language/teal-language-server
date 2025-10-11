@@ -1,7 +1,8 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "misc_handlers"
 
 
-local EnvManager = require("teal_language_server.env_manager")
+local DiagnosticsPublisher = require("teal_language_server.diagnostics_publisher")
+local BuildHandler = require("teal_language_server.build_handler")
 local ModuleInfoManager = require("teal_language_server.module_info_manager")
 local DiagnosticsHelper = require("teal_language_server.diagnostics_helper")
 local args_parser = require("teal_language_server.args_parser")
@@ -45,18 +46,20 @@ local MiscHandlers = {}
 
 
 
-function MiscHandlers:__init(lsp_events_manager, lsp_reader_writer, server_state, env_factory, open_document_registry, trace_stream, args, env_manager, module_info_manager, diagnostics_helper)
+
+function MiscHandlers:__init(lsp_events_manager, lsp_reader_writer, server_state, env_factory, open_document_registry, trace_stream, args, build_handler, module_info_manager, diagnostics_helper, diagnostics_publisher)
    self._document_manager = open_document_registry
    self._server_state = server_state
    self._env_factory = env_factory
    self._lsp_reader_writer = lsp_reader_writer
    self._lsp_events_manager = lsp_events_manager
-   self._env_manager = env_manager
+   self._build_handler = build_handler
    self._has_handled_initialize = false
    self._trace_stream = trace_stream
    self._cl_args = args
-   self._module_content_registry = module_info_manager
-   self._diagnostics_publisher = diagnostics_helper
+   self._module_info_manager = module_info_manager
+   self._diagnostics_helper = diagnostics_helper
+   self._diagnostics_publisher = diagnostics_publisher
 end
 
 function MiscHandlers:_on_initialize(params, id)
@@ -99,8 +102,9 @@ function MiscHandlers:_on_initialize(params, id)
       },
    })
 
-   self._module_content_registry:initialize()
-   self._env_manager:initialize()
+   self._module_info_manager:initialize()
+   self._build_handler:initialize()
+   self._diagnostics_publisher:initialize()
 end
 
 function MiscHandlers:_on_initialized()
@@ -115,9 +119,9 @@ function MiscHandlers:_on_did_open(params)
 
    local content = td.text
 
-   self._module_content_registry:on_opened(file_path, content, uri)
+   self._module_info_manager:on_opened(file_path, content, uri)
 
-   local module_info = self._module_content_registry:try_get_module_info(file_path)
+   local module_info = self._module_info_manager:try_get_module_info(file_path)
 
    if module_info == nil then
       tracing.warning(_module_name, "Received 'didOpen' for unknown module at path: {}", { file_path })
@@ -132,7 +136,7 @@ function MiscHandlers:_on_did_save(params)
    local uri = Uri.parse(td.uri)
 
    local file_path = Uri.to_file_path(uri)
-   local module_info = self._module_content_registry:try_get_module_info(file_path)
+   local module_info = self._module_info_manager:try_get_module_info(file_path)
 
    if module_info == nil then
       tracing.warning(_module_name, "Received 'didSave' for unknown module at path: {}", { file_path })
@@ -149,7 +153,7 @@ function MiscHandlers:_on_did_close(params)
 
    tracing.debug(_module_name, "Received 'didClose' for file at path: {}", { file_path })
 
-   self._module_content_registry:on_closed(file_path)
+   self._module_info_manager:on_closed(file_path)
 
    self._document_manager:close(file_path)
 end
@@ -164,7 +168,7 @@ function MiscHandlers:_on_did_change(params)
 
    tracing.debug(_module_name, "Received 'didChange' for file at path: {}", { file_path })
 
-   self._module_content_registry:on_changed(file_path, content, uri)
+   self._module_info_manager:on_changed(file_path, content, uri)
 end
 
 local function split_by_symbols(input, self_type, stop_at)
@@ -227,9 +231,9 @@ function MiscHandlers:_on_completion(params, id)
       return
    end
 
-   tracing.debug(_module_name, "Found node info: {@}", { node_info })
+   tracing.trace(_module_name, "Found node info: {@}", { node_info })
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
 
    local tks
 
@@ -339,7 +343,7 @@ function MiscHandlers:_on_completion(params, id)
       table.insert(items, { label = "(none)" })
    end
 
-   tracing.debug(_module_name, "Sending {} back to client", { #items })
+   tracing.debug(_module_name, "Sending {} completion items back to client", { #items })
 
    self._lsp_reader_writer:send_rpc(id, {
       isIncomplete = false,
@@ -372,7 +376,7 @@ function MiscHandlers:_on_signature_help(params, id)
       return
    end
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if type_info == nil then
@@ -432,7 +436,7 @@ function MiscHandlers:_on_definition(params, id)
       return
    end
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info or type_info.file == nil then
@@ -467,7 +471,6 @@ function MiscHandlers:_on_definition(params, id)
    })
 end
 
-
 function MiscHandlers:_on_workspace_diagnostic(params, id)
    tracing.debug(_module_name, "Received workspace/diagnostic request", {})
 
@@ -491,9 +494,15 @@ function MiscHandlers:_on_workspace_diagnostic(params, id)
    local new_result_id = self._server_state:update_workspace_diagnostic_result_id()
 
    tracing.debug(_module_name, "Running full workspace build for diagnostics...", {})
-   local all_modules = self._env_manager:do_full_build()
+
+   local all_modules = self._build_handler:get_all_modules()
+   local build_result = self._build_handler:build(all_modules, nil)
+
+   self._build_handler:sort_files_by_dependency_order(
+   all_modules, build_result.global_dep_paths)
 
    local workspace_items = {}
+
 
    for _, module_info in ipairs(all_modules) do
       local uri = module_info.uri
@@ -502,7 +511,7 @@ function MiscHandlers:_on_workspace_diagnostic(params, id)
          uri = Uri.uri_from_path(module_info.path)
       end
 
-      local diagnostics = self._diagnostics_publisher:create_diagnostics(module_info)
+      local diagnostics = self._diagnostics_helper:create_diagnostics(module_info)
       table.insert(workspace_items, {
          uri = Uri.tostring(uri),
          kind = lsp.diagnostic_kind.full,
@@ -553,7 +562,7 @@ function MiscHandlers:_on_hover(params, id)
       return
    end
 
-   local env = self._env_manager:get_env()
+   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info then

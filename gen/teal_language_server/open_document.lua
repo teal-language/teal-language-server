@@ -199,7 +199,15 @@ function OpenDocument:type_information_for_tokens(tokens, y, x, env)
    return nil
 end
 
-function OpenDocument:_tree_sitter_token(y, x)
+function OpenDocument:_tree_sitter_token(y, x, depth)
+   tracing.trace(_module_name, "Looking up tree sitter node at {}, {}...", { y, x })
+
+
+   if depth > 100 then
+      tracing.warning(_module_name, "Maximum recursion depth reached at position {}, {}", { y, x })
+      return nil
+   end
+
    local tree_cursor = self._module_info.tree_cursor
 
    local moved = tree_cursor:goto_first_child()
@@ -259,6 +267,8 @@ function OpenDocument:_tree_sitter_token(y, x)
          while parent_node:type() ~= "program" do
             tree_cursor:goto_parent()
             parent_node = tree_cursor:current_node()
+            tracing.trace(_module_name, "Processing parent node {}", { parent_node:type() })
+
             if parent_node:type() == "function_statement" then
                local function_name = parent_node:child_by_field_name("name")
                if function_name then
@@ -269,20 +279,53 @@ function OpenDocument:_tree_sitter_token(y, x)
                   end
                end
             elseif parent_node:type() == "ERROR" then
+               tracing.trace(_module_name, "Parent node is in error state, looking for function_name child...")
 
+               local found = false
                for child in parent_node:children() do
+                  tracing.trace(_module_name, "Examining child node {}", { child:type() })
                   if child:name() == "function_name" then
                      out.self_type = child:child_by_field_name("base"):source()
+                     found = true
                      break
                   end
                end
+
+               if not found then
+
+                  tree_cursor:goto_parent()
+                  local function_statement = tree_cursor:current_node()
+                  if function_statement:type() == "function_statement" then
+                     tracing.trace(_module_name, "Looking for function_name in parent function_statement", {})
+                     local function_name = function_statement:child_by_field_name("name")
+                     if function_name then
+                        local base_node = function_name:child_by_field_name("base")
+                        if base_node then
+                           out.self_type = base_node:source()
+                           found = true
+                           tracing.trace(_module_name, "Found self_type from parent function_statement: {}", { out.self_type })
+                        else
+                           tracing.trace(_module_name, "function_name has no base field", {})
+                        end
+                     else
+                        tracing.trace(_module_name, "function_statement has no name field", {})
+                     end
+                  else
+                     tracing.trace(_module_name, "Parent is not function_statement: {}", { function_statement:type() })
+                  end
+               end
+
+               if not found then
+                  out.self_type = nil
+                  tracing.warning(_module_name, "Failed to find function_name ts node anywhere", {})
+               end
+
+               break
             end
          end
-
       end
 
       return out
-
    end
 
    local start_point = node:start_point()
@@ -294,23 +337,27 @@ function OpenDocument:_tree_sitter_token(y, x)
 
       if y == start_point.row and y == end_point.row then
          if x >= start_point.column and x < end_point.column then
-            return self:_tree_sitter_token(y, x)
+            return self:_tree_sitter_token(y, x, depth + 1)
          end
 
       elseif y >= start_point.row and y <= end_point.row then
-         return self:_tree_sitter_token(y, x)
+         return self:_tree_sitter_token(y, x, depth + 1)
       end
 
       moved = tree_cursor:goto_next_sibling()
       node = tree_cursor:current_node()
+
+      tracing.trace(_module_name, "Stepped to next tree sitter sibling: {} ({@} to {@})", { node:type(), node:start_point(), node:end_point() })
    end
 end
 
 function OpenDocument:tree_sitter_token(y, x)
    local tree_cursor = self._module_info.tree_cursor
 
+   tracing.trace(_module_name, "Resetting tree cursor to root", {})
    tree_cursor:reset(self._module_info.tree:root())
-   return self:_tree_sitter_token(y, x)
+
+   return self:_tree_sitter_token(y, x, 0)
 end
 
 class.setup(OpenDocument, "OpenDocument", {

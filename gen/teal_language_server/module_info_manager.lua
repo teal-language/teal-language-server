@@ -121,7 +121,12 @@ function ModuleInfoManager:_try_update_content(info, content)
    end
 
    local old_dependencies = info.dependencies
-   info.dependencies = self:_extract_dependencies(info)
+
+   if info.content == nil then
+      info.dependencies = {}
+   else
+      info.dependencies = self:_extract_dependencies(info)
+   end
 
    for _, handler in ipairs(self._change_listeners) do
       handler(info, old_dependencies)
@@ -207,8 +212,12 @@ function ModuleInfoManager:initialize()
    for file_path, info in pairs(self._modules) do
       for dep_path, _ in pairs(info.dependencies) do
          local dep_info = self._modules[dep_path]
-         asserts.is_not_nil(dep_info)
-         dep_info.dependents[file_path] = true
+
+         if dep_info == nil then
+            tracing.warning(_module_name, "Expected to find dependency file {} in module cache, but it was not found", { dep_path })
+         else
+            dep_info.dependents[file_path] = true
+         end
       end
    end
 

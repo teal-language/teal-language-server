@@ -1,7 +1,8 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local table = _tl_compat and _tl_compat.table or table; local _module_name = "main"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local table = _tl_compat and _tl_compat.table or table; local _module_name = "main"
 
 
-local EnvManager = require("teal_language_server.env_manager")
+local DiagnosticsPublisher = require("teal_language_server.diagnostics_publisher")
+local BuildHandler = require("teal_language_server.build_handler")
 local EnvFactory = require("teal_language_server.env_factory")
 local DiagnosticsHelper = require("teal_language_server.diagnostics_helper")
 local OpenDocumentRegistry = require("teal_language_server.open_document_registry")
@@ -88,12 +89,14 @@ local function main()
       local module_info_manager = ModuleInfoManager(server_state)
       local diagnostics_helper = DiagnosticsHelper(server_state)
       local open_document_registry = OpenDocumentRegistry(lsp_reader_writer, server_state)
-      local env_manager = EnvManager(
-      server_state, env_factory, module_info_manager, open_document_registry,
-      root_nursery, diagnostics_helper, lsp_reader_writer)
+      local build_handler = BuildHandler(
+      server_state, env_factory, module_info_manager, open_document_registry)
+      local diagnostics_publisher = DiagnosticsPublisher(
+      root_nursery, module_info_manager, build_handler,
+      open_document_registry, lsp_reader_writer, diagnostics_helper)
       local misc_handlers = MiscHandlers(
       lsp_events_manager, lsp_reader_writer, server_state, env_factory, open_document_registry,
-      trace_stream, args, env_manager, module_info_manager, diagnostics_helper)
+      trace_stream, args, build_handler, module_info_manager, diagnostics_helper, diagnostics_publisher)
 
       tracing.trace(_module_name, "Running initialize phase...", {})
       stdin_reader:initialize()
@@ -118,6 +121,8 @@ local function main()
    end
 
    local lusc_timer = uv.new_timer()
+   local encountered_error = false
+
    lusc_timer:start(0, 0, function()
       tracing.trace(_module_name, "Received entry point call from luv")
 
@@ -126,6 +131,7 @@ local function main()
          on_completed = function(err)
             if err ~= nil then
                tracing.error(_module_name, "Received on_completed request with error:\n{}", { err })
+               encountered_error = true
             else
                tracing.info(_module_name, "Received on_completed request")
             end
@@ -170,9 +176,13 @@ local function main()
       action = run_luv,
       catch = function(err)
          tracing.error(_module_name, "Error: {}", { err })
-         error(err)
+         encountered_error = true
       end,
    })
+
+   if encountered_error then
+      os.exit(1)
+   end
 end
 
 main()
