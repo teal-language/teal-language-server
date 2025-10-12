@@ -130,7 +130,7 @@ function LspReaderWriter:_encode(t: {string:any})
    tracing.trace(_module_name, "Sending data: {}", {content})
 end
 
-function LspReaderWriter:send_rpc(id: integer, t: {string:any})
+function LspReaderWriter:send_rpc(id: integer, t: any)
    self:_encode {
       jsonrpc = "2.0",
       id = json_nullable(id),

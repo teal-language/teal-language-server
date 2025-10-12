@@ -88,14 +88,14 @@ local function main()
       local env_factory = EnvFactory(server_state)
       local module_info_manager = ModuleInfoManager(server_state)
       local diagnostics_helper = DiagnosticsHelper(server_state)
-      local open_document_registry = OpenDocumentRegistry(lsp_reader_writer, server_state)
+      local open_document_registry = OpenDocumentRegistry()
       local build_handler = BuildHandler(
          server_state, env_factory, module_info_manager, open_document_registry)
       local diagnostics_publisher = DiagnosticsPublisher(
          root_nursery, module_info_manager, build_handler,
          open_document_registry, lsp_reader_writer, diagnostics_helper)
       local misc_handlers = MiscHandlers(
-         lsp_events_manager, lsp_reader_writer, server_state, env_factory, open_document_registry,
+         lsp_events_manager, server_state, env_factory, open_document_registry,
          trace_stream, args, build_handler, module_info_manager, diagnostics_helper, diagnostics_publisher)
 
       tracing.trace(_module_name, "Running initialize phase...", {})
@@ -104,9 +104,10 @@ local function main()
       lsp_events_manager:initialize()
       misc_handlers:initialize()
 
-      lsp_events_manager:set_handler("shutdown", function()
+      lsp_events_manager:set_handler("shutdown", function():any
          tracing.info(_module_name, "Received shutdown request from client.  Cancelling all lusc tasks...", {})
          root_nursery.cancel_scope:cancel()
+         return nil
       end)
    end
 
