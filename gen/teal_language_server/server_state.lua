@@ -33,13 +33,6 @@ function ServerState:__init()
    self._workspace_diagnostic_result_id = 1
 end
 
-local triggerCharacters = { ":", "." }
-for i = string.byte("a"), string.byte("z") do
-   triggerCharacters[#triggerCharacters + 1] = string.char(i)
-end
-for i = string.byte("A"), string.byte("Z") do
-   triggerCharacters[#triggerCharacters + 1] = string.char(i)
-end
 local capabilities = {
 
    textDocumentSync = {
@@ -52,10 +45,10 @@ local capabilities = {
    hoverProvider = true,
    definitionProvider = true,
    completionProvider = {
-      triggerCharacters = triggerCharacters,
+      triggerCharacters = { ".", ":" },
    },
    signatureHelpProvider = {
-      triggerCharacters = { "(", ")", "()" },
+      triggerCharacters = { "(" },
    },
 }
 
