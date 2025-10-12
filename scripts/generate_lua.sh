@@ -25,7 +25,8 @@ luarocks_tree/bin/tl gen src/teal_language_server/main.tl -o gen/teal_language_s
 luarocks_tree/bin/tl gen src/teal_language_server/misc_handlers.tl -o gen/teal_language_server/misc_handlers.lua
 luarocks_tree/bin/tl gen src/teal_language_server/module_info.tl -o gen/teal_language_server/module_info.lua
 luarocks_tree/bin/tl gen src/teal_language_server/module_info_manager.tl -o gen/teal_language_server/module_info_manager.lua
-luarocks_tree/bin/tl gen src/teal_language_server/open_document.tl -o gen/teal_language_server/open_document.lua
+luarocks_tree/bin/tl gen src/teal_language_server/teal_helper.tl -o gen/teal_language_server/teal_helper.lua
+luarocks_tree/bin/tl gen src/teal_language_server/tree_sitter_helper.tl -o gen/teal_language_server/tree_sitter_helper.lua
 luarocks_tree/bin/tl gen src/teal_language_server/open_document_registry.tl -o gen/teal_language_server/open_document_registry.lua
 luarocks_tree/bin/tl gen src/teal_language_server/path_util.tl -o gen/teal_language_server/path_util.lua
 luarocks_tree/bin/tl gen src/teal_language_server/server_state.tl -o gen/teal_language_server/server_state.lua
