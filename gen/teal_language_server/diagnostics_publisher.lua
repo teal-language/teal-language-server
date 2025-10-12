@@ -106,6 +106,10 @@ function DiagnosticsPublisher:_build_open_files()
    end
 end
 
+function DiagnosticsPublisher:enqueue_build()
+   self._change_detected:set()
+end
+
 function DiagnosticsPublisher:initialize()
    self._module_info_manager:observe_changes(function(_info, _old_dependencies)
       self._change_detected:set()

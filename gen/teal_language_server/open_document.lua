@@ -7,8 +7,11 @@ local class = require("teal_language_server.class")
 local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
 local tl = require("tl")
+local ltreesitter = require("ltreesitter")
 
 local OpenDocument = { NodeInfo = {} }
+
+
 
 
 
@@ -199,6 +202,43 @@ function OpenDocument:type_information_for_tokens(tokens, y, x, env)
    return nil
 end
 
+function OpenDocument:find_symbol_declaration(symbol_name, env)
+   local tr = self:_try_get_type_report(env)
+   if not tr then
+      tracing.trace(_module_name, "No type report available (env.reporter is nil)")
+      return nil
+   end
+
+   local file_path = self._module_info.path
+   local symbols = tr.symbols_by_file[file_path]
+
+   if not symbols then
+      tracing.trace(_module_name, "No symbols found for file {}", { file_path })
+      return nil
+   end
+
+   tracing.trace(_module_name, "Searching for symbol '{}' in {} symbols", { symbol_name, #symbols })
+
+   for i = 1, #symbols do
+      local sym = symbols[i]
+      local y = sym[1]
+      local x = sym[2]
+      local name = sym[3]
+
+      if name == symbol_name then
+         tracing.trace(_module_name, "Found symbol '{}' declared at {}:{}", { symbol_name, y, x })
+         return {
+            y = y,
+            x = x,
+            file = file_path,
+         }
+      end
+   end
+
+   tracing.trace(_module_name, "Symbol '{}' not found in current file", { symbol_name })
+   return nil
+end
+
 function OpenDocument:_tree_sitter_token(y, x, depth)
    tracing.trace(_module_name, "Looking up tree sitter node at {}, {}...", { y, x })
 
@@ -223,6 +263,8 @@ function OpenDocument:_tree_sitter_token(y, x, depth)
          source = node:source(),
          parent_type = parent_node:type(),
          parent_source = parent_node:source(),
+         parent_start = parent_node:start_point(),
+         parent_end = parent_node:end_point(),
       }
 
 
@@ -240,7 +282,6 @@ function OpenDocument:_tree_sitter_token(y, x, depth)
                out.preceded_by = parent_node:source()
             end
          end
-
 
       elseif node:type() == "(" then
          if parent_node:type() == "arguments" then

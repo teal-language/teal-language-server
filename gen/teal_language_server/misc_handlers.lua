@@ -129,6 +129,8 @@ function MiscHandlers:_on_did_open(params)
       tracing.debug(_module_name, "Received 'didOpen' for module {}", { module_info.module_name })
       self._document_manager:open(file_path, uri, module_info)
    end
+
+   self._diagnostics_publisher:enqueue_build()
 end
 
 function MiscHandlers:_on_did_save(params)
@@ -187,13 +189,6 @@ local function split_by_symbols(input, self_type, stop_at)
 end
 
 function MiscHandlers:_get_node_info(params, pos)
-   local context = params.context
-
-   if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
-      tracing.warning(_module_name, "Ignoring completion request given kind: {}", { context.triggerKind })
-      return nil
-   end
-
    local td = params.textDocument
 
    local uri = Uri.parse(td.uri)
@@ -216,7 +211,7 @@ function MiscHandlers:_get_node_info(params, pos)
    return node_info, doc
 end
 
-function MiscHandlers:_on_completion(params, id)
+function MiscHandlers:_handle_dereference_completion(params, id)
    local pos = params.position
    tracing.debug(_module_name, "Received request for completion at position: {@}", { pos })
 
@@ -263,10 +258,13 @@ function MiscHandlers:_on_completion(params, id)
          node_info.parent_type == "simple_type" or
          node_info.parent_type == "table_type" then
          self._lsp_reader_writer:send_rpc(id, nil)
+
+         tracing.trace(_module_name, "Ignoring completion request in var/simple_type/table_type context", {})
          return
       end
    else
       self._lsp_reader_writer:send_rpc(id, nil)
+      tracing.trace(_module_name, "Ignoring completion request for node type: {}", { node_info.type })
       return
    end
 
@@ -288,24 +286,27 @@ function MiscHandlers:_on_completion(params, id)
 
       if type_info.t == tl.typecodes.STRING then
          type_info = tr.types[tr.globals["string"]]
+         tracing.trace(_module_name, "Type is string, using global string type info {@}", { type_info })
       end
 
 
 
 
       local original_str = type_info.str
+      tracing.trace(_module_name, "original type_info str: {}", { original_str })
 
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v, env)
             local was_added
+            tracing.trace(_module_name, "Considering field {} with type info {@}", { key, type_info })
 
             if node_info.type == ":" then
                if type_info.t == tl.typecodes.FUNCTION then
 
                   if type_info.args and #type_info.args >= 1 then
                      local first_arg_type = doc:resolve_type_ref(type_info.args[1][1], env)
-                     if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) then
+                     if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD or first_arg_type.t == tl.typecodes.STRING) and first_arg_type.str == original_str) then
                         tracing.trace(_module_name, "Adding self method {}", { key })
                         table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
                         was_added = true
@@ -314,6 +315,8 @@ function MiscHandlers:_on_completion(params, id)
                            key, first_arg_type.t, original_str, first_arg_type.str, })
                      end
                   end
+               else
+                  tracing.trace(_module_name, "Ignoring non-function field {} for self access", { key })
                end
             else
                table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
@@ -351,6 +354,18 @@ function MiscHandlers:_on_completion(params, id)
    })
 end
 
+function MiscHandlers:_on_completion(params, id)
+   local context = params.context
+
+   if context.triggerKind == lsp.completion_trigger_kind.TriggerCharacter then
+      self:_handle_dereference_completion(params, id)
+
+
+   else
+      self._lsp_reader_writer:send_rpc(id, nil)
+   end
+end
+
 function MiscHandlers:_on_signature_help(params, id)
    local pos = params.position
 
@@ -368,7 +383,7 @@ function MiscHandlers:_on_signature_help(params, id)
 
    local tks
 
-   if node_info.type == "(" then
+   if node_info.type == "(" and node_info.preceded_by then
       tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
       tracing.trace(_module_name, "Received request for signature help at character: {}", { tks })
    else
@@ -437,29 +452,53 @@ function MiscHandlers:_on_definition(params, id)
    end
 
    local env = self._build_handler:get_env()
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
-   if not type_info or type_info.file == nil then
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
-   end
 
-   tracing.trace(_module_name, "[on_definition] Found type type_info: {}", { type_info })
+   local symbol_name = tks[#tks]
+   local symbol_info = doc:find_symbol_declaration(symbol_name, env)
 
+   local type_info
    local file_uri
 
-   if #type_info.file == 0 then
-      file_uri = doc.uri
-   else
-      local full_path
+   if symbol_info then
 
-      if path_util.is_absolute(type_info.file) then
-         full_path = type_info.file
+      tracing.trace(_module_name, "[on_definition] Found symbol declaration for '{}' at {}:{}", { symbol_name, symbol_info.y, symbol_info.x })
+      type_info = symbol_info
+
+      if #type_info.file == 0 then
+         file_uri = doc.uri
       else
-         full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+         local full_path
+         if path_util.is_absolute(type_info.file) then
+            full_path = type_info.file
+         else
+            full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+         end
+         file_uri = Uri.uri_from_path(full_path)
+      end
+   else
+
+      tracing.trace(_module_name, "[on_definition] No symbol declaration found for '{}', falling back to type definition", { symbol_name })
+      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
+
+      if not type_info or type_info.file == nil then
+         self._lsp_reader_writer:send_rpc(id, nil)
+         return
       end
 
-      file_uri = Uri.uri_from_path(full_path)
+      tracing.trace(_module_name, "[on_definition] Found type type_info: {}", { type_info })
+
+      if #type_info.file == 0 then
+         file_uri = doc.uri
+      else
+         local full_path
+         if path_util.is_absolute(type_info.file) then
+            full_path = type_info.file
+         else
+            full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+         end
+         file_uri = Uri.uri_from_path(full_path)
+      end
    end
 
    self._lsp_reader_writer:send_rpc(id, {
@@ -542,6 +581,11 @@ function MiscHandlers:_on_hover(params, id)
       return
    end
 
+   local env = self._build_handler:get_env()
+   local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+
    local tks = {}
    if node_info.type == "identifier" then
 
@@ -552,6 +596,41 @@ function MiscHandlers:_on_hover(params, id)
       end
    else
       tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", { node_info.type })
+
+      local tr = doc:_try_get_type_report(env)
+
+      if tr ~= nil then
+         local quick_pos_info = tr.by_pos[file_path]
+
+         if quick_pos_info then
+            local quick_line_info = quick_pos_info[node_info.parent_start.row + 1]
+
+            if quick_line_info then
+               local type_ref = quick_line_info[node_info.parent_start.column + 1]
+
+               if type_ref ~= nil then
+                  local type_info = tr.types[type_ref]
+
+                  if type_info and type_info.ref then
+                     type_info = tr.types[type_info.ref]
+                  end
+
+                  if type_info ~= nil then
+                     local type_str = lsp_formatter.show_type(node_info, type_info, doc, env)
+                     self._lsp_reader_writer:send_rpc(id, {
+                        contents = type_str,
+                        range = {
+                           start = lsp.position(pos.line, pos.character),
+                           ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
+                        },
+                     })
+                     return
+                  end
+               end
+            end
+         end
+      end
+
       self._lsp_reader_writer:send_rpc(id, {
          contents = { node_info.parent_type, ":", node_info.type },
          range = {
@@ -562,7 +641,6 @@ function MiscHandlers:_on_hover(params, id)
       return
    end
 
-   local env = self._build_handler:get_env()
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
 
    if not type_info then
@@ -589,6 +667,65 @@ function MiscHandlers:_on_hover(params, id)
    })
 end
 
+function MiscHandlers:_on_type_definition(params, id)
+   local pos = params.position
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   tracing.trace(_module_name, "Received request for on_type_definition at position: {@}", { pos })
+
+   local tks = {}
+   if node_info.type == "identifier" then
+
+      if indexable_parent_types[node_info.parent_type] then
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
+      end
+   else
+      tracing.warning(_module_name, "Can't get type definition for anything that isn't an identifier: {}", { node_info.type })
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   local env = self._build_handler:get_env()
+
+
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character, env)
+
+   if not type_info or type_info.file == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   tracing.trace(_module_name, "[on_type_definition] Found type type_info: {}", { type_info })
+
+   local file_uri
+
+   if #type_info.file == 0 then
+      file_uri = doc.uri
+   else
+      local full_path
+      if path_util.is_absolute(type_info.file) then
+         full_path = type_info.file
+      else
+         full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+      end
+      file_uri = Uri.uri_from_path(full_path)
+   end
+
+   self._lsp_reader_writer:send_rpc(id, {
+      uri = Uri.tostring(file_uri),
+      range = {
+         start = lsp.position(type_info.y - 1, type_info.x - 1),
+         ["end"] = lsp.position(type_info.y - 1, type_info.x - 1 + #(type_info.str or "")),
+      },
+   })
+end
+
 function MiscHandlers:_add_handler(name, handler)
    self._lsp_events_manager:set_handler(name, function(params, id) handler(self, params, id) end)
 end
@@ -605,8 +742,8 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/hover", self._on_hover)
    self:_add_handler("workspace/diagnostic", self._on_workspace_diagnostic)
 
-
    self:_add_handler("textDocument/definition", self._on_definition)
+   self:_add_handler("textDocument/typeDefinition", self._on_type_definition)
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {})

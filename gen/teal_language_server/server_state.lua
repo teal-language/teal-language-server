@@ -44,6 +44,7 @@ local capabilities = {
    },
    hoverProvider = true,
    definitionProvider = true,
+   typeDefinitionProvider = true,
    completionProvider = {
       triggerCharacters = { ".", ":" },
    },
