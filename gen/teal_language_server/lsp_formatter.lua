@@ -1,6 +1,8 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local tl = require("tl")
 
-local OpenDocument = require("teal_language_server.open_document")
+local teal_helper = require("teal_language_server.teal_helper")
+local tree_sitter_helper = require("teal_language_server.tree_sitter_helper")
+local ModuleInfo = require("teal_language_server.module_info")
 
 local lsp_formatter = { Documentation = {}, SignatureHelp = { SignatureParameter = {}, Signature = {} } }
 
@@ -85,7 +87,7 @@ function lsp_formatter.show_type(node_info, type_info, doc, env)
    table.insert(sb.strings, "```teal")
 
    if type_info.t == tl.typecodes.FUNCTION then
-      local args = doc:get_function_args_string(type_info, env)
+      local args = teal_helper.get_function_args_string(doc, type_info, env)
       if args ~= nil then
          table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
       else
@@ -94,8 +96,8 @@ function lsp_formatter.show_type(node_info, type_info, doc, env)
 
    elseif type_info.t == tl.typecodes.POLY then
       for i, type_ref in ipairs(type_info.types) do
-         local func_info = doc:resolve_type_ref(type_ref, env)
-         local args = doc:get_function_args_string(func_info, env)
+         local func_info = teal_helper.resolve_type_ref(type_ref, env)
+         local args = teal_helper.get_function_args_string(doc, func_info, env)
          if args ~= nil then
             table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
          else
@@ -119,7 +121,7 @@ function lsp_formatter.show_type(node_info, type_info, doc, env)
    elseif type_info.t == tl.typecodes.RECORD then
       table.insert(sb.strings, "record " .. type_info.str)
       for key, type_ref in pairs(type_info.fields) do
-         local type_ref_info = doc:resolve_type_ref(type_ref, env)
+         local type_ref_info = teal_helper.resolve_type_ref(type_ref, env)
          table.insert(sb.strings, '   ' .. key .. ': ' .. type_ref_info.str)
       end
       table.insert(sb.strings, "end")

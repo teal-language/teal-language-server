@@ -34,12 +34,23 @@ end
 function LspEventsManager:_trigger(method, params, id)
    tracing.info(_module_name, "Received request from client for method {}", { method })
 
-   if self._handlers[method] then
+   local handler = self._handlers[method]
+
+   if handler then
       local ok
       local err
 
       ok, err = xpcall(
-      function() self._handlers[method](params, id) end,
+      function()
+         local response = handler(params)
+
+
+         if id == nil then
+            asserts.is_nil(response, "Expected no response for notification {}", method)
+         else
+            self._lsp_reader_writer:send_rpc(id, response)
+         end
+      end,
       debug.traceback)
 
       if ok then
