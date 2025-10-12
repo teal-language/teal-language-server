@@ -7,6 +7,7 @@ local class <const> = require("teal_language_server.class")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
 local tl <const> = require("tl")
+local ltreesitter <const> = require("ltreesitter")
 
 local record OpenDocument
    record NodeInfo
@@ -16,6 +17,8 @@ local record OpenDocument
       parent_source: string
       preceded_by: string
       self_type: string
+      parent_start: ltreesitter.Point
+      parent_end: ltreesitter.Point
       metamethod __tostring: function(NodeInfo): string
    end
 
@@ -199,6 +202,43 @@ function OpenDocument:type_information_for_tokens(tokens: {string}, y: integer, 
    return nil
 end
 
+function OpenDocument:find_symbol_declaration(symbol_name: string, env: tl.Env): tl.TypeInfo
+   local tr <const> = self:_try_get_type_report(env)
+   if not tr then
+      tracing.trace(_module_name, "No type report available (env.reporter is nil)")
+      return nil
+   end
+
+   local file_path <const> = self._module_info.path
+   local symbols <const> = tr.symbols_by_file[file_path] as {tl.TypeReport.Symbol}
+
+   if not symbols then
+      tracing.trace(_module_name, "No symbols found for file {}", {file_path})
+      return nil
+   end
+
+   tracing.trace(_module_name, "Searching for symbol '{}' in {} symbols", {symbol_name, #symbols})
+
+   for i = 1, #symbols do
+      local sym <const> = symbols[i]
+      local y <const> = sym[1] as integer
+      local x <const> = sym[2] as integer
+      local name <const> = sym[3] as string
+
+      if name == symbol_name then
+         tracing.trace(_module_name, "Found symbol '{}' declared at {}:{}", {symbol_name, y, x})
+         return {
+            y = y,
+            x = x,
+            file = file_path
+         }
+      end
+   end
+
+   tracing.trace(_module_name, "Symbol '{}' not found in current file", {symbol_name})
+   return nil
+end
+
 function OpenDocument:_tree_sitter_token(y: integer, x: integer, depth: integer): OpenDocument.NodeInfo
    tracing.trace(_module_name, "Looking up tree sitter node at {}, {}...", {y, x})
 
@@ -222,7 +262,9 @@ function OpenDocument:_tree_sitter_token(y: integer, x: integer, depth: integer)
          type = node:type(),
          source = node:source(),
          parent_type = parent_node:type(),
-         parent_source = parent_node:source()
+         parent_source = parent_node:source(),
+         parent_start = parent_node:start_point(),
+         parent_end = parent_node:end_point(),
       }
 
       -- for completion
@@ -241,7 +283,6 @@ function OpenDocument:_tree_sitter_token(y: integer, x: integer, depth: integer)
             end
          end
 
-      -- for function signature
       elseif node:type() == "(" then
          if parent_node:type() == "arguments" then
             tree_cursor:goto_parent()
