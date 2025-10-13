@@ -167,10 +167,10 @@ function BuildHandler:_type_check_module(info: ModuleInfo)
    asserts.is_nil(info.check_result)
    asserts.that(info.requires_build)
 
-   info.check_result = tl.check(
-      info.ast, info.path, opts, self._env)
-
-   asserts.is_not_nil(info.check_result)
+   if #info.err_tokens == 0 and #info.parse_errors == 0 then
+      info.check_result = tl.check(
+         info.ast, info.path, opts, self._env)
+   end
 
    info.requires_build = false
 end

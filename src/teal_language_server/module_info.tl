@@ -127,6 +127,11 @@ function ModuleInfo:_lazy_update_ast()
    end
 
    self:_lazy_update_tokens()
+
+   if #self._err_tokens > 0 then
+      return
+   end
+
    asserts.is_not_nil(self._tokens)
 
    self._parse_errors = {}
