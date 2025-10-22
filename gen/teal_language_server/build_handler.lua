@@ -50,6 +50,8 @@ function BuildHandler:_invalidate_build_cache_for_module_and_dependents(start_in
    table.insert(module_queue, start_info)
    has_processed[start_info.path] = true
 
+   local build_changed = false
+
    while #module_queue > 0 do
       local module_info = table.remove(module_queue, 1)
       asserts.that(has_processed[module_info.path])
@@ -66,8 +68,13 @@ function BuildHandler:_invalidate_build_cache_for_module_and_dependents(start_in
          end
       end
 
+      if not module_info.requires_build then
+         build_changed = true
+      end
       module_info.requires_build = true
    end
+
+   return build_changed
 end
 
 function BuildHandler:_on_module_changed(info, old_dependencies)
@@ -156,7 +163,7 @@ function BuildHandler:sort_files_by_dependency_order(modules, global_dep_paths)
 end
 
 function BuildHandler:_type_check_module(info)
-   tracing.debug(_module_name, "Type checking module {}", { info.module_name })
+   tracing.trace(_module_name, "Type checking module {}", { info.module_name })
 
    local is_lua = info.path:sub(-4) == ".lua"
 
@@ -199,11 +206,13 @@ function BuildHandler:_try_update_unopened_file_with_changes(info)
    return true
 end
 
-function BuildHandler:_check_unopened_file_for_invalidation(info)
+function BuildHandler:check_unopened_file_for_invalidation(info)
    if self:_try_update_unopened_file_with_changes(info) then
-      tracing.trace(_module_name, "Detected content change in unopened file {}, updating modification time", { info.path })
-      self:_invalidate_build_cache_for_module_and_dependents(info)
+      tracing.debug(_module_name, "Detected content change in unopened file {}, updating modification time", { info.path })
+      return self:_invalidate_build_cache_for_module_and_dependents(info)
    end
+
+   return false
 end
 
 function BuildHandler:_collect_all_dependencies(subset1, subset2)
@@ -304,13 +313,55 @@ function BuildHandler:get_all_modules()
    return all_files
 end
 
-function BuildHandler:build(all_modules, project_subset)
+function BuildHandler:check_unopened_files_for_invalidation(all_modules)
+   local build_changed = false
    for _, info in ipairs(all_modules) do
       if not info.is_opened then
          asserts.is_nil(self._open_document_registry:try_get(info.path))
-         self:_check_unopened_file_for_invalidation(info)
+         if self:check_unopened_file_for_invalidation(info) then
+            build_changed = true
+         end
       end
    end
+   return build_changed
+end
+
+function BuildHandler:remove_deleted_modules()
+   local deleted_modules = {}
+
+
+   for file_path, info in pairs(self._module_info_manager.modules) do
+      if not files_util.is_file(file_path) then
+         tracing.debug(_module_name, "Detected deleted file: {}", { file_path })
+         table.insert(deleted_modules, info)
+      end
+   end
+
+   if #deleted_modules == 0 then
+      return false
+   end
+
+
+   for _, info in ipairs(deleted_modules) do
+      tracing.debug(_module_name, "Removing deleted module {} from cache", { info.module_name })
+
+
+      self._env.modules[info.module_name] = nil
+      self._env.loaded[info.path] = nil
+
+
+      self:_invalidate_build_cache_for_module_and_dependents(info)
+
+
+      self._module_info_manager.modules[info.path] = nil
+   end
+
+   tracing.debug(_module_name, "Removed {} deleted modules from cache", { #deleted_modules })
+   return true
+end
+
+function BuildHandler:build(all_modules, project_subset)
+   self:check_unopened_files_for_invalidation(all_modules)
 
    local global_infos = self:_get_global_infos()
 

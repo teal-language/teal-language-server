@@ -5,7 +5,17 @@
 
 local tl = require("tl")
 
-local lsp = { Message = { ResponseError = {} }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {}, TlcheckParams = {}, TlcheckResult = {}, WorkspaceDiagnosticParams = {}, WorkspaceDiagnosticReportItem = {}, WorkspaceDiagnosticReport = {} }
+local lsp = { Message = { ResponseError = {} }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {}, TlcheckParams = {}, TlcheckResult = {}, SetTraceModulesParams = {}, SetTraceModulesResult = {}, WorkspaceDiagnosticParams = {}, WorkspaceDiagnosticReportItem = {}, WorkspaceDiagnosticReport = {} }
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -87,7 +87,7 @@ function lsp_formatter.show_type(node_info, type_info, doc, env)
    table.insert(sb.strings, "```teal")
 
    if type_info.t == tl.typecodes.FUNCTION then
-      local args = teal_helper.get_function_args_string(doc, type_info, env)
+      local args = teal_helper.get_function_args_string(doc, type_info)
       if args ~= nil then
          table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
       else
@@ -97,7 +97,7 @@ function lsp_formatter.show_type(node_info, type_info, doc, env)
    elseif type_info.t == tl.typecodes.POLY then
       for i, type_ref in ipairs(type_info.types) do
          local func_info = teal_helper.resolve_type_ref(type_ref, env)
-         local args = teal_helper.get_function_args_string(doc, func_info, env)
+         local args = teal_helper.get_function_args_string(doc, func_info)
          if args ~= nil then
             table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
          else

@@ -75,6 +75,7 @@ function DiagnosticsHelper:create_diagnostics(module_info)
    local err_tks = module_info.err_tokens
 
    if #err_tks > 0 then
+      tracing.trace(_module_name, "Found {} error tokens for module {}", { #err_tks, module_info.module_name })
       return imap(err_tks, function(t)
          return {
             range = {
@@ -90,6 +91,7 @@ function DiagnosticsHelper:create_diagnostics(module_info)
    local parse_errs = module_info.parse_errors
 
    if #parse_errs > 0 then
+      tracing.trace(_module_name, "Found {} parse errors for module {}", { #parse_errs, module_info.module_name })
       return imap(parse_errs, function(e)
          return make_diagnostic_from_error(tks, e, "Error")
       end)
@@ -123,6 +125,7 @@ function DiagnosticsHelper:create_diagnostics(module_info)
    insert_errs(fname, diags, tks, werrors, "Error")
    insert_errs(fname, diags, tks, result.type_errors, "Error")
 
+   tracing.trace(_module_name, "Found {} diagnostics for module {}", { #diags, module_info.module_name })
    return diags
 end
 

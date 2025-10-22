@@ -29,18 +29,12 @@ local function _get_node_at(ast, y, x)
    end
 end
 
-function teal_helper._get_ast_node_at(module_info, type_info, env)
-   if type_info.file == "" then
-      return _get_node_at(module_info.ast, type_info.y, type_info.x)
-   end
-
-   local loaded_file = env.loaded[type_info.file]
-   if loaded_file == nil then return nil end
-   return _get_node_at(loaded_file.ast, type_info.y, type_info.x)
+function teal_helper._get_ast_node_at(module_info, type_info)
+   return _get_node_at(module_info.ast, type_info.y, type_info.x)
 end
 
-function teal_helper.get_function_args_string(module_info, type_info, env)
-   local node = teal_helper._get_ast_node_at(module_info, type_info, env)
+function teal_helper.get_function_args_string(module_info, type_info)
+   local node = teal_helper._get_ast_node_at(module_info, type_info)
    if node == nil then return nil end
    local output = {}
    for _, arg_info in ipairs(node.args) do

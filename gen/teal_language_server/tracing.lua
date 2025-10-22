@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local table = _tl_compat and _tl_compat.table or table
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local pairs = _tl_compat and _tl_compat.pairs or pairs; local table = _tl_compat and _tl_compat.table or table
 local TraceEntry = require("teal_language_server.trace_entry")
 local asserts = require("teal_language_server.asserts")
 local tracing_util = require("teal_language_server.tracing_util")
@@ -29,7 +29,7 @@ local _min_level_number = level_order_from_str[_min_level]
 
 local trace_modules = {}
 
-for _, module_name in ipairs(debug_flags.trace_modules) do
+for _, module_name in ipairs(debug_flags.default_trace_modules) do
    trace_modules[module_name] = true
 end
 
@@ -155,6 +155,34 @@ function tracing.error(module, message, fields)
    if tracing._is_level_enabled(module, _level_error) then
       tracing.log(module, "ERROR", message, fields)
    end
+end
+
+
+function tracing.set_trace_modules(modules)
+   asserts.is_not_nil(modules)
+   trace_modules = {}
+   for _, module_name in ipairs(modules) do
+      trace_modules[module_name] = true
+   end
+end
+
+function tracing.add_trace_module(module_name)
+   asserts.is_not_nil(module_name)
+   trace_modules[module_name] = true
+end
+
+function tracing.remove_trace_module(module_name)
+   asserts.is_not_nil(module_name)
+   trace_modules[module_name] = nil
+end
+
+function tracing.get_trace_modules()
+   local modules = {}
+   for module_name, _ in pairs(trace_modules) do
+      table.insert(modules, module_name)
+   end
+   table.sort(modules)
+   return modules
 end
 
 return tracing
