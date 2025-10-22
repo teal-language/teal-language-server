@@ -91,6 +91,7 @@ local record lsp
          "textDocument/signatureHelp"
          "workspace/diagnostic"
          "teal/typecheck_project"
+         "teal/setTraceModules"
          "shutdown"
       end
 
@@ -167,6 +168,15 @@ local record lsp
    record TlcheckResult
       lines: {string}  -- Array of formatted error/warning lines
       success: boolean -- True if no errors found
+   end
+
+   -- Custom Teal trace module configuration types
+   record SetTraceModulesParams
+      modules: {string}  -- Optional: Array of module names to enable for tracing. If nil, just returns current modules without modifying.
+   end
+
+   record SetTraceModulesResult
+      modules: {string}  -- Array of currently enabled trace modules
    end
 
    -- Workspace diagnostic pull model types

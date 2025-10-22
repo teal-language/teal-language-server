@@ -24,6 +24,7 @@ local tl <const> = require("tl")
 local lsp_formatter <const> = require("teal_language_server.lsp_formatter")
 local files_util <const> = require("teal_language_server.files_util")
 local path_util <const> = require("teal_language_server.path_util")
+local debug_flags <const> = require("teal_language_server.debug_flags")
 
 local indexable_parent_types <const>: {string:boolean} = {
    ["index"] = true,
@@ -64,11 +65,19 @@ end
 function MiscHandlers:_on_initialize(params:lsp.Method.Params):any
    asserts.that(not self._has_handled_initialize)
    self._has_handled_initialize= true
+
+   tracing.trace(_module_name, "Received _on_initialize request with data {@}", {params})
+
    local root_path:string
 
-   if params.rootUri then
+   -- Sometimes it can be json.null so check type explicitly
+   if type(params.rootUri) == "string" then
+      tracing.trace(_module_name, "Received rootUri {}", {params.rootUri})
       root_path = Uri.to_file_path(Uri.parse(params.rootUri as string))
    else
+      assert(type(params.rootPath) == "string",
+         "Did not receive valid root path or root URI from client")
+      tracing.trace(_module_name, "Received params.rootPath {}", {params.rootPath})
       root_path = path_util.canonicalize(params.rootPath as string)
    end
 
@@ -145,8 +154,13 @@ function MiscHandlers:_on_did_save(params:lsp.Method.Params):any
       tracing.debug(_module_name, "Received 'didSave' for module {}", {module_info.module_name})
    end
 
-   -- TODO - Should we do anything here?
-   -- Maybe check for changes in un-opened files?
+   -- Might as well take this opportunity to see if any unopened files need to be invalidated
+   local all_modules = self._build_handler:get_all_modules()
+   local build_changed = self._build_handler:check_unopened_files_for_invalidation(all_modules)
+
+   if build_changed then
+      self._diagnostics_publisher:enqueue_build()
+   end
 end
 
 function MiscHandlers:_on_did_close(params:lsp.Method.Params):any
@@ -470,7 +484,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params):any
    if type_info.t == tl.typecodes.POLY then
       for _, type_ref in ipairs(type_info.types) do
          type_info = teal_helper.resolve_type_ref(type_ref, env)
-         local args = teal_helper.get_function_args_string(doc, type_info, env)
+         local args = teal_helper.get_function_args_string(doc, type_info)
          if args ~= nil then
             local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
             table.insert(output.signatures, {label = func_str})
@@ -480,7 +494,7 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params):any
          end
       end
    else
-      local args = teal_helper.get_function_args_string(doc, type_info, env)
+      local args = teal_helper.get_function_args_string(doc, type_info)
       if args ~= nil then
          local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
          table.insert(output.signatures, {label = func_str})
@@ -611,6 +625,7 @@ function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params):any
 
    tracing.debug(_module_name, "Running full workspace build for diagnostics...", {})
 
+   self._build_handler:remove_deleted_modules()
    local all_modules = self._build_handler:get_all_modules()
    local build_result = self._build_handler:build(all_modules, nil)
 
@@ -641,6 +656,28 @@ function MiscHandlers:_on_workspace_diagnostic(params:lsp.Method.Params):any
    return {
       items = workspace_items
    } as lsp.WorkspaceDiagnosticReport
+end
+
+function MiscHandlers:_on_set_trace_modules(params:lsp.Method.Params):any
+   tracing.debug(_module_name, "Received teal/setTraceModules request", {})
+
+   local trace_params = params as lsp.SetTraceModulesParams
+   local modules = trace_params.modules
+
+   -- Only update if modules were provided (not nil)
+   if modules ~= nil then
+      tracing.set_trace_modules(modules)
+      tracing.info(_module_name, "Updated trace modules to: {@}", {modules})
+   else
+      tracing.debug(_module_name, "Query-only request, not modifying trace modules")
+   end
+
+   -- Return the currently enabled modules
+   local current_modules = tracing.get_trace_modules()
+
+   return {
+      modules = current_modules
+   } as lsp.SetTraceModulesResult
 end
 
 function MiscHandlers:_on_hover(params:lsp.Method.Params):any
@@ -825,6 +862,11 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/typeDefinition", self._on_type_definition)
 
    self:_add_handler("workspace/diagnostic", self._on_workspace_diagnostic)
+
+   -- Debug-only handlers
+   if debug_flags.extra_debugging_enabled then
+      self:_add_handler("teal/setTraceModules", self._on_set_trace_modules)
+   end
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {

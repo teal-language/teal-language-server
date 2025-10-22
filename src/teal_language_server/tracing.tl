@@ -29,7 +29,7 @@ local _min_level_number:integer = level_order_from_str[_min_level]
 
 local trace_modules = {}
 
-for _, module_name in ipairs(debug_flags.trace_modules) do
+for _, module_name in ipairs(debug_flags.default_trace_modules) do
    trace_modules[module_name] = true
 end
 
@@ -155,6 +155,34 @@ function tracing.error(module:string, message:string, fields?:{any})
    if tracing._is_level_enabled(module, _level_error) then
       tracing.log(module, "ERROR", message, fields)
    end
+end
+
+-- Runtime trace module configuration
+function tracing.set_trace_modules(modules:{string})
+   asserts.is_not_nil(modules)
+   trace_modules = {}
+   for _, module_name in ipairs(modules) do
+      trace_modules[module_name] = true
+   end
+end
+
+function tracing.add_trace_module(module_name:string)
+   asserts.is_not_nil(module_name)
+   trace_modules[module_name] = true
+end
+
+function tracing.remove_trace_module(module_name:string)
+   asserts.is_not_nil(module_name)
+   trace_modules[module_name] = nil
+end
+
+function tracing.get_trace_modules():{string}
+   local modules = {}
+   for module_name, _ in pairs(trace_modules) do
+      table.insert(modules, module_name)
+   end
+   table.sort(modules)
+   return modules
 end
 
 return tracing

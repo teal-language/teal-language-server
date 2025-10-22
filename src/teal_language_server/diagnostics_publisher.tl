@@ -45,6 +45,8 @@ function DiagnosticsPublisher:__init(
 end
 
 function DiagnosticsPublisher:_build()
+   self._build_handler:remove_deleted_modules()
+
    local all_open_files = {}
 
    for file_path, _ in pairs(self._open_document_registry.docs) do

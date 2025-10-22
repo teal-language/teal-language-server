@@ -40,6 +40,7 @@ local record ModuleInfo
    _hash: integer
    _tree: ltreesitter.Tree
    _tree_cursor: ltreesitter.Cursor
+   _ast_needs_update: boolean
 
    metamethod __call: function(self: ModuleInfo, path: string, module_name: string): ModuleInfo
 end
@@ -52,12 +53,14 @@ function ModuleInfo:__init(path: string, module_name: string)
    self._hash = 0
    self.is_opened = false
    self.requires_build = true
+   self._ast_needs_update = true
 end
 
 function ModuleInfo:clear_teal_cache()
    self._tokens = nil
    self._err_tokens = nil
    self._ast = nil
+   self._ast_needs_update = true
    self._parse_errors = nil
    self._required_modules = nil
 
@@ -105,6 +108,8 @@ function ModuleInfo:_lazy_update_tokens()
 
    asserts.is_not_nil(self._content)
    self._tokens, self._err_tokens = tl.lex(self._content, self._path)
+   asserts.is_not_nil(self._tokens)
+
    if not self._err_tokens then
       self._err_tokens = {}
    end
@@ -122,19 +127,24 @@ function ModuleInfo:_lazy_update_treesitter()
 end
 
 function ModuleInfo:_lazy_update_ast()
-   if self._ast then
+   if not self._ast_needs_update then
       return
    end
 
+   self._ast_needs_update = false
+   asserts.is_nil(self._ast)
+
    self:_lazy_update_tokens()
 
+   self._parse_errors = {}
+
    if #self._err_tokens > 0 then
+      self._required_modules = {}
       return
    end
 
    asserts.is_not_nil(self._tokens)
 
-   self._parse_errors = {}
    self._ast, self._required_modules = tl.parse_program(self._tokens, self._parse_errors, self._path)
    asserts.is_not_nil(self._ast)
    asserts.is_not_nil(self._required_modules)
@@ -156,7 +166,7 @@ class.setup(ModuleInfo, "ModuleInfo",  {
       end,
       ast = function(self: ModuleInfo): tl.Node
          self:_lazy_update_ast()
-         asserts.is_not_nil(self._ast)
+         -- Note: Can be nil, in cases where there were lex/parse errors
          return self._ast
       end,
       err_tokens = function(self: ModuleInfo): {tl.Error}
