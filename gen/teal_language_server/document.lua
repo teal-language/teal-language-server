@@ -459,8 +459,10 @@ function Document:_tree_sitter_token(y, x)
                local function_name = parent_node:child_by_field_name("name")
                if function_name then
                   local base_name = function_name:child_by_field_name("base")
-                  out.self_type = base_name:source()
-                  break
+                  if base_name then
+                     out.self_type = base_name:source()
+                     break
+                  end
                end
             elseif parent_node:type() == "ERROR" then
 
