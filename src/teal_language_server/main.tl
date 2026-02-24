@@ -15,6 +15,7 @@ local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer"
 local tracing <const> = require("teal_language_server.tracing")
 local util <const> = require("teal_language_server.util")
 local TraceEntry <const> = require("teal_language_server.trace_entry")
+local tl <const> = require("tl")
 
 local record IDisposable
    dispose: function(IDisposable)
@@ -66,6 +67,7 @@ local function main()
    cached_entries = nil
 
    tracing.info(_module_name, "Started new instance teal-language-server. Lua Version: {}. Platform: {}", {_VERSION, util.get_platform()})
+   tracing.info(_module_name, "Current tl version: {}", {tl.version()})
    tracing.info(_module_name, "Received command line args: {}", {args})
    tracing.info(_module_name, "CWD = {}", {uv.cwd()})
 
