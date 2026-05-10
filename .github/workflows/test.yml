@@ -21,9 +21,9 @@ jobs:
           luaVersion: ${{ matrix.luaVersion }}
 
       - name: Install LuaRocks
-        uses: leafo/gh-actions-luarocks@v4
+        uses: leafo/gh-actions-luarocks@v6.1.0
         with:
-          luarocksVersion: "3.10.0"
+          luarocksVersion: "3.13.0"
 
       - name: Build
         run: scripts/setup_local_luarocks.sh
