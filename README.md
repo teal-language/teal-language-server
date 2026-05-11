@@ -9,10 +9,11 @@ A language server for the [Teal language](https://github.com/teal-language/tl)
 
 ### From luarocks (Linux and macOS)
 
-* `luarocks install teal-language-server`
-* The `teal-language-server` program should be installed
+- `luarocks install teal-language-server`
+- The `teal-language-server` program should be installed
+  - This does assume that the LuaRocks bin folder is properly added to your path!
 
-Tested on Linux and macOS. It's currently a bit of a struggle to install via LuaRocks on Windows. We recommend using the binaries from the release on Windows.
+The above is tested and working on Linux, macOS, and Windows
 
 ### From GitHub Release Binaries (Windows)
 We provide binaries for Windows on our [GitHub Release](https://github.com/teal-language/teal-language-server/releases) page. You should be able to download and extract the the latest version from there.
