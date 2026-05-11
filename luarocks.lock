@@ -13,7 +13,7 @@ return {
       lusc_luv = "4.0.1-1",
       luv = "1.51.0-0",
       tl = "0.24.5-1",
-      ["tree-sitter-cli"] = "0.24.7-2",
+      ["tree-sitter-cli"] = "0.24.7-3",
       ["tree-sitter-teal"] = "0.0.34-1"
    },
 }
