@@ -36,7 +36,7 @@ test = {
 build = {
    type = "builtin",
    modules = {
-      ["teal"] = {"tree-sitter-teal/src/parser.c", "tree-sitter-teal/src/scanner.c", incdirs = {"tree-sitter-teal/src"},},
+      ["teal"] = {"tree-sitter-teal/src/parser.c", "tree-sitter-teal/src/scanner.c", "tree-sitter-teal/src/lua_stub.c", incdirs = {"tree-sitter-teal/src"},},
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
       ["teal_language_server.asserts"] = "gen/teal_language_server/asserts.lua",
       ["teal_language_server.class"] = "gen/teal_language_server/class.lua",
