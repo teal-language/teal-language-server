@@ -4,20 +4,31 @@ cd `dirname $BASH_SOURCE`/..
 rm -rf ./gen
 mkdir ./gen
 mkdir ./gen/teal_language_server
+
+cp src/teal_language_server/class.lua gen/teal_language_server/class.lua
+
 luarocks_tree/bin/tl gen src/teal_language_server/args_parser.tl -o gen/teal_language_server/args_parser.lua
 luarocks_tree/bin/tl gen src/teal_language_server/asserts.tl -o gen/teal_language_server/asserts.lua
-cp src/teal_language_server/class.lua gen/teal_language_server/class.lua
+luarocks_tree/bin/tl gen src/teal_language_server/build_handler.tl -o gen/teal_language_server/build_handler.lua
 luarocks_tree/bin/tl gen src/teal_language_server/constants.tl -o gen/teal_language_server/constants.lua
-luarocks_tree/bin/tl gen src/teal_language_server/document.tl -o gen/teal_language_server/document.lua
-luarocks_tree/bin/tl gen src/teal_language_server/document_manager.tl -o gen/teal_language_server/document_manager.lua
-luarocks_tree/bin/tl gen src/teal_language_server/env_updater.tl -o gen/teal_language_server/env_updater.lua
+luarocks_tree/bin/tl gen src/teal_language_server/debug_flags.tl -o gen/teal_language_server/debug_flags.lua
+luarocks_tree/bin/tl gen src/teal_language_server/diagnostics_helper.tl -o gen/teal_language_server/diagnostics_helper.lua
+luarocks_tree/bin/tl gen src/teal_language_server/diagnostics_publisher.tl -o gen/teal_language_server/diagnostics_publisher.lua
+luarocks_tree/bin/tl gen src/teal_language_server/env_factory.tl -o gen/teal_language_server/env_factory.lua
+luarocks_tree/bin/tl gen src/teal_language_server/files_util.tl -o gen/teal_language_server/files_util.lua
+luarocks_tree/bin/tl gen src/teal_language_server/i_disposable.tl -o gen/teal_language_server/i_disposable.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp.tl -o gen/teal_language_server/lsp.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp_events_manager.tl -o gen/teal_language_server/lsp_events_manager.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp_formatter.tl -o gen/teal_language_server/lsp_formatter.lua
 luarocks_tree/bin/tl gen src/teal_language_server/lsp_reader_writer.tl -o gen/teal_language_server/lsp_reader_writer.lua
 luarocks_tree/bin/tl gen src/teal_language_server/main.tl -o gen/teal_language_server/main.lua
 luarocks_tree/bin/tl gen src/teal_language_server/misc_handlers.tl -o gen/teal_language_server/misc_handlers.lua
-luarocks_tree/bin/tl gen src/teal_language_server/path.tl -o gen/teal_language_server/path.lua
+luarocks_tree/bin/tl gen src/teal_language_server/module_info.tl -o gen/teal_language_server/module_info.lua
+luarocks_tree/bin/tl gen src/teal_language_server/module_info_manager.tl -o gen/teal_language_server/module_info_manager.lua
+luarocks_tree/bin/tl gen src/teal_language_server/teal_helper.tl -o gen/teal_language_server/teal_helper.lua
+luarocks_tree/bin/tl gen src/teal_language_server/tree_sitter_helper.tl -o gen/teal_language_server/tree_sitter_helper.lua
+luarocks_tree/bin/tl gen src/teal_language_server/open_document_registry.tl -o gen/teal_language_server/open_document_registry.lua
+luarocks_tree/bin/tl gen src/teal_language_server/path_util.tl -o gen/teal_language_server/path_util.lua
 luarocks_tree/bin/tl gen src/teal_language_server/server_state.tl -o gen/teal_language_server/server_state.lua
 luarocks_tree/bin/tl gen src/teal_language_server/stdin_reader.tl -o gen/teal_language_server/stdin_reader.lua
 luarocks_tree/bin/tl gen src/teal_language_server/teal_project_config.tl -o gen/teal_language_server/teal_project_config.lua

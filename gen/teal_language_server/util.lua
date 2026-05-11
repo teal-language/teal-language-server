@@ -1,7 +1,8 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "util"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "util"
 
 local uv = require("luv")
 local tracing = require("teal_language_server.tracing")
+local asserts = require("teal_language_server.asserts")
 
 local util = { TryOpts = {} }
 
@@ -24,7 +25,7 @@ local _os_type = nil
 local function _get_uname_info()
    if _uname_info == nil then
       _uname_info = uv.os_uname()
-      assert(_uname_info ~= nil)
+      asserts.that(_uname_info ~= nil)
    end
 
    return _uname_info
@@ -47,15 +48,19 @@ function util.string_starts_with(str, prefix)
    return str:sub(1, #prefix) == prefix
 end
 
+function util.string_ends_with(str, suffix)
+   return suffix == '' or str:sub(-#suffix) == suffix
+end
+
 function util.string_split(str, delimiter)
 
 
 
-   assert(#str > 0, "Unclear how to split an empty string")
+   asserts.that(#str > 0, "Unclear how to split an empty string")
 
-   assert(delimiter ~= nil, "missing delimiter")
-   assert(type(delimiter) == "string")
-   assert(#delimiter > 0)
+   asserts.that(delimiter ~= nil, "missing delimiter")
+   asserts.that(type(delimiter) == "string")
+   asserts.that(#delimiter > 0)
 
    local num_delimiter_chars = #delimiter
 
@@ -81,8 +86,8 @@ function util.string_split(str, delimiter)
 end
 
 function util.string_join(delimiter, items)
-   assert(type(delimiter) == "string")
-   assert(items ~= nil)
+   asserts.that(type(delimiter) == "string")
+   asserts.that(items ~= nil)
 
    local result = ''
    for _, item in ipairs(items) do
@@ -111,6 +116,24 @@ function util.get_platform()
    end
 
    return _os_type
+end
+
+function util.index_of(list, item)
+   for i = 1, #list do
+      if item == list[i] then
+         return i
+      end
+   end
+
+   return -1
+end
+
+function util.set(lst)
+   local s = {}
+   for _, v in ipairs(lst) do
+      s[v] = true
+   end
+   return s
 end
 
 function util.try(t)

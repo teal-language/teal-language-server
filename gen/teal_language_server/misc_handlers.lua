@@ -1,14 +1,18 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "misc_handlers"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "misc_handlers"
 
 
-local EnvUpdater = require("teal_language_server.env_updater")
+local teal_helper = require("teal_language_server.teal_helper")
+local tree_sitter_helper = require("teal_language_server.tree_sitter_helper")
+local ModuleInfo = require("teal_language_server.module_info")
+local DiagnosticsPublisher = require("teal_language_server.diagnostics_publisher")
+local BuildHandler = require("teal_language_server.build_handler")
+local ModuleInfoManager = require("teal_language_server.module_info_manager")
+local DiagnosticsHelper = require("teal_language_server.diagnostics_helper")
 local args_parser = require("teal_language_server.args_parser")
 local TraceStream = require("teal_language_server.trace_stream")
-local DocumentManager = require("teal_language_server.document_manager")
-local Document = require("teal_language_server.document")
+local OpenDocumentRegistry = require("teal_language_server.open_document_registry")
 local ServerState = require("teal_language_server.server_state")
-local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
-local Path = require("teal_language_server.path")
+local EnvFactory = require("teal_language_server.env_factory")
 local Uri = require("teal_language_server.uri")
 local lsp = require("teal_language_server.lsp")
 local LspEventsManager = require("teal_language_server.lsp_events_manager")
@@ -18,6 +22,9 @@ local tracing = require("teal_language_server.tracing")
 local class = require("teal_language_server.class")
 local tl = require("tl")
 local lsp_formatter = require("teal_language_server.lsp_formatter")
+local files_util = require("teal_language_server.files_util")
+local path_util = require("teal_language_server.path_util")
+local debug_flags = require("teal_language_server.debug_flags")
 
 local indexable_parent_types = {
    ["index"] = true,
@@ -38,101 +45,148 @@ local MiscHandlers = {}
 
 
 
-function MiscHandlers:__init(lsp_events_manager, lsp_reader_writer, server_state, document_manager, trace_stream, args, env_updater)
-   asserts.is_not_nil(env_updater)
 
-   self._document_manager = document_manager
+
+
+function MiscHandlers:__init(lsp_events_manager, server_state, env_factory, open_document_registry, trace_stream, args, build_handler, module_info_manager, diagnostics_helper, diagnostics_publisher)
+   self._document_manager = open_document_registry
    self._server_state = server_state
-   self._lsp_reader_writer = lsp_reader_writer
+   self._env_factory = env_factory
    self._lsp_events_manager = lsp_events_manager
+   self._build_handler = build_handler
    self._has_handled_initialize = false
    self._trace_stream = trace_stream
    self._cl_args = args
-   self._env_updater = env_updater
-
+   self._module_info_manager = module_info_manager
+   self._diagnostics_helper = diagnostics_helper
+   self._diagnostics_publisher = diagnostics_publisher
 end
 
-function MiscHandlers:_on_initialize(params, id)
+function MiscHandlers:_on_initialize(params)
    asserts.that(not self._has_handled_initialize)
    self._has_handled_initialize = true
-   local root_dir_str
 
-   if params.rootUri then
-      root_dir_str = Uri.path_from_uri(params.rootUri)
+   tracing.trace(_module_name, "Received _on_initialize request with data {@}", { params })
+
+   local root_path
+
+
+   if type(params.rootUri) == "string" then
+      tracing.trace(_module_name, "Received rootUri {}", { params.rootUri })
+      root_path = Uri.to_file_path(Uri.parse(params.rootUri))
    else
-      root_dir_str = params.rootPath
+      assert(type(params.rootPath) == "string",
+      "Did not receive valid root path or root URI from client")
+      tracing.trace(_module_name, "Received params.rootPath {}", { params.rootPath })
+      root_path = path_util.canonicalize(params.rootPath)
    end
 
-   local root_path = Path(root_dir_str)
-   asserts.that(root_path:exists(), "Expected path to exist at '{}'", root_path.value)
+   asserts.that(files_util.is_directory(root_path), "Expected path to exist at '{}'", root_path)
 
 
 
    if self._cl_args.log_mode == "by_proj_path" then
       local pid = math.floor(uv.os_getpid())
-      local new_log_name = root_path.value:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
+      local new_log_name = root_path:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
       self._trace_stream:rename_output_file(new_log_name)
    end
 
-   tracing.info(_module_name, "Received initialize request from client. Teal project dir: {}", { root_path.value })
+   tracing.info(_module_name, "Received initialize request from client. Teal project dir: {}", { root_path })
 
    self._server_state:initialize(root_path)
-   self._env_updater:initialize()
+
+   local cwd = path_util.canonicalize(assert(uv.cwd()))
+   asserts.that(cwd == self._server_state.teal_project_root_dir)
+
+   self._env_factory:initialize()
 
    tracing.trace(_module_name, "Sending initialize response message...", {})
 
-   self._lsp_reader_writer:send_rpc(id, {
+   self._module_info_manager:initialize()
+   self._build_handler:initialize()
+   self._diagnostics_publisher:initialize()
+
+   return {
       capabilities = self._server_state.capabilities,
       serverInfo = {
          name = self._server_state.name,
          version = self._server_state.version,
       },
-   })
+   }
 end
 
 function MiscHandlers:_on_initialized()
    tracing.debug(_module_name, "Received 'initialized' notification", {})
+   return nil
 end
 
 function MiscHandlers:_on_did_open(params)
    local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
 
-   self._document_manager:open(Uri.parse(td.uri), td.text, td.version):
-   process_and_publish_results()
-end
+   local content = td.text
 
-function MiscHandlers:_on_did_close(params)
-   local td = params.textDocument
-   self._document_manager:close(Uri.parse(td.uri))
+   self._module_info_manager:on_opened(file_path, content, uri)
+
+   local module_info = self._module_info_manager:try_get_module_info(file_path)
+
+   if module_info == nil then
+      tracing.warning(_module_name, "Received 'didOpen' for unknown module at path: {}", { file_path })
+   else
+      tracing.debug(_module_name, "Received 'didOpen' for module {}", { module_info.module_name })
+      self._document_manager:open(file_path, module_info)
+   end
+
+   self._diagnostics_publisher:enqueue_build()
 end
 
 function MiscHandlers:_on_did_save(params)
    local td = params.textDocument
-   local doc = self._document_manager:get(Uri.parse(td.uri))
+   local uri = Uri.parse(td.uri)
 
-   if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", { td.uri })
-      return
+   local file_path = Uri.to_file_path(uri)
+   local module_info = self._module_info_manager:try_get_module_info(file_path)
+
+   if module_info == nil then
+      tracing.warning(_module_name, "Received 'didSave' for unknown module at path: {}", { file_path })
+   else
+      tracing.debug(_module_name, "Received 'didSave' for module {}", { module_info.module_name })
    end
 
-   doc:update_text(params.text, td.version)
 
+   local all_modules = self._build_handler:get_all_modules()
+   local build_changed = self._build_handler:check_unopened_files_for_invalidation(all_modules)
 
+   if build_changed then
+      self._diagnostics_publisher:enqueue_build()
+   end
+end
 
-   tracing.debug(_module_name, "detected document file saved - enqueuing full env update", {})
-   self._env_updater:schedule_env_update()
+function MiscHandlers:_on_did_close(params)
+   local td = params.textDocument
+
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+
+   tracing.debug(_module_name, "Received 'didClose' for file at path: {}", { file_path })
+
+   self._module_info_manager:on_closed(file_path)
+
+   self._document_manager:close(file_path)
 end
 
 function MiscHandlers:_on_did_change(params)
    local td = params.textDocument
-   local doc = self._document_manager:get(Uri.parse(td.uri))
-   if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", { td.uri })
-      return
-   end
+   local uri = Uri.parse(td.uri)
    local changes = params.contentChanges
-   doc:update_text(changes[1].text, td.version)
-   doc:process_and_publish_results()
+   local content = changes[1].text
+
+   local file_path = Uri.to_file_path(uri)
+
+   tracing.debug(_module_name, "Received 'didChange' for file at path: {}", { file_path })
+
+   self._module_info_manager:on_changed(file_path, content, uri)
 end
 
 local function split_by_symbols(input, self_type, stop_at)
@@ -150,48 +204,126 @@ local function split_by_symbols(input, self_type, stop_at)
    return t
 end
 
-function MiscHandlers:_get_node_info(params, pos)
-   local context = params.context
+function MiscHandlers:_add_completions_for_type(type_info, env, instance_functions_only, items)
+   for key, v in pairs(type_info.fields) do
+      local field_type_info = teal_helper.resolve_type_ref(v, env)
 
-   if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
-      tracing.warning(_module_name, "Ignoring completion request given kind: {}", { context.triggerKind })
-      return nil
+      local was_added
+
+      tracing.trace(_module_name, "Considering field {} with type info {@}", { key, field_type_info })
+
+
+      if instance_functions_only then
+         if field_type_info.t == tl.typecodes.FUNCTION then
+
+            if field_type_info.args and #field_type_info.args >= 1 then
+               local first_arg_type = teal_helper.resolve_type_ref(field_type_info.args[1][1], env)
+
+               if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or
+                  first_arg_type.t == tl.typecodes.RECORD or first_arg_type.t == tl.typecodes.STRING) and
+                  first_arg_type.str == field_type_info.str) then
+
+                  tracing.trace(_module_name, "Adding self method {}", { key })
+                  table.insert(items, { label = key, kind = lsp.typecodes_to_kind[field_type_info.t] })
+                  was_added = true
+               else
+                  tracing.trace(_module_name, "Ignoring method {} with arg type {@}, type info str {}, first arg str {}", {
+                     key, first_arg_type.t, field_type_info.str, first_arg_type.str, })
+               end
+            end
+         else
+            tracing.trace(_module_name, "Ignoring non-instance-function field {} for self access", { key })
+         end
+      else
+         table.insert(items, { label = key, kind = lsp.typecodes_to_kind[field_type_info.t] })
+         was_added = true
+      end
+
+      if not was_added then
+         tracing.trace(_module_name, "Ignoring field {}", { key })
+      end
    end
-
-   local td = params.textDocument
-   local doc = self._document_manager:get(Uri.parse(td.uri))
-
-   if not doc then
-      tracing.warning(_module_name, "No doc found for completion request", {})
-      return nil
-   end
-
-   tracing.debug(_module_name, "Looking up node info at position: {@}", { pos })
-   local node_info = doc:tree_sitter_token(pos.line, pos.character)
-   if node_info == nil then
-      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
-      return nil
-   end
-   tracing.debug(_module_name, "Found node info: {@}", { node_info })
-   return node_info, doc
 end
 
-function MiscHandlers:_on_completion(params, id)
-   local pos = params.position
-   tracing.info(_module_name, "Received request for completion at position: {@}", { pos })
+function MiscHandlers:_handle_forced_completion(doc, pos, file_path)
+   tracing.debug(_module_name, "Received request for force completion at position: {@}", { pos })
 
+   tracing.trace(_module_name, "Looking up node info at position: {@}", { pos })
+   local node_info = tree_sitter_helper.get_info_at(doc, pos.line, pos.character)
 
-
-   pos.character = pos.character - 1
-
-   local node_info, doc = self:_get_node_info(params, pos)
    if node_info == nil then
       tracing.trace(_module_name, "No node found at given position", {})
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      return nil
    end
 
-   tracing.debug(_module_name, "Found node info: {@}", { node_info })
+   local env = self._build_handler:get_env()
+   local tr = env.reporter and env.reporter:get_report()
+
+   if tr == nil then
+      tracing.trace(_module_name, "No type report available", {})
+      return nil
+   end
+
+   local quick_pos_info = tr.by_pos[file_path]
+
+   if not quick_pos_info then
+      tracing.trace(_module_name, "No quick position info available for file: {}", { file_path })
+      return nil
+   end
+
+   local quick_line_info = quick_pos_info[node_info.start.row + 1]
+
+   if not quick_line_info then
+      tracing.trace(_module_name, "No quick line info available for line: {}", { node_info.start.row + 1 })
+      return nil
+   end
+
+   local type_ref = quick_line_info[node_info.start.column + 1]
+
+   if type_ref == nil then
+      tracing.trace(_module_name, "No type reference available for column: {}", { node_info.start.column + 1 })
+      return nil
+   end
+
+   local type_info = tr.types[type_ref]
+
+   if type_info and type_info.ref then
+      type_info = tr.types[type_info.ref]
+   end
+
+   if not type_info or not type_info.fields then
+      tracing.trace(_module_name, "No type info found for type reference: {}", { type_ref })
+      return nil
+   end
+
+   local items = {}
+
+   for key, v in pairs(type_info.fields) do
+      local field_type_info = teal_helper.resolve_type_ref(v, env)
+      table.insert(items, { label = key, kind = lsp.typecodes_to_kind[field_type_info.t] })
+   end
+
+   tracing.trace(_module_name, "Found {} completion items: {@}", { #items, items })
+   return {
+      isIncomplete = false,
+      items = items,
+   }
+end
+
+function MiscHandlers:_try_handle_dereference_completion(doc, pos)
+   tracing.debug(_module_name, "Received request for completion at position: {@}", { pos })
+
+   tracing.trace(_module_name, "Looking up node info at position: {@}", { pos })
+   local node_info = tree_sitter_helper.guess_leaf_info_at(doc, pos.line, pos.character)
+
+   if node_info == nil then
+      tracing.trace(_module_name, "No node found at given position", {})
+      return nil
+   end
+
+   tracing.trace(_module_name, "Found node info: {@}", { node_info })
+
+   local env = self._build_handler:get_env()
 
    local tks
 
@@ -220,16 +352,17 @@ function MiscHandlers:_on_completion(params, id)
       if node_info.parent_type == "var" or
          node_info.parent_type == "simple_type" or
          node_info.parent_type == "table_type" then
-         self._lsp_reader_writer:send_rpc(id, nil)
-         return
+
+         tracing.trace(_module_name, "Ignoring completion request in var/simple_type/table_type context", {})
+         return nil
       end
    else
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      tracing.trace(_module_name, "Ignoring completion request for node type: {}", { node_info.type })
+      return nil
    end
 
    local items = {}
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = teal_helper.type_information_for_tokens(doc, tks, pos.line, pos.character, env)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
@@ -237,55 +370,30 @@ function MiscHandlers:_on_completion(params, id)
 
    if type_info then
       tracing.debug(_module_name, "Successfully found type_info {@}", { type_info })
-      local tr = doc:get_type_report()
+      local tr = env.reporter:get_report()
 
       if type_info.ref then
-         type_info = doc:resolve_type_ref(type_info.ref)
+         type_info = teal_helper.resolve_type_ref(type_info.ref, env)
       end
 
 
       if type_info.t == tl.typecodes.STRING then
          type_info = tr.types[tr.globals["string"]]
+         tracing.trace(_module_name, "Type is string, using global string type info {@}", { type_info })
       end
 
 
 
 
-      local original_str = type_info.str
+      tracing.trace(_module_name, "Processing type_info str: {}", { type_info.str })
 
       if type_info.fields then
-         for key, v in pairs(type_info.fields) do
-            type_info = doc:resolve_type_ref(v)
-            local was_added
-
-            if node_info.type == ":" then
-               if type_info.t == tl.typecodes.FUNCTION then
-
-                  if type_info.args and #type_info.args >= 1 then
-                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) then
-                        tracing.debug(_module_name, "Adding self method {}", { key })
-                        table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
-                        was_added = true
-                     else
-                        tracing.debug(_module_name, "Ignoring method {} with arg type {0x%08x}, type info str {}, first arg str {}", {
-                           key, first_arg_type.t, original_str, first_arg_type.str, })
-                     end
-                  end
-               end
-            else
-               table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
-               was_added = true
-            end
-
-            if not was_added then
-               tracing.trace(_module_name, "Ignoring field {}", { key })
-            end
-         end
+         local instance_functions_only = node_info.type == ":"
+         self:_add_completions_for_type(type_info, env, instance_functions_only, items)
 
 
       elseif type_info.keys then
-         type_info = doc:resolve_type_ref(type_info.keys)
+         type_info = teal_helper.resolve_type_ref(type_info.keys, env)
 
          if type_info.enums then
             for _, enum_value in ipairs(type_info.enums) do
@@ -301,51 +409,82 @@ function MiscHandlers:_on_completion(params, id)
       table.insert(items, { label = "(none)" })
    end
 
-   tracing.debug(_module_name, "Sending {} back to client", { #items })
+   tracing.debug(_module_name, "Sending {} completion items back to client", { #items })
 
-   self._lsp_reader_writer:send_rpc(id, {
+   return {
       isIncomplete = false,
       items = items,
-   })
+   }
 end
 
-function MiscHandlers:_on_signature_help(params, id)
+function MiscHandlers:_on_completion(params)
+   local context = params.context
+   local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+   local module_info = self._document_manager:try_get(file_path)
+
+   local result
+
    local pos = params.position
 
 
    pos.character = pos.character - 1
 
-   local node_info, doc = self:_get_node_info(params, pos)
+   if context.triggerKind == lsp.completion_trigger_kind.TriggerCharacter then
+      result = self:_try_handle_dereference_completion(module_info, pos)
+   elseif context.triggerKind == lsp.completion_trigger_kind.Invoked then
+      result = self:_handle_forced_completion(module_info, pos, file_path)
+   else
+      result = nil
+      tracing.warning(_module_name, "Unknown completion trigger kind: {}", { context.triggerKind })
+   end
+
+   return result
+end
+
+function MiscHandlers:_on_signature_help(params)
+   local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+   local doc = self._document_manager:try_get(file_path)
+
+   local pos = params.position
+
+   pos.character = pos.character - 1
+
+   tracing.trace(_module_name, "Looking up node info at position: {@}", { pos })
+   local node_info = tree_sitter_helper.guess_leaf_info_at(doc, pos.line, pos.character)
+
    if node_info == nil then
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      return nil
    end
 
    local output = {}
-   tracing.debug(_module_name, "Got nodeinfo: {}", { node_info })
+   tracing.trace(_module_name, "Got nodeinfo: {}", { node_info })
 
    local tks
 
-   if node_info.type == "(" then
+   if node_info.type == "(" and node_info.preceded_by then
       tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.debug(_module_name, "Received request for signature help at character: {}", { tks })
+      tracing.trace(_module_name, "Received request for signature help at character: {}", { tks })
    else
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      return nil
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local env = self._build_handler:get_env()
+   local type_info = teal_helper.type_information_for_tokens(doc, tks, pos.line, pos.character, env)
 
    if type_info == nil then
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      return nil
    end
 
    output.signatures = {}
    if type_info.t == tl.typecodes.POLY then
       for _, type_ref in ipairs(type_info.types) do
-         type_info = doc:resolve_type_ref(type_ref)
-         local args = doc:get_function_args_string(type_info)
+         type_info = teal_helper.resolve_type_ref(type_ref, env)
+         local args = teal_helper.get_function_args_string(doc, type_info)
          if args ~= nil then
             local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
             table.insert(output.signatures, { label = func_str })
@@ -355,7 +494,7 @@ function MiscHandlers:_on_signature_help(params, id)
          end
       end
    else
-      local args = doc:get_function_args_string(type_info)
+      local args = teal_helper.get_function_args_string(doc, type_info)
       if args ~= nil then
          local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
          table.insert(output.signatures, { label = func_str })
@@ -366,15 +505,23 @@ function MiscHandlers:_on_signature_help(params, id)
 
    tracing.debug(_module_name, "[_on_signature_help] Found type info: {}", { type_info })
 
-   self._lsp_reader_writer:send_rpc(id, output)
+   return output
 end
 
-function MiscHandlers:_on_definition(params, id)
+function MiscHandlers:_on_definition(params)
+   local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+   local doc = self._document_manager:try_get(file_path)
+
    local pos = params.position
-   local node_info, doc = self:_get_node_info(params, pos)
+
+   tracing.trace(_module_name, "Looking up node info at position: {@}", { pos })
+   local node_info = tree_sitter_helper.guess_leaf_info_at(doc, pos.line, pos.character)
+
    if node_info == nil then
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      return nil
    end
 
    tracing.trace(_module_name, "Received request for on_definition at position: {@}", { pos })
@@ -389,59 +536,172 @@ function MiscHandlers:_on_definition(params, id)
       end
    else
       tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", { node_info.type })
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
+      return nil
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local env = self._build_handler:get_env()
 
-   if not type_info or type_info.file == nil then
-      self._lsp_reader_writer:send_rpc(id, nil)
-      return
-   end
 
-   tracing.trace(_module_name, "[on_definition] Found type type_info: {}", { type_info })
+   local symbol_name = tks[#tks]
 
+
+   local symbol_info = teal_helper.find_symbol_declaration(doc, symbol_name, env)
+
+   local type_info
    local file_uri
 
-   if #type_info.file == 0 then
-      file_uri = doc.uri
-   else
-      local full_path
+   if symbol_info then
 
-      if Path(type_info.file):is_absolute() then
-         full_path = type_info.file
+      tracing.trace(_module_name, "[on_definition] Found symbol declaration for '{}' at {}:{}", { symbol_name, symbol_info.y, symbol_info.x })
+      type_info = symbol_info
+
+      if #type_info.file == 0 then
+         file_uri = doc.uri
       else
-         full_path = self._server_state.teal_project_root_dir.value .. "/" .. type_info.file
+         local full_path
+         if path_util.is_absolute(type_info.file) then
+            full_path = type_info.file
+         else
+            full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+         end
+         file_uri = Uri.uri_from_path(full_path)
+      end
+   else
+
+      tracing.trace(_module_name, "[on_definition] No symbol declaration found for '{}', falling back to type definition", { symbol_name })
+      type_info = teal_helper.type_information_for_tokens(doc, tks, pos.line, pos.character, env)
+
+      if not type_info or type_info.file == nil then
+         return nil
       end
 
-      local file_path = Path(full_path)
-      file_uri = Uri.uri_from_path(file_path.value)
+      tracing.trace(_module_name, "[on_definition] Found type type_info: {}", { type_info })
+
+      if #type_info.file == 0 then
+         file_uri = doc.uri
+      else
+         local full_path
+         if path_util.is_absolute(type_info.file) then
+            full_path = type_info.file
+         else
+            full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+         end
+         file_uri = Uri.uri_from_path(full_path)
+      end
    end
 
-   self._lsp_reader_writer:send_rpc(id, {
+   return {
       uri = Uri.tostring(file_uri),
       range = {
          start = lsp.position(type_info.y - 1, type_info.x - 1),
          ["end"] = lsp.position(type_info.y - 1, type_info.x - 1),
       },
-   })
+   }
 end
 
-function MiscHandlers:_on_hover(params, id)
+function MiscHandlers:_on_workspace_diagnostic(params)
+   tracing.debug(_module_name, "Received workspace/diagnostic request", {})
+
+   local workspace_params = params
+   local previous_result_id = workspace_params.previousResultId
+   local current_result_id = self._server_state:get_workspace_diagnostic_result_id()
+
+
+   if previous_result_id and previous_result_id == current_result_id then
+      tracing.debug(_module_name, "Returning unchanged workspace diagnostics (same result ID: {})", { current_result_id })
+
+      local result = {
+         items = { {
+            kind = lsp.diagnostic_kind.unchanged,
+            resultId = current_result_id,
+         }, },
+      }
+
+      return result
+   end
+
+
+   local new_result_id = self._server_state:update_workspace_diagnostic_result_id()
+
+   tracing.debug(_module_name, "Running full workspace build for diagnostics...", {})
+
+   self._build_handler:remove_deleted_modules()
+   local all_modules = self._build_handler:get_all_modules()
+   local build_result = self._build_handler:build(all_modules, nil)
+
+   self._build_handler:sort_files_by_dependency_order(
+   all_modules, build_result.global_dep_paths)
+
+   local workspace_items = {}
+
+
+   for _, module_info in ipairs(all_modules) do
+      local uri = module_info.uri
+      if not uri then
+
+         uri = Uri.uri_from_path(module_info.path)
+      end
+
+      local diagnostics = self._diagnostics_helper:create_diagnostics(module_info)
+      table.insert(workspace_items, {
+         uri = Uri.tostring(uri),
+         kind = lsp.diagnostic_kind.full,
+         resultId = new_result_id,
+         items = diagnostics,
+      })
+   end
+
+   tracing.info(_module_name, "Returning workspace diagnostics for {} files with result ID {}", { #workspace_items, new_result_id })
+
+   return {
+      items = workspace_items,
+   }
+end
+
+function MiscHandlers:_on_set_trace_modules(params)
+   tracing.debug(_module_name, "Received teal/setTraceModules request", {})
+
+   local trace_params = params
+   local modules = trace_params.modules
+
+
+   if modules ~= nil then
+      tracing.set_trace_modules(modules)
+      tracing.info(_module_name, "Updated trace modules to: {@}", { modules })
+   else
+      tracing.debug(_module_name, "Query-only request, not modifying trace modules")
+   end
+
+
+   local current_modules = tracing.get_trace_modules()
+
+   return {
+      modules = current_modules,
+   }
+end
+
+function MiscHandlers:_on_hover(params)
    local pos = params.position
+   local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+   local doc = self._document_manager:try_get(file_path)
+
    tracing.trace(_module_name, "Received request for hover at position: {@}", { pos })
-   local node_info, doc = self:_get_node_info(params, pos)
+   local node_info = tree_sitter_helper.guess_leaf_info_at(doc, pos.line, pos.character)
+
    if node_info == nil then
-      self._lsp_reader_writer:send_rpc(id, {
+      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      return {
          contents = { "Unknown Token:", " Unable to determine what token is under cursor " },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character),
          },
-      })
-      return
+      }
    end
+
+   local env = self._build_handler:get_env()
 
    local tks = {}
    if node_info.type == "identifier" then
@@ -452,50 +712,145 @@ function MiscHandlers:_on_hover(params, id)
          tks = split_by_symbols(node_info.source, node_info.self_type)
       end
    else
-      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", { node_info.type })
-      self._lsp_reader_writer:send_rpc(id, {
+      local tr = env.reporter and env.reporter:get_report()
+
+      if tr ~= nil then
+         local quick_pos_info = tr.by_pos[file_path]
+
+         if quick_pos_info then
+            local quick_line_info = quick_pos_info[node_info.parent_start.row + 1]
+
+            if quick_line_info then
+               local type_ref = quick_line_info[node_info.parent_start.column + 1]
+
+               if type_ref ~= nil then
+                  local type_info = tr.types[type_ref]
+
+                  if type_info and type_info.ref then
+                     type_info = tr.types[type_info.ref]
+                  end
+
+                  if type_info ~= nil then
+                     local type_str = lsp_formatter.show_type(node_info, type_info, doc, env)
+                     return {
+                        contents = type_str,
+                        range = {
+                           start = lsp.position(pos.line, pos.character),
+                           ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
+                        },
+                     }
+                  end
+               end
+            end
+         end
+      end
+
+      return {
          contents = { node_info.parent_type, ":", node_info.type },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
          },
-      })
-      return
+      }
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = teal_helper.type_information_for_tokens(doc, tks, pos.line, pos.character, env)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type info based on token", {})
-      self._lsp_reader_writer:send_rpc(id, {
+      return {
          contents = { node_info.source .. ":", " No type_info found " },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
          },
-      })
-      return
+      }
    end
 
-   tracing.debug(_module_name, "Successfully found type_info: {@}", { type_info })
+   tracing.trace(_module_name, "Successfully found type_info: {@}", { type_info })
 
-   local type_str = lsp_formatter.show_type(node_info, type_info, doc)
-   self._lsp_reader_writer:send_rpc(id, {
+   local type_str = lsp_formatter.show_type(node_info, type_info, doc, env)
+   return {
       contents = type_str,
       range = {
          start = lsp.position(pos.line, pos.character),
          ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
       },
-   })
+   }
+end
+
+function MiscHandlers:_on_type_definition(params)
+   local pos = params.position
+   local td = params.textDocument
+   local uri = Uri.parse(td.uri)
+   local file_path = Uri.to_file_path(uri)
+   local doc = self._document_manager:try_get(file_path)
+
+   tracing.trace(_module_name, "Looking up node info at position: {@}", { pos })
+   local node_info = tree_sitter_helper.guess_leaf_info_at(doc, pos.line, pos.character)
+
+   if node_info == nil then
+      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      return nil
+   end
+
+   tracing.trace(_module_name, "Received request for on_type_definition at position: {@}", { pos })
+
+   local tks = {}
+   if node_info.type == "identifier" then
+
+      if indexable_parent_types[node_info.parent_type] then
+         tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+      else
+         tks = split_by_symbols(node_info.source, node_info.self_type)
+      end
+   else
+      tracing.warning(_module_name, "Can't get type definition for anything that isn't an identifier: {}", { node_info.type })
+      return nil
+   end
+
+   local env = self._build_handler:get_env()
+
+
+   local type_info = teal_helper.type_information_for_tokens(doc, tks, pos.line, pos.character, env)
+
+   if not type_info or type_info.file == nil then
+      return nil
+   end
+
+   tracing.trace(_module_name, "[on_type_definition] Found type type_info: {}", { type_info })
+
+   local file_uri
+
+   if #type_info.file == 0 then
+      file_uri = doc.uri
+   else
+      local full_path
+      if path_util.is_absolute(type_info.file) then
+         full_path = type_info.file
+      else
+         full_path = self._server_state.teal_project_root_dir .. "/" .. type_info.file
+      end
+      file_uri = Uri.uri_from_path(full_path)
+   end
+
+   return {
+      uri = Uri.tostring(file_uri),
+      range = {
+         start = lsp.position(type_info.y - 1, type_info.x - 1),
+         ["end"] = lsp.position(type_info.y - 1, type_info.x - 1 + #(type_info.str or "")),
+      },
+   }
 end
 
 function MiscHandlers:_add_handler(name, handler)
-   self._lsp_events_manager:set_handler(name, function(params, id) handler(self, params, id) end)
+   self._lsp_events_manager:set_handler(name, function(params) return handler(self, params) end)
 end
 
 function MiscHandlers:initialize()
    self:_add_handler("initialize", self._on_initialize)
    self:_add_handler("initialized", self._on_initialized)
+
    self:_add_handler("textDocument/didOpen", self._on_did_open)
    self:_add_handler("textDocument/didClose", self._on_did_close)
    self:_add_handler("textDocument/didSave", self._on_did_save)
@@ -503,9 +858,15 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/completion", self._on_completion)
    self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
    self:_add_handler("textDocument/hover", self._on_hover)
-
-
    self:_add_handler("textDocument/definition", self._on_definition)
+   self:_add_handler("textDocument/typeDefinition", self._on_type_definition)
+
+   self:_add_handler("workspace/diagnostic", self._on_workspace_diagnostic)
+
+
+   if debug_flags.extra_debugging_enabled then
+      self:_add_handler("teal/setTraceModules", self._on_set_trace_modules)
+   end
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {})

@@ -1,7 +1,8 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local table = _tl_compat and _tl_compat.table or table
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local pairs = _tl_compat and _tl_compat.pairs or pairs; local table = _tl_compat and _tl_compat.table or table
 local TraceEntry = require("teal_language_server.trace_entry")
 local asserts = require("teal_language_server.asserts")
 local tracing_util = require("teal_language_server.tracing_util")
+local debug_flags = require("teal_language_server.debug_flags")
 local uv = require("luv")
 
 local tracing = {}
@@ -26,6 +27,12 @@ local level_order_from_str = {
 local _min_level = "TRACE"
 local _min_level_number = level_order_from_str[_min_level]
 
+local trace_modules = {}
+
+for _, module_name in ipairs(debug_flags.default_trace_modules) do
+   trace_modules[module_name] = true
+end
+
 local function get_unix_timestamp()
    return os.time()
 end
@@ -45,16 +52,16 @@ local function get_relative_time()
    return get_ref_time_seconds() - _load_start_time
 end
 
-function tracing._is_level_enabled(_log_module, level)
-   if _min_level_number > level then
-      return false
-   end
-
+function tracing._is_level_enabled(module, level)
    if #_streams == 0 then
       return false
    end
 
-   return true
+   if trace_modules[module] then
+      return true
+   end
+
+   return _min_level_number <= level
 end
 
 function tracing.add_stream(stream)
@@ -100,6 +107,26 @@ function tracing.log(module, level, message, fields)
    end
 end
 
+function tracing.is_trace_enabled(module)
+   return tracing._is_level_enabled(module, _level_trace)
+end
+
+function tracing.is_debug_enabled(module)
+   return tracing._is_level_enabled(module, _level_debug)
+end
+
+function tracing.is_info_enabled(module)
+   return tracing._is_level_enabled(module, _level_info)
+end
+
+function tracing.is_warning_enabled(module)
+   return tracing._is_level_enabled(module, _level_warning)
+end
+
+function tracing.is_error_enabled(module)
+   return tracing._is_level_enabled(module, _level_error)
+end
+
 function tracing.trace(module, message, fields)
    if tracing._is_level_enabled(module, _level_trace) then
       tracing.log(module, "TRACE", message, fields)
@@ -128,6 +155,34 @@ function tracing.error(module, message, fields)
    if tracing._is_level_enabled(module, _level_error) then
       tracing.log(module, "ERROR", message, fields)
    end
+end
+
+
+function tracing.set_trace_modules(modules)
+   asserts.is_not_nil(modules)
+   trace_modules = {}
+   for _, module_name in ipairs(modules) do
+      trace_modules[module_name] = true
+   end
+end
+
+function tracing.add_trace_module(module_name)
+   asserts.is_not_nil(module_name)
+   trace_modules[module_name] = true
+end
+
+function tracing.remove_trace_module(module_name)
+   asserts.is_not_nil(module_name)
+   trace_modules[module_name] = nil
+end
+
+function tracing.get_trace_modules()
+   local modules = {}
+   for module_name, _ in pairs(trace_modules) do
+      table.insert(modules, module_name)
+   end
+   table.sort(modules)
+   return modules
 end
 
 return tracing

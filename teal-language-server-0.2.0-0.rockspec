@@ -1,11 +1,11 @@
 rockspec_format = "3.0"
 
 package = "teal-language-server"
-version = "0.1.2-1"
+version = "0.2.0-0"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   tag = "0.1.2"
+   tag = "0.2.0"
 }
 
 description = {
@@ -20,7 +20,6 @@ build_dependencies = {
 }
 
 dependencies = {
-   "luafilesystem",
    "tl == 0.24.5",
    "lua-cjson",
    "argparse",
@@ -45,18 +44,27 @@ build = {
    modules = {
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
       ["teal_language_server.asserts"] = "gen/teal_language_server/asserts.lua",
+      ["teal_language_server.build_handler"] = "gen/teal_language_server/build_handler.lua",
       ["teal_language_server.class"] = "gen/teal_language_server/class.lua",
       ["teal_language_server.constants"] = "gen/teal_language_server/constants.lua",
-      ["teal_language_server.document"] = "gen/teal_language_server/document.lua",
-      ["teal_language_server.document_manager"] = "gen/teal_language_server/document_manager.lua",
-      ["teal_language_server.env_updater"] = "gen/teal_language_server/env_updater.lua",
+      ["teal_language_server.debug_flags"] = "gen/teal_language_server/debug_flags.lua",
+      ["teal_language_server.diagnostics_helper"] = "gen/teal_language_server/diagnostics_helper.lua",
+      ["teal_language_server.diagnostics_publisher"] = "gen/teal_language_server/diagnostics_publisher.lua",
+      ["teal_language_server.env_factory"] = "gen/teal_language_server/env_factory.lua",
+      ["teal_language_server.files_util"] = "gen/teal_language_server/files_util.lua",
+      ["teal_language_server.i_disposable"] = "gen/teal_language_server/i_disposable.lua",
       ["teal_language_server.lsp"] = "gen/teal_language_server/lsp.lua",
       ["teal_language_server.lsp_events_manager"] = "gen/teal_language_server/lsp_events_manager.lua",
       ["teal_language_server.lsp_formatter"] = "gen/teal_language_server/lsp_formatter.lua",
       ["teal_language_server.lsp_reader_writer"] = "gen/teal_language_server/lsp_reader_writer.lua",
       ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
       ["teal_language_server.misc_handlers"] = "gen/teal_language_server/misc_handlers.lua",
-      ["teal_language_server.path"] = "gen/teal_language_server/path.lua",
+      ["teal_language_server.module_info"] = "gen/teal_language_server/module_info.lua",
+      ["teal_language_server.module_info_manager"] = "gen/teal_language_server/module_info_manager.lua",
+      ["teal_language_server.teal_helper"] = "gen/teal_language_server/teal_helper.lua",
+     ["teal_language_server.tree_sitter_helper"] = "gen/teal_language_server/tree_sitter_helper.lua",
+      ["teal_language_server.open_document_registry"] = "gen/teal_language_server/open_document_registry.lua",
+      ["teal_language_server.path_util"] = "gen/teal_language_server/path_util.lua",
       ["teal_language_server.server_state"] = "gen/teal_language_server/server_state.lua",
       ["teal_language_server.stdin_reader"] = "gen/teal_language_server/stdin_reader.lua",
       ["teal_language_server.teal_project_config"] = "gen/teal_language_server/teal_project_config.lua",

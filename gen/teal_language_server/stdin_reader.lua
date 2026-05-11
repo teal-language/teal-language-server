@@ -7,6 +7,7 @@ local uv = require("luv")
 local tracing = require("teal_language_server.tracing")
 local class = require("teal_language_server.class")
 
+
 local StdinReader = {}
 
 
@@ -32,7 +33,7 @@ function StdinReader:initialize()
       if self._disposed then
          return
       end
-      assert(not err, err)
+      asserts.that(not err, err)
       if chunk then
          tracing.trace(_module_name, "Received new data chunk from stdin: {}", { chunk })
 

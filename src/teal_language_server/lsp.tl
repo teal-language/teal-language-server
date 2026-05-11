@@ -85,9 +85,13 @@ local record lsp
          "textDocument/didClose"
          "textDocument/hover"
          "textDocument/definition"
+         "textDocument/typeDefinition"
          "textDocument/publishDiagnostics"
          "textDocument/completion"
          "textDocument/signatureHelp"
+         "workspace/diagnostic"
+         "teal/typecheck_project"
+         "teal/setTraceModules"
          "shutdown"
       end
 
@@ -156,6 +160,47 @@ local record lsp
       triggerCharacter: string
    end
 
+   -- Custom Teal tlcheck request/response types
+   record TlcheckParams
+      -- No parameters - always checks current project
+   end
+
+   record TlcheckResult
+      lines: {string}  -- Array of formatted error/warning lines
+      success: boolean -- True if no errors found
+   end
+
+   -- Custom Teal trace module configuration types
+   record SetTraceModulesParams
+      modules: {string}  -- Optional: Array of module names to enable for tracing. If nil, just returns current modules without modifying.
+   end
+
+   record SetTraceModulesResult
+      modules: {string}  -- Array of currently enabled trace modules
+   end
+
+   -- Workspace diagnostic pull model types
+   record WorkspaceDiagnosticParams
+      previousResultId: string  -- Optional: for incremental updates
+   end
+
+   enum DiagnosticKind
+      "full"
+      "unchanged"
+   end
+   diagnostic_kind: {DiagnosticKind:string}
+
+   record WorkspaceDiagnosticReportItem
+      uri: string
+      kind: string     -- "full" or "unchanged" 
+      resultId: string -- Optional: for caching support
+      items: {Diagnostic}  -- Array of diagnostics for this file
+   end
+
+   record WorkspaceDiagnosticReport
+      items: {WorkspaceDiagnosticReportItem}
+   end
+
 end
 
 lsp.error_code = {
@@ -217,6 +262,11 @@ lsp.completion_item_kind = {
     Event = 23,
     Operator = 24,
     TypeParameter = 25,
+}
+
+lsp.diagnostic_kind = {
+   full = "full",
+   unchanged = "unchanged",
 }
 
 -- maybe could be moved to a different file or something.

@@ -1,6 +1,7 @@
 
 local asserts <const> = require("teal_language_server.asserts")
 local util <const> = require("teal_language_server.util")
+local path_util <const> = require("teal_language_server.path_util")
 
 --[[
    uri spec:
@@ -95,10 +96,9 @@ function Uri.parse(text: string): Uri
    return parsed as Uri
 end
 
-function Uri.path_from_uri(s: string): string
-   local parsed <const> = Uri.parse(s)
-   asserts.that(parsed.scheme == "file", "uri " .. tostring(s) .. " is not a file")
-   return parsed.path
+function Uri.to_file_path(uri: Uri): string
+   asserts.that(uri.scheme == "file", "Only file:// URIs are supported, got: {}", uri.scheme)
+   return path_util.canonicalize(uri.path)
 end
 
 function Uri.uri_from_path(path: string): Uri

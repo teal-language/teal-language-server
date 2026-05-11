@@ -3,12 +3,12 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 local asserts = require("teal_language_server.asserts")
 local lsp = require("teal_language_server.lsp")
-local Path = require("teal_language_server.path")
-local lfs = require("lfs")
 local TealProjectConfig = require("teal_language_server.teal_project_config")
 local tl = require("tl")
 local tracing = require("teal_language_server.tracing")
 local class = require("teal_language_server.class")
+local files_util = require("teal_language_server.files_util")
+local path_util = require("teal_language_server.path_util")
 
 local ServerState = {}
 
@@ -25,8 +25,12 @@ local ServerState = {}
 
 
 
+
+
 function ServerState:__init()
    self._has_initialized = false
+   self._source_dirs = {}
+   self._workspace_diagnostic_result_id = 1
 end
 
 local capabilities = {
@@ -40,6 +44,7 @@ local capabilities = {
    },
    hoverProvider = true,
    definitionProvider = true,
+   typeDefinitionProvider = true,
    completionProvider = {
       triggerCharacters = { ".", ":" },
    },
@@ -128,7 +133,6 @@ function ServerState:_validate_config(c)
 
       include_dir = "{string}",
       global_env_def = "string",
-      scripts = "{string:{string}}",
 
       gen_compat = { ["off"] = true, ["optional"] = true, ["required"] = true },
       gen_target = { ["5.1"] = true, ["5.3"] = true },
@@ -148,7 +152,8 @@ function ServerState:_validate_config(c)
       else
          local valid = valid_keys[k]
          if not valid then
-            table.insert(warnings, string.format("Unknown key '%s'", k))
+
+
          elseif type(valid) == "table" then
             if not valid[v] then
                local sorted_keys = sort_in_place(from(keys(valid)))
@@ -172,9 +177,8 @@ function ServerState:_validate_config(c)
 
          return
       end
-      local as_path = Path(val)
-      if as_path:is_absolute() then
-         table.insert(errs, string.format("Expected a non-absolute path for %s, got %s", key, as_path.value))
+      if path_util.is_absolute(val) then
+         table.insert(errs, string.format("Expected a non-absolute path for %s, got %s", key, val))
       end
    end
    verify_non_absolute_path("source_dir")
@@ -193,20 +197,21 @@ function ServerState:_validate_config(c)
    verify_warnings("disable_warnings")
    verify_warnings("warning_error")
 
-   asserts.that(#errs == 0, "Found {} errors and {} warnings in config:\n{}\n{}", #errs, #warnings, errs, warnings)
+   asserts.that(#errs == 0, "Found {} errors and {} warnings in config:\n{@}\n{@}", #errs, #warnings, errs, warnings)
 
    if #warnings > 0 then
-      tracing.warning(_module_name, "Found {} warnings in config:\n{}", { #warnings, warnings })
+      tracing.warning(_module_name, "Found {} warnings in config:\n{@}", { #warnings, warnings })
    end
 end
 
 function ServerState:_load_config(root_dir)
-   local config_path = root_dir:join("tlconfig.lua")
-   if config_path:exists() == false then
+   local config_path = root_dir .. "/tlconfig.lua"
+
+   if not files_util.is_file(config_path) then
       return {}
    end
 
-   local success, result = pcall(dofile, config_path.value)
+   local success, result = pcall(dofile, config_path)
 
    if success then
       local config = result
@@ -217,14 +222,37 @@ function ServerState:_load_config(root_dir)
    asserts.fail("Failed to parse tlconfig: {}", result)
 end
 
-function ServerState:set_env(env)
-   asserts.is_not_nil(env)
-   self._env = env
-end
+function ServerState:_init_source_dirs()
+   asserts.is_not_nil(self._config)
 
-function ServerState:get_env()
-   asserts.is_not_nil(self._env)
-   return self._env
+   asserts.that(#self._source_dirs == 0)
+
+   asserts.is_not_nil(self._config.source_dir)
+   local seen_dirs = {}
+
+   local main_source_dir = path_util.canonicalize(self._config.source_dir)
+   table.insert(self._source_dirs, main_source_dir)
+   seen_dirs[main_source_dir] = true
+
+   if self._config.include_dir then
+      for _, dir in ipairs(self._config.include_dir) do
+         local adjusted_dir = path_util.canonicalize(dir)
+         asserts.that(seen_dirs[adjusted_dir] == nil, "Duplicate source/include directory: {}", adjusted_dir)
+         seen_dirs[adjusted_dir] = true
+         table.insert(self._source_dirs, adjusted_dir)
+      end
+   end
+
+   for i = 1, #self._source_dirs do
+      local source_dir = self._source_dirs[i]
+
+      for j = i + 1, #self._source_dirs do
+         local other_dir = self._source_dirs[j]
+         asserts.that(other_dir:sub(1, #source_dir) ~= source_dir, "Source/include directory {} is a subdirectory of another source/include directory {}.  This isn't allowed.", other_dir, source_dir)
+      end
+   end
+
+   tracing.trace(_module_name, "Initialized TLS with source dirs {@}", { self._source_dirs })
 end
 
 function ServerState:initialize(root_dir)
@@ -232,9 +260,19 @@ function ServerState:initialize(root_dir)
    self._has_initialized = true
 
    self._teal_project_root_dir = root_dir
-   asserts.that(lfs.chdir(root_dir.value), "unable to chdir into {}", root_dir.value)
+   files_util.chdir(root_dir)
 
    self._config = self:_load_config(root_dir)
+   self:_init_source_dirs()
+end
+
+function ServerState:get_workspace_diagnostic_result_id()
+   return tostring(self._workspace_diagnostic_result_id)
+end
+
+function ServerState:update_workspace_diagnostic_result_id()
+   self._workspace_diagnostic_result_id = self._workspace_diagnostic_result_id + 1
+   return tostring(self._workspace_diagnostic_result_id)
 end
 
 class.setup(ServerState, "ServerState", {
@@ -249,14 +287,20 @@ class.setup(ServerState, "ServerState", {
          return "0.0.1"
       end,
       teal_project_root_dir = function(self)
+         asserts.that(self._has_initialized)
          return self._teal_project_root_dir
       end,
       config = function(self)
+         asserts.that(self._has_initialized)
          return self._config
+      end,
+      source_dirs = function(self)
+         asserts.that(self._has_initialized)
+         return self._source_dirs
       end,
    },
    nilable_members = {
-      '_teal_project_root_dir', '_config', '_env',
+      '_teal_project_root_dir', '_config',
    },
 })
 

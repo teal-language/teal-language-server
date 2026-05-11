@@ -10,6 +10,7 @@ local record args_parser
 
    record CommandLineArgs
       verbose:boolean
+      very_verbose:boolean
       log_mode:LogMode
    end
 end
@@ -20,12 +21,15 @@ function args_parser.parse_args():args_parser.CommandLineArgs
 
    parser:option("-V --verbose", "")
 
+   parser:option("-E --very-verbose", "")
+
    parser:option("-L --log-mode", "Specify approach to logging.  By default it is none which means no logging.  by_date names the file according to date.  by_proj_path names file according to the teal project path")
          :choices({"none", "by_date", "by_proj_path"})
 
    local raw_args = parser:parse()
 
    local verbose = raw_args["verbose"] as boolean
+   local very_verbose = raw_args["very_verbose"] as boolean
    local log_mode = raw_args["log_mode"] as args_parser.LogMode
 
    if log_mode == nil then
@@ -36,6 +40,7 @@ function args_parser.parse_args():args_parser.CommandLineArgs
 
    local args:args_parser.CommandLineArgs = {
       verbose = verbose,
+      very_verbose = very_verbose,
       log_mode = log_mode,
    }
 

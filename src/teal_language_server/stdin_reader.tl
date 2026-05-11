@@ -6,8 +6,9 @@ local asserts <const> = require("teal_language_server.asserts")
 local uv <const> = require("luv")
 local tracing <const> = require("teal_language_server.tracing")
 local class <const> = require("teal_language_server.class")
+local type IDisposable <const> = require("teal_language_server.i_disposable")
 
-local record StdinReader
+local record StdinReader is IDisposable
    _stdin: uv.Pipe
    _buffer: string
    _chunk_added_event: lusc.PulseEvent
@@ -32,7 +33,7 @@ function StdinReader:initialize()
       if self._disposed then
          return
       end
-      assert(not err, err)
+      asserts.that(not err, err)
       if chunk then
          tracing.trace(_module_name, "Received new data chunk from stdin: {}", {chunk})
 

@@ -5,7 +5,52 @@
 
 local tl = require("tl")
 
-local lsp = { Message = { ResponseError = {} }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {} }
+local lsp = { Message = { ResponseError = {} }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {}, TlcheckParams = {}, TlcheckResult = {}, SetTraceModulesParams = {}, SetTraceModulesResult = {}, WorkspaceDiagnosticParams = {}, WorkspaceDiagnosticReportItem = {}, WorkspaceDiagnosticReport = {} }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -217,6 +262,11 @@ lsp.completion_item_kind = {
    Event = 23,
    Operator = 24,
    TypeParameter = 25,
+}
+
+lsp.diagnostic_kind = {
+   full = "full",
+   unchanged = "unchanged",
 }
 
 

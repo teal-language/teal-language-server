@@ -1,5 +1,6 @@
 local _module_name = "lsp_events_manager"
-
+-- <imports>
+local debug_flags <const> = require("teal_language_server.debug_flags")
 local lsp <const> = require("teal_language_server.lsp")
 local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
 local lusc <const> = require("lusc")
@@ -11,7 +12,7 @@ local record LspEventsManager
    _lsp_reader_writer: LspReaderWriter
    _root_nursery:lusc.Nursery
 
-   _handlers:{lsp.Method.Name: function(lsp.Method.Params, integer)}
+   _handlers:{lsp.Method.Name: function(lsp.Method.Params):any}
 
    metamethod __call: function(self: LspEventsManager, root_nursery:lusc.Nursery, lsp_reader_writer:LspReaderWriter): LspEventsManager
 end
@@ -25,7 +26,7 @@ function LspEventsManager:__init(root_nursery:lusc.Nursery, lsp_reader_writer:Ls
    self._root_nursery = root_nursery
 end
 
-function LspEventsManager:set_handler(method:lsp.Method.Name, handler:function(lsp.Method.Params, integer))
+function LspEventsManager:set_handler(method:lsp.Method.Name, handler:function(lsp.Method.Params):any)
    asserts.that(self._handlers[method] == nil)
    self._handlers[method] = handler
 end
@@ -33,18 +34,33 @@ end
 function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Params, id:integer)
    tracing.info(_module_name, "Received request from client for method {}", {method})
 
-   if self._handlers[method] then
+   local handler = self._handlers[method]
+
+   if handler then
       local ok: boolean
       local err: string
 
       ok, err = xpcall(
-         function() self._handlers[method](params, id) end,
+         function()
+            local response = handler(params)
+
+            -- If id is nil, this is a notification, so we don't send a response
+            if id == nil then
+               asserts.is_nil(response, "Expected no response for notification {}", method)
+            else
+               self._lsp_reader_writer:send_rpc(id, response)
+            end
+         end,
          debug.traceback as function) as (boolean, string)
 
       if ok then
-         tracing.debug(_module_name, "Successfully handled request with method {}", {method})
+         tracing.trace(_module_name, "Successfully handled request with method {}", {method})
       else
-         tracing.error(_module_name, "Error in handler for request with method {}: {}", {method, err})
+         if debug_flags.quit_on_error then
+            asserts.fail("Error in handler for request with method {}: {}", method, err)
+         else
+            tracing.error(_module_name, "Error in handler for request with method {}: {}", {method, err})
+         end
       end
    else
       tracing.warning(_module_name, "No handler found for event with method {}", {method})

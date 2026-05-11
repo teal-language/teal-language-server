@@ -2,6 +2,7 @@ local _module_name = "util"
 
 local uv <const> = require("luv")
 local tracing <const> = require("teal_language_server.tracing")
+local asserts <const> = require("teal_language_server.asserts")
 
 local record util
    record TryOpts<T>
@@ -24,7 +25,7 @@ local _os_type:util.PlatformType = nil
 local function _get_uname_info():uv.UnameInfo
    if _uname_info == nil then
       _uname_info = uv.os_uname()
-      assert(_uname_info ~= nil)
+      asserts.that(_uname_info ~= nil)
    end
 
    return _uname_info
@@ -47,15 +48,19 @@ function util.string_starts_with(str:string, prefix:string):boolean
    return str:sub(1, #prefix) == prefix
 end
 
+function util.string_ends_with(str:string, suffix:string):boolean
+   return suffix == '' or str:sub(-#suffix) == suffix
+end
+
 function util.string_split(str:string, delimiter:string):{string}
    -- Unclear whether this should return {} or {''} so just fail instead
    -- Most split functions do one of these two things so there isn't really a standard here
    -- So force calling code to decide
-   assert(#str > 0, "Unclear how to split an empty string")
+   asserts.that(#str > 0, "Unclear how to split an empty string")
 
-   assert(delimiter ~= nil, "missing delimiter")
-   assert(delimiter is string)
-   assert(#delimiter > 0)
+   asserts.that(delimiter ~= nil, "missing delimiter")
+   asserts.that(delimiter is string)
+   asserts.that(#delimiter > 0)
 
    local num_delimiter_chars = #delimiter
 
@@ -81,8 +86,8 @@ function util.string_split(str:string, delimiter:string):{string}
 end
 
 function util.string_join(delimiter:string, items:{string}):string
-   assert(delimiter is string)
-   assert(items ~= nil)
+   asserts.that(delimiter is string)
+   asserts.that(items ~= nil)
 
    local result = ''
    for _, item in ipairs(items) do
@@ -111,6 +116,24 @@ function util.get_platform():util.PlatformType
    end
 
    return _os_type
+end
+
+function util.index_of<T>(list:{T}, item:T):integer
+   for i=1,#list do
+      if item == list[i] then
+         return i
+      end
+   end
+
+   return -1
+end
+
+function util.set<T>(lst: {T}): {T:boolean}
+   local s <const> = {}
+   for _, v in ipairs(lst) do
+      s[v] = true
+   end
+   return s
 end
 
 function util.try<T>(t:util.TryOpts<T>):T
