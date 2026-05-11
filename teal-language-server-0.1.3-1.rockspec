@@ -1,11 +1,11 @@
 rockspec_format = "3.0"
 
 package = "teal-language-server"
-version = "0.1.2-1"
+version = "0.1.3-1"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   tag = "0.1.2"
+   tag = "0.1.3"
 }
 
 description = {
@@ -13,10 +13,6 @@ description = {
    detailed = "A language server for the Teal language",
    homepage = "https://github.com/teal-language/teal-language-server",
    license = "MIT"
-}
-
-build_dependencies = {
-   "luarocks-build-treesitter-parser >= 6.0.0", -- can be removed when tree-sitter-teal specifies this version >= 6
 }
 
 dependencies = {
@@ -28,9 +24,6 @@ dependencies = {
    "luv == 1.51.0",
    "lusc_luv >= 4.0",
    "ltreesitter == 0.1.0", 
-   -- can update tree-sitter-cli version once tree-sitter-teal gets a new release
-   "tree-sitter-cli == 0.24.7", -- can't really be  a build dep, even though it's uneeded after install
-   "tree-sitter-teal == 0.0.34",
 }
 
 test_dependencies = { "busted~>2" }
@@ -43,6 +36,7 @@ test = {
 build = {
    type = "builtin",
    modules = {
+      ["teal"] = {"tree-sitter-teal/src/parser.c", "tree-sitter-teal/src/scanner.c", incdirs = {"tree-sitter-teal/src"},},
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
       ["teal_language_server.asserts"] = "gen/teal_language_server/asserts.lua",
       ["teal_language_server.class"] = "gen/teal_language_server/class.lua",

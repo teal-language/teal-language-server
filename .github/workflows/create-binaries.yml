@@ -39,12 +39,6 @@ jobs:
       fail-fast: false
     runs-on: windows-2022
     steps:
-      # waiting on new luarocks release for fix, so we don't need to install via choco
-      - name: install tree-sitter-cli
-        run: | 
-          choco install tree-sitter --version 0.24.7
-      - name: verify tree-sitter-cli is installed on path
-        run: tree-sitter --version
     
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v4
