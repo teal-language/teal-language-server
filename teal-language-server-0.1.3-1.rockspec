@@ -21,7 +21,7 @@ dependencies = {
    "lua-cjson",
    "argparse",
    "inspect",
-   "luv == 1.51.0",
+   "luv == 1.52.1",
    "lusc_luv >= 4.0",
    "ltreesitter == 0.1.0", 
 }

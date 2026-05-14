@@ -102,8 +102,6 @@ jobs:
           .\lua_install\bin\activate
           luarocks make
           luarocks install luacov-coveralls
-        env:
-          CMAKE_GENERATOR: "NMake Makefiles"
 
       # ltreesitter 0.1.0-1's dynamiclib.c assigns GetLastError() (DWORD) to const char*,
       # which GCC 14 on this runner now treats as a hard error via -Wint-conversion.
