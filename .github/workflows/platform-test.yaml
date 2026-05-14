@@ -1,0 +1,120 @@
+name: Test all the OS/Platforms
+
+on: [pull_request]
+
+jobs:
+  lua:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, macos, macos-arm64]
+        lua: [lua=5.1, lua=5.4, luajit=@v2.1]
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: macos-15-intel
+          - os: macos-arm64
+            runner: macos-latest
+        exclude:
+          - os: macos-arm64
+            lua: luajit=@v2.0
+    name: ${{ matrix.os }} (${{ matrix.lua }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # Checks-out the repository under $GITHUB_WORKSPACE.
+      - uses: actions/checkout@v6
+      - name: Install libreadline
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y libreadline-dev
+
+      - name: Cache Restore
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            lua_install
+          key: ${{ matrix.lua }}-${{ matrix.os }}-lua_install
+
+      - name: Install Lua (${{ matrix.lua }})
+        run: |
+          pip install git+https://github.com/luarocks/hererocks
+          hererocks lua_install -r^ --${{ matrix.lua }}
+          echo lua_install/bin >> $GITHUB_PATH
+        env:
+          MACOSX_DEPLOYMENT_TARGET: 11.0
+
+      - name: Build teal-language-server
+        run: |
+          luarocks make
+          luarocks install luacov-coveralls
+
+      - name: Run tests
+        continue-on-error: true
+        run: |
+          luarocks make
+
+      - name: Save Cache
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            lua_install
+          key: ${{ matrix.lua }}-${{ matrix.os }}-lua_install
+
+      # - name: Report test coverage
+      #   if: success()
+      #   continue-on-error: true
+      #   run: luacov-coveralls -e lua_install
+      #   env:
+      #     COVERALLS_REPO_TOKEN: ${{ github.token }}
+
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        lua: [lua=5.1, lua=5.4, luajit=@v2.1]
+        target: [mingw, vs]
+    runs-on: windows-2022
+    steps:
+      # Checks-out the repository under $GITHUB_WORKSPACE.
+      - uses: actions/checkout@v6
+
+      - name: Cache Restore
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            lua_install
+          key: ${{ matrix.lua }}-${{ matrix.target }}-lua_install
+
+      - name: Install Lua (${{ matrix.lua }})
+        run: |
+          pip install git+https://github.com/luarocks/hererocks
+          hererocks lua_install -r^ --${{ matrix.lua }} --target ${{ matrix.target }}
+
+      - name: Build teal-language-server
+        run: |
+          .\lua_install\bin\activate
+          luarocks make
+          luarocks install luacov-coveralls
+
+      - name: Run tests
+        continue-on-error: true
+        run: |
+          .\lua_install\bin\activate
+          luarocks test
+
+      - name: Save Cache
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            lua_install
+          key: ${{ matrix.lua }}-${{ matrix.target }}-lua_install
+
+      # - name: Report test coverage
+      #   if: success()
+      #   continue-on-error: true
+      #   run: |
+      #     .\lua_install\bin\activate
+      #     luacov-coveralls -e lua_install
+      #   env:
+      #     COVERALLS_REPO_TOKEN: ${{ github.token }}
