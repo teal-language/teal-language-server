@@ -60,3 +60,8 @@ Note:
 * By default, logging is 'none' which disables logging completely
 * When logging is set to `by_proj_path` or `by_date`, the log is output to `[User Home Directory]/.cache/teal-language-server`
 
+## Licences
+Alongside packages defined in the rockspec, teal-language-server includes the source of the following:
+
+- [tree-sitter-teal](https://github.com/euclidianAce/tree-sitter-teal) - MIT
+  - Bundling directly makes install more reliable, as tree-sitter-cli does not need to be setup for the install to work
