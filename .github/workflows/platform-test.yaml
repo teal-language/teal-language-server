@@ -50,9 +50,8 @@ jobs:
           luarocks install luacov-coveralls
 
       - name: Run tests
-        continue-on-error: true
         run: |
-          luarocks make
+          luarocks test
 
       - name: Save Cache
         uses: actions/cache/save@v5
@@ -98,7 +97,6 @@ jobs:
           luarocks install luacov-coveralls
 
       - name: Run tests
-        continue-on-error: true
         run: |
           .\lua_install\bin\activate
           luarocks test
