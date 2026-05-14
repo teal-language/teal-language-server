@@ -9,10 +9,11 @@ A language server for the [Teal language](https://github.com/teal-language/tl)
 
 ### From luarocks (Linux and macOS)
 
-* `luarocks install teal-language-server`
-* The `teal-language-server` program should be installed
+- `luarocks install teal-language-server`
+- The `teal-language-server` program should be installed
+  - This does assume that the LuaRocks bin folder is properly added to your path!
 
-Tested on Linux and macOS. It's currently a bit of a struggle to install via LuaRocks on Windows. We recommend using the binaries from the release on Windows.
+The above is tested and working on Linux and macOS. You may have some troubles on Windows, and we would recommend downloading the pre-built binary below.
 
 ### From GitHub Release Binaries (Windows)
 We provide binaries for Windows on our [GitHub Release](https://github.com/teal-language/teal-language-server/releases) page. You should be able to download and extract the the latest version from there.
@@ -59,3 +60,8 @@ Note:
 * By default, logging is 'none' which disables logging completely
 * When logging is set to `by_proj_path` or `by_date`, the log is output to `[User Home Directory]/.cache/teal-language-server`
 
+## Licences
+Alongside packages defined in the rockspec, teal-language-server includes the source of the following:
+
+- [tree-sitter-teal](https://github.com/euclidianAce/tree-sitter-teal) - MIT
+  - Bundling directly makes install more reliable, as tree-sitter-cli does not need to be setup for the install to work
