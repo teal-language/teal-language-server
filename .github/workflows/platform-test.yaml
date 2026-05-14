@@ -78,6 +78,9 @@ jobs:
       # Checks-out the repository under $GITHUB_WORKSPACE.
       - uses: actions/checkout@v6
 
+      # This sets up the environment for compiling C/C++ code from command line.
+      - uses: ilammy/msvc-dev-cmd@v1
+
       - name: Cache Restore
         uses: actions/cache/restore@v5
         with:
