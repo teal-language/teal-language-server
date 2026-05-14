@@ -93,11 +93,28 @@ jobs:
           pip install git+https://github.com/luarocks/hererocks
           hererocks lua_install -r^ --${{ matrix.lua }} --target ${{ matrix.target }}
 
-      - name: Build teal-language-server
+      # luv's cmake build probes for the v140 (VS2015) toolset when using the Visual
+      # Studio MSBuild generator, which doesn't exist on this runner. NMake Makefiles
+      # skips that probe and uses cl.exe directly from the PATH set by msvc-dev-cmd.
+      - name: Build teal-language-server (VS)
+        if: matrix.target == 'vs'
         run: |
           .\lua_install\bin\activate
           luarocks make
           luarocks install luacov-coveralls
+        env:
+          CMAKE_GENERATOR: "NMake Makefiles"
+
+      # ltreesitter 0.1.0-1's dynamiclib.c assigns GetLastError() (DWORD) to const char*,
+      # which GCC 14 on this runner now treats as a hard error via -Wint-conversion.
+      - name: Build teal-language-server (MinGW)
+        if: matrix.target == 'mingw'
+        run: |
+          .\lua_install\bin\activate
+          luarocks make
+          luarocks install luacov-coveralls
+        env:
+          CFLAGS: "-O2 -Wno-int-conversion"
 
       - name: Run tests
         run: |
