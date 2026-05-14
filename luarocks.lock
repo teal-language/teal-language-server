@@ -7,7 +7,7 @@ return {
       ["lua-cjson"] = "2.1.0.10-1",
       luafilesystem = "1.9.0-1",
       lusc_luv = "4.0.1-1",
-      luv = "1.52.1-0",
+      luv = "1.51.0-2",
       tl = "0.24.5-1"
    },
 }
