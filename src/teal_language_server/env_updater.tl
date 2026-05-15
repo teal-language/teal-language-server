@@ -17,7 +17,6 @@ local init_cpath <const> = package.cpath
 local record EnvUpdater
    _document_manager: DocumentManager
    _server_state: ServerState
-   _substitutions: {string:string}
    _root_nursery:lusc.Nursery
    _change_detected: lusc.StickyEvent
 
@@ -29,7 +28,6 @@ function EnvUpdater:__init(server_state: ServerState, root_nursery:lusc.Nursery,
 
    self._change_detected = lusc.new_sticky_event()
    self._server_state = server_state
-   self._substitutions = {}
    self._root_nursery = root_nursery
    self._document_manager = document_manager
 end
@@ -61,22 +59,6 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
          .. package.cpath
    end
 
-   local function esc_char(c: string): string
-      return "%" .. c
-   end
-
-   local function str_esc(s: string, sub?: string | function(string): string | {string:string}): string, integer
-      return s:gsub(
-         "[%^%$%(%)%%%.%[%]%*%+%-%?]",
-         sub as function(string): string
-            or esc_char
-      )
-   end
-
-   local function add_module_substitute(source_dir: string, mod_name: string)
-      self._substitutions[source_dir] = "^" .. str_esc(mod_name)
-   end
-
    local function init_teal_env(gen_compat: tl.GenCompat, gen_target: tl.GenTarget, env_def: string): tl.Env, string
       local opts:tl.EnvOptions = {
          defaults = {
@@ -91,15 +73,16 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
       return env
    end
 
-   cfg = cfg or {}
+   if cfg.source_dir then
+      prepend_to_lua_path(cfg.source_dir)
+   end
 
    for dir in ivalues(cfg.include_dir or {}) do
       prepend_to_lua_path(dir)
    end
 
-   if cfg.source_dir and cfg.module_name then
-      add_module_substitute(cfg.source_dir, cfg.module_name)
-   end
+   tracing.debug(_module_name, "Final package.path: {}", {package.path})
+   tracing.debug(_module_name, "Final package.cpath: {}", {package.cpath})
 
    local env, err = init_teal_env(cfg.gen_compat, cfg.gen_target, cfg.global_env_def)
    if not env then
