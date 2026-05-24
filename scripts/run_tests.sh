@@ -10,6 +10,10 @@ LUAROCKS_TREE="$(pwd)/luarocks_tree"
 echo "Install"
 luarocks make --tree="$LUAROCKS_TREE"
 
+# add teal-language-server to path for luarocks test
+PATH="$LUAROCKS_TREE/bin":"$PATH"
+export PATH
+
 # Run unit tests
 echo "Run LuaRocks tests:"
 luarocks test --tree="$LUAROCKS_TREE"

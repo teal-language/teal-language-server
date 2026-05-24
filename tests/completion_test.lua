@@ -208,4 +208,39 @@ tested.test("dot completion three levels deep returns innermost record fields", 
     end
 end)
 
+tested.test("dot completion on enum-keyed table returns enum values", function()
+    local uri = "file:///tmp/tls_complete_7.tl"
+    local doc = table.concat({
+        "local enum Color",
+        '  "red"',
+        '  "green"',
+        '  "blue"',
+        "end",
+        "local t: {Color:string} = {}",
+        'local _ = t.red',
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "local _ = t.red": '.' at col 11; cursor at col 12 → server uses col 11
+    local response = client:get_completions_triggered(uri, 6, 12, ".")
+
+    tested.assert({
+        given = "enum-keyed table completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "red", "green", "blue" }) do
+        tested.assert({
+            given = "enum-keyed table completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
 return tested
