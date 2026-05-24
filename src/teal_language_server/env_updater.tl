@@ -88,6 +88,8 @@ function EnvUpdater:_init_env_from_config(cfg: TealProjectConfig): tl.Env, strin
 
       local env = tl.new_env(opts)
       env.report_types = true
+      -- initializes an empty string, so even if the file is not valid, completions should work
+      tl.check_string("", env, "bootstrap.tl")
       return env
    end
 

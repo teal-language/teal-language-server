@@ -12,6 +12,7 @@ local args_parser <const> = require("teal_language_server.args_parser")
 local MiscHandlers <const> = require("teal_language_server.misc_handlers")
 local StdinReader <const> = require("teal_language_server.stdin_reader")
 local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
+local lsp <const> = require("teal_language_server.lsp")
 local tracing <const> = require("teal_language_server.tracing")
 local util <const> = require("teal_language_server.util")
 local TraceEntry <const> = require("teal_language_server.trace_entry")
@@ -47,6 +48,13 @@ local function main()
    end)
 
    local args = args_parser.parse_args()
+
+   if args.coverage then
+      local ok, err = pcall(require, "luacov")
+      if not ok then
+         error("luacov is not installed. Install it manually with 'luarocks install luacov' or run 'luarocks test' to install test dependencies automatically.\n" .. tostring(err))
+      end
+   end
 
    local trace_stream:TraceStream
 
@@ -89,8 +97,9 @@ local function main()
       lsp_events_manager:initialize()
       misc_handlers:initialize()
 
-      lsp_events_manager:set_handler("shutdown", function()
-         tracing.info(_module_name, "Received shutdown request from client.  Cancelling all lusc tasks...", {})
+      lsp_events_manager:set_handler("shutdown", function(_params:lsp.Method.Params, id:integer)
+         tracing.info(_module_name, "Received shutdown request from client.  Sending null response and cancelling all lusc tasks...", {})
+         lsp_reader_writer:send_rpc(id, nil)
          root_nursery.cancel_scope:cancel()
       end)
 

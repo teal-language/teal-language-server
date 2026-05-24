@@ -74,6 +74,8 @@ local record argparse
 		args: function(self: Option, args: string|number): Option
 
 		action: function(self: Option, cb: ActionCallback)
+
+		hidden: function(self: Option, boolean): Option
 	end
 
 	record Command

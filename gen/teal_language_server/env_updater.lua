@@ -88,6 +88,8 @@ function EnvUpdater:_init_env_from_config(cfg)
 
       local env = tl.new_env(opts)
       env.report_types = true
+
+      tl.check_string("", env, "bootstrap.tl")
       return env
    end
 

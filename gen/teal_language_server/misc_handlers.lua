@@ -244,7 +244,8 @@ function MiscHandlers:_on_completion(params, id)
       end
 
 
-      if type_info.t == tl.typecodes.STRING then
+      local was_string_type = type_info.t == tl.typecodes.STRING
+      if was_string_type then
          type_info = tr.types[tr.globals["string"]]
       end
 
@@ -263,7 +264,9 @@ function MiscHandlers:_on_completion(params, id)
 
                   if type_info.args and #type_info.args >= 1 then
                      local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) then
+                     if first_arg_type.t == tl.typecodes.SELF or
+                        ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) or
+                        (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
                         tracing.debug(_module_name, "Adding self method {}", { key })
                         table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
                         was_added = true
