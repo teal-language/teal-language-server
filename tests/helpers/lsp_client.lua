@@ -172,6 +172,21 @@ function LspClient:get_hover(uri, line, character)
     return self:wait_for_response(id)
 end
 
+function LspClient:get_definition(uri, line, character)
+    local id = self:request("textDocument/definition", {
+        textDocument = { uri = uri },
+        position = { line = line, character = character },
+    })
+    return self:wait_for_response(id)
+end
+
+function LspClient:change_document(uri, text, version)
+    self:notify("textDocument/didChange", {
+        textDocument = { uri = uri, version = version or 2 },
+        contentChanges = { { text = text } },
+    })
+end
+
 function LspClient:get_signature_help(uri, line, character)
     local id = self:request("textDocument/signatureHelp", {
         textDocument = { uri = uri },
