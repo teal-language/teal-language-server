@@ -30,7 +30,7 @@ test_dependencies = { "tested >= 0.2.1", "luacov" }
 
 test = {
    type = "tested",
-   flags = { "-n", "0" },
+   flags = { "-n", "0", "-x", "tests/helpers/preload_uv.lua" },
 }
 
 build = {

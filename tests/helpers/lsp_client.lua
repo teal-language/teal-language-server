@@ -21,9 +21,7 @@ function LspClient.new(server_binary)
     self._handle = uv.spawn(server_binary, {
         args = { "--coverage" },
         stdio = { stdin_pipe, stdout_pipe, nil },
-    }, function(_code, _signal)
-        self._exited = true
-    end)
+    }, function() end)
 
     assert(self._handle, "failed to spawn server: " .. tostring(server_binary))
 
@@ -190,26 +188,15 @@ function LspClient:shutdown()
     end)
     pcall(function() self:notify("exit", cjson.null) end)
 
-    -- Wait for the server process to actually exit (up to 2s) so the next
-    -- test file starts with a clean uv event loop in single-threaded mode.
-    local deadline = uv.now() + 2000
-    while not self._exited and uv.now() < deadline do
-        uv.run("once")
-    end
-
     if self._stdin and not uv.is_closing(self._stdin) then
         uv.close(self._stdin)
     end
     if self._stdout and not uv.is_closing(self._stdout) then
-        uv.read_stop(self._stdout)
         uv.close(self._stdout)
     end
     if self._handle and not uv.is_closing(self._handle) then
         uv.close(self._handle)
     end
-
-    -- Flush any remaining close callbacks so handles are gone before returning.
-    uv.run("nowait")
 end
 
 return LspClient
