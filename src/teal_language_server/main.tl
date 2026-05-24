@@ -49,6 +49,13 @@ local function main()
 
    local args = args_parser.parse_args()
 
+   if args.coverage then
+      local ok, err = pcall(require, "luacov")
+      if not ok then
+         error("luacov is not installed. Install it manually with 'luarocks install luacov' or run 'luarocks test' to install test dependencies automatically.\n" .. tostring(err))
+      end
+   end
+
    local trace_stream:TraceStream
 
    if args.log_mode ~= "none" then
