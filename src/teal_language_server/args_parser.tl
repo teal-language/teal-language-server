@@ -1,6 +1,4 @@
 
-local asserts <const> = require("teal_language_server.asserts")
-
 local record args_parser
    enum LogMode
       "none"
@@ -30,8 +28,6 @@ function args_parser.parse_args():args_parser.CommandLineArgs
 
    if log_mode == nil then
       log_mode = "none"
-   else
-      asserts.that(log_mode == "by_date" or log_mode == "by_proj_path")
    end
 
    local args:args_parser.CommandLineArgs = {

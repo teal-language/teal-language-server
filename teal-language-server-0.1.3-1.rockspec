@@ -26,11 +26,10 @@ dependencies = {
    "ltreesitter == 0.1.0", 
 }
 
-test_dependencies = { "busted~>2" }
+test_dependencies = { "tested >= 0.2.1" }
 
 test = {
-   type = "busted",
-   flags = {"-m", "gen/?.lua"},
+   type = "tested"
 }
 
 build = {
