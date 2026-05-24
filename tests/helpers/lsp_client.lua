@@ -16,9 +16,10 @@ function LspClient.new(server_binary)
     local stdin_pipe = uv.new_pipe(false)
     local stdout_pipe = uv.new_pipe(false)
     self._stdin = stdin_pipe
+    self._stdout = stdout_pipe
 
     self._handle = uv.spawn(server_binary, {
-        args = {},
+        args = { "--coverage" },
         stdio = { stdin_pipe, stdout_pipe, nil },
     }, function(_code, _signal)
         self._exited = true
@@ -165,6 +166,22 @@ function LspClient:get_completions_triggered(uri, line, character, trigger_char)
     return self:wait_for_response(id)
 end
 
+function LspClient:get_hover(uri, line, character)
+    local id = self:request("textDocument/hover", {
+        textDocument = { uri = uri },
+        position = { line = line, character = character },
+    })
+    return self:wait_for_response(id)
+end
+
+function LspClient:get_signature_help(uri, line, character)
+    local id = self:request("textDocument/signatureHelp", {
+        textDocument = { uri = uri },
+        position = { line = line, character = character },
+    })
+    return self:wait_for_response(id)
+end
+
 function LspClient:shutdown()
     -- Proper LSP sequence: shutdown request → null response → exit notification
     pcall(function()
@@ -172,9 +189,27 @@ function LspClient:shutdown()
         self:wait_for_response(id, 5000)
     end)
     pcall(function() self:notify("exit", cjson.null) end)
-    if not uv.is_closing(self._stdin) then
+
+    -- Wait for the server process to actually exit (up to 2s) so the next
+    -- test file starts with a clean uv event loop in single-threaded mode.
+    local deadline = uv.now() + 2000
+    while not self._exited and uv.now() < deadline do
+        uv.run("once")
+    end
+
+    if self._stdin and not uv.is_closing(self._stdin) then
         uv.close(self._stdin)
     end
+    if self._stdout and not uv.is_closing(self._stdout) then
+        uv.read_stop(self._stdout)
+        uv.close(self._stdout)
+    end
+    if self._handle and not uv.is_closing(self._handle) then
+        uv.close(self._handle)
+    end
+
+    -- Flush any remaining close callbacks so handles are gone before returning.
+    uv.run("nowait")
 end
 
 return LspClient
