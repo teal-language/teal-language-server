@@ -26,10 +26,11 @@ dependencies = {
    "ltreesitter == 0.1.0", 
 }
 
-test_dependencies = { "tested >= 0.2.1" }
+test_dependencies = { "tested >= 0.2.1", "luacov" }
 
 test = {
-   type = "tested"
+   type = "tested",
+   flags = { "-n", "0" },
 }
 
 build = {

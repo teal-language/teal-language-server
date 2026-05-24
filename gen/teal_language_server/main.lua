@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local table = _tl_compat and _tl_compat.table or table; local _module_name = "main"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local table = _tl_compat and _tl_compat.table or table; local _module_name = "main"
 
 
 local EnvUpdater = require("teal_language_server.env_updater")
@@ -48,6 +48,13 @@ local function main()
    end)
 
    local args = args_parser.parse_args()
+
+   if args.coverage then
+      local ok, err = pcall(require, "luacov")
+      if not ok then
+         error("luacov is not installed. Install it manually with 'luarocks install luacov' or run 'luarocks test' to install test dependencies automatically.\n" .. tostring(err))
+      end
+   end
 
    local trace_stream
 
