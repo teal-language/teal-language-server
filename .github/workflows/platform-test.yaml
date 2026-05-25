@@ -8,7 +8,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [linux, macos, macos-arm64]
-        lua: [lua=5.1, lua=5.4, luajit=@v2.1]
+        # lua=5.1 is currently broken.
+        lua: [lua=5.4, luajit=@v2.1]
         include:
           - os: linux
             runner: ubuntu-latest
@@ -99,6 +100,7 @@ jobs:
         if: matrix.target == 'vs'
         run: |
           .\lua_install\bin\activate
+          luarocks config cmake_generator "Ninja"
           luarocks make
           luarocks install luacov-coveralls
 
@@ -110,8 +112,8 @@ jobs:
           .\lua_install\bin\activate
           luarocks make
           luarocks install luacov-coveralls
-        # env:
-        #   CFLAGS: "-O2 -Wno-int-conversion"
+        env:
+          CFLAGS: "-O2 -Wno-int-conversion"
 
       - name: Run tests
         run: |
