@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lua: [lua=5.1, lua=5.4, luajit=@v2.1]
+        lua: [lua=5.4, luajit=@v2.1]
         target: [mingw, vs]
     runs-on: windows-2022
     steps:
@@ -79,7 +79,10 @@ jobs:
       - uses: actions/checkout@v6
 
       # This sets up the environment for compiling C/C++ code from command line.
+      # Only needed for the VS target — running it for MinGW puts cl.exe ahead of gcc on
+      # PATH and causes cmake to detect the wrong compiler.
       - uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.target == 'vs'
 
       - name: Cache Restore
         uses: actions/cache/restore@v5
@@ -104,8 +107,8 @@ jobs:
           luarocks make
           luarocks install luacov-coveralls
 
-      # ltreesitter 0.1.0-1's dynamiclib.c assigns GetLastError() (DWORD) to const char*,
-      # which GCC 14 on this runner now treats as a hard error via -Wint-conversion.
+      # ltreesitter's dynamiclib.c assigns GetLastError() (DWORD) to const char*, which
+      # GCC 14 on this runner treats as a hard error via -Wint-conversion.
       - name: Build teal-language-server (MinGW)
         if: matrix.target == 'mingw'
         run: |
@@ -115,10 +118,19 @@ jobs:
         env:
           CFLAGS: "-O2 -Wno-int-conversion"
 
-      - name: Run tests
+      - name: Run tests (VS)
+        if: matrix.target == 'vs'
         run: |
           .\lua_install\bin\activate
           luarocks test
+
+      - name: Run tests (MinGW)
+        if: matrix.target == 'mingw'
+        run: |
+          .\lua_install\bin\activate
+          luarocks test
+        env:
+          CFLAGS: "-O2 -Wno-int-conversion"
 
       - name: Save Cache
         uses: actions/cache/save@v5
