@@ -18,8 +18,19 @@ function LspClient.new(server_binary)
     self._stdin = stdin_pipe
     self._stdout = stdout_pipe
 
-    self._handle = uv.spawn(server_binary, {
-        args = { "--coverage" },
+    -- On Windows, luarocks installs scripts as .bat files which CreateProcess
+    -- cannot execute directly — route through cmd.exe instead.
+    local exe, args
+    if uv.os_uname().sysname == "Windows_NT" then
+        exe = "cmd"
+        args = { "/c", server_binary, "--coverage" }
+    else
+        exe = server_binary
+        args = { "--coverage" }
+    end
+
+    self._handle = uv.spawn(exe, {
+        args = args,
         stdio = { stdin_pipe, stdout_pipe, nil },
     }, function() end)
 

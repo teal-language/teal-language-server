@@ -106,8 +106,9 @@ jobs:
           luarocks make
           luarocks install luacov-coveralls
 
-      # ltreesitter's dynamiclib.c assigns GetLastError() (DWORD) to const char*, which
-      # GCC 14 on this runner treats as a hard error via -Wint-conversion.
+      # GCC 14 on this runner treats two things as hard errors in C11/C17 mode:
+      # - ltreesitter's dynamiclib.c assigns GetLastError() (DWORD) to const char* (-Wint-conversion)
+      # - libuv's win/util.c passes const char** where char** is expected (-Wincompatible-pointer-types)
       - name: Build teal-language-server (MinGW)
         if: matrix.target == 'mingw'
         run: |
@@ -115,7 +116,7 @@ jobs:
           luarocks config cmake_generator "Ninja"
           luarocks make
         env:
-          CFLAGS: "-O2 -Wno-int-conversion"
+          CFLAGS: "-O2 -Wno-int-conversion -Wno-incompatible-pointer-types"
 
       # luarocks test resolves 'tested' by path without .bat extension, which doesn't
       # exist on Windows — invoke tested.bat directly after installing it explicitly.
