@@ -94,7 +94,7 @@ jobs:
       - name: Install Lua (${{ matrix.lua }})
         run: |
           pip install git+https://github.com/luarocks/hererocks
-          hererocks lua_install -r^ --${{ matrix.lua }} --target ${{ matrix.target }}
+          hererocks lua_install -r 3.11.1 --${{ matrix.lua }} --target ${{ matrix.target }}
 
       # luv's cmake build probes for the v140 (VS2015) toolset when using the Visual
       # Studio MSBuild generator, which doesn't exist on this runner. NMake Makefiles
@@ -118,17 +118,21 @@ jobs:
         env:
           CFLAGS: "-O2 -Wno-int-conversion"
 
+      # luarocks test resolves 'tested' by path without .bat extension, which doesn't
+      # exist on Windows — invoke tested.bat directly after installing it explicitly.
       - name: Run tests (VS)
         if: matrix.target == 'vs'
         run: |
           .\lua_install\bin\activate
-          luarocks test
+          luarocks install tested
+          .\lua_install\bin\tested.bat -n 0 -x tests/helpers/preload_uv.lua
 
       - name: Run tests (MinGW)
         if: matrix.target == 'mingw'
         run: |
           .\lua_install\bin\activate
-          luarocks test
+          luarocks install tested
+          .\lua_install\bin\tested.bat -n 0 -x tests/helpers/preload_uv.lua
         env:
           CFLAGS: "-O2 -Wno-int-conversion"
 
