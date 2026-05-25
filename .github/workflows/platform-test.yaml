@@ -93,7 +93,7 @@ jobs:
       - name: Install Lua (${{ matrix.lua }})
         run: |
           pip install git+https://github.com/luarocks/hererocks
-          hererocks lua_install -r 3.11.1 --${{ matrix.lua }} --target ${{ matrix.target }}
+          hererocks lua_install -r^ --${{ matrix.lua }} --target ${{ matrix.target }}
 
       # luv's cmake build probes for the v140 (VS2015) toolset when using the Visual
       # Studio MSBuild generator, which doesn't exist on this runner. NMake Makefiles
