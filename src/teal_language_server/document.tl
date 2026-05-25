@@ -9,7 +9,8 @@ local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
 
 local ltreesitter <const> = require("ltreesitter")
-local teal_parser = ltreesitter.require("teal", "teal")
+local teal_language = ltreesitter.require("teal", "teal")
+local teal_parser = teal_language:parser()
 
 local tl <const> = require("tl")
 
