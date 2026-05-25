@@ -123,14 +123,14 @@ jobs:
         run: |
           .\lua_install\bin\activate
           luarocks install tested
-          .\lua_install\bin\tested.bat -n 0 -x tests/helpers/preload_uv.lua
+          luarocks test
 
       - name: Run tests (MinGW)
         if: matrix.target == 'mingw'
         run: |
           .\lua_install\bin\activate
           luarocks install tested
-          .\lua_install\bin\tested.bat -n 0 -x tests/helpers/preload_uv.lua
+          luarocks test
         env:
           CFLAGS: "-O2 -Wno-int-conversion"
 
