@@ -102,6 +102,7 @@ jobs:
         if: matrix.target == 'vs'
         run: |
           .\lua_install\bin\activate
+          luarocks config cmake_generator "NMake Makefiles"
           luarocks make
           luarocks install luacov-coveralls
 
