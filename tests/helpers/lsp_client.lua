@@ -18,12 +18,16 @@ function LspClient.new(server_binary)
     self._stdin = stdin_pipe
     self._stdout = stdout_pipe
 
-    -- On Windows, luarocks installs scripts as .bat files which CreateProcess
-    -- cannot execute directly — route through cmd.exe instead.
+    -- On Windows (all variants: cmd/PowerShell/MinGW/MSYS2), luarocks installs
+    -- scripts as .bat wrappers. Routing through cmd.exe doesn't reliably pipe
+    -- stdio to the grandchild lua process. Spawn the current interpreter with
+    -- the installed script directly instead.
     local exe, args
-    if uv.os_uname().sysname == "Windows_NT" then
-        exe = "cmd"
-        args = { "/c", server_binary, "--coverage" }
+    if uv.os_getenv("OS") == "Windows_NT" then
+        local lua_exe = uv.exepath()
+        local bin_dir = lua_exe:match("^(.*)[/\\][^/\\]+$")
+        exe = lua_exe
+        args = { bin_dir .. "\\" .. server_binary, "--coverage" }
     else
         exe = server_binary
         args = { "--coverage" }
