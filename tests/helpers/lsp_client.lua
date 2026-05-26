@@ -18,23 +18,12 @@ function LspClient.new(server_binary)
     self._stdin = stdin_pipe
     self._stdout = stdout_pipe
 
-    -- On Windows (all variants: cmd/PowerShell/MinGW/MSYS2), luarocks installs
-    -- scripts as .bat wrappers. Routing through cmd.exe doesn't reliably pipe
-    -- stdio to the grandchild lua process. Spawn the current interpreter with
-    -- the installed script directly instead.
-    local exe, args
     if uv.os_getenv("OS") == "Windows_NT" then
-        local lua_exe = uv.exepath()
-        local bin_dir = lua_exe:match("^(.*)[/\\][^/\\]+$")
-        exe = lua_exe
-        args = { bin_dir .. "\\" .. server_binary, "--coverage" }
-    else
-        exe = server_binary
-        args = { "--coverage" }
+        server_binary = server_binary .. ".bat"
     end
 
-    self._handle = uv.spawn(exe, {
-        args = args,
+    self._handle = uv.spawn(server_binary, {
+        args = { "--coverage" },
         stdio = { stdin_pipe, stdout_pipe, nil },
     }, function() end)
 
