@@ -67,9 +67,20 @@ function LspClient.new(server_binary)
         self._exit_info = { code = code, signal = signal }
     end)
     self._handle = handle
+    self._pid = handle and uv.process_get_pid(handle) or nil
+    self._sends_attempted = 0
+    self._write_errors = ""
 
     assert(handle, "failed to spawn server: " .. tostring(spawn_path)
         .. " (" .. tostring(err_msg) .. " / " .. tostring(err_name) .. ")")
+
+    -- Log spawn details to test runner stderr so CI logs show what we tried
+    -- even when the server stays silent.
+    io.stderr:write(string.format(
+        "[lsp_client] spawned pid=%s path=%s args=[%s]\n",
+        tostring(self._pid), tostring(spawn_path),
+        table.concat(spawn_args, " | ")))
+    io.stderr:flush()
 
     uv.read_start(stdout_pipe, function(_err, data)
         if data then
@@ -89,18 +100,27 @@ end
 
 function LspClient:_diagnostics()
     local parts = {}
+    if self._pid then
+        local alive = pcall(uv.kill, self._pid, 0)
+        table.insert(parts, "pid=" .. tostring(self._pid) .. " alive=" .. tostring(alive))
+    end
+    table.insert(parts, "sends_attempted=" .. tostring(self._sends_attempted or 0))
+    if self._write_errors and #self._write_errors > 0 then
+        table.insert(parts, "stdin write errors:\n" .. self._write_errors)
+    end
     if self._exit_info then
         table.insert(parts, "server exited code=" .. tostring(self._exit_info.code)
             .. " signal=" .. tostring(self._exit_info.signal))
     end
     if self._stderr_buffer and #self._stderr_buffer > 0 then
-        table.insert(parts, "server stderr:\n" .. self._stderr_buffer)
+        table.insert(parts, "server stderr (" .. #self._stderr_buffer .. " bytes):\n" .. self._stderr_buffer)
+    else
+        table.insert(parts, "server stderr: <empty>")
     end
     if self._buffer and #self._buffer > 0 then
         table.insert(parts, "unparsed stdout buffer (" .. #self._buffer .. " bytes):\n" .. self._buffer)
-    end
-    if #parts == 0 then
-        return ""
+    else
+        table.insert(parts, "server stdout: <empty>")
     end
     return "\n" .. table.concat(parts, "\n")
 end
@@ -138,7 +158,12 @@ end
 function LspClient:_send(msg)
     local json = cjson.encode(msg)
     local frame = "Content-Length: " .. #json .. "\r\n\r\n" .. json
-    uv.write(self._stdin, frame)
+    self._sends_attempted = (self._sends_attempted or 0) + 1
+    uv.write(self._stdin, frame, function(err)
+        if err then
+            self._write_errors = (self._write_errors or "") .. tostring(err) .. "\n"
+        end
+    end)
 end
 
 function LspClient:request(method, params)
