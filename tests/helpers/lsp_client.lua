@@ -29,25 +29,40 @@ function LspClient.new(server_binary)
     self._exit_info = nil
 
     local spawn_path = server_binary
-    local spawn_verbatim = false
+    local spawn_args = { "--coverage" }
+    local spawn_env = nil
     if IS_WINDOWS then
-        -- luarocks installs binaries as ".bat" wrappers on Windows. libuv
-        -- (>=1.48) spawns .bat/.cmd files itself with CVE-2024-27980-safe
-        -- quoting, so we can target the wrapper directly. An earlier attempt
-        -- routed through `cmd.exe /c` instead; that succeeded on MSVC but the
-        -- client never received a response — cmd.exe applies CRLF translation
-        -- on inherited stdio pipes, which corrupts the `\r\n\r\n` terminator
-        -- in LSP `Content-Length` framing. verbatim=true skips libuv's arg
-        -- quoting (our only arg has no special chars) which avoids re-escaping
-        -- surprises from the batch-file code path.
-        spawn_path = server_binary .. ".bat"
-        spawn_verbatim = true
+        -- Bypass the luarocks-generated .bat wrapper. libuv spawns .bat files
+        -- through an internal cmd.exe invocation, and in that chain stdin
+        -- never reached the eventual lua.exe child on the GH Windows runners
+        -- (both MinGW and MSVC) — the server stayed alive but silent,
+        -- waiting on a stdin that nothing was being written to. Instead,
+        -- spawn the current lua.exe with the source script directly. The
+        -- script (bin/teal-language-server) is identical to what luarocks
+        -- copies into the rocks tree; the wrapper's only added value is
+        -- pointing Lua at the rocks tree via `-e "package.path=..."`. We do
+        -- the same here by propagating our own package.path/cpath through
+        -- LUA_PATH/LUA_CPATH so the child resolves teal_language_server.*
+        -- without the wrapper.
+        spawn_path = uv.exepath()
+        spawn_args = { uv.cwd() .. "\\bin\\teal-language-server", "--coverage" }
+
+        spawn_env = {}
+        for k, v in pairs(uv.os_environ()) do
+            -- Skip every LUA_PATH/LUA_CPATH variant (incl. LUA_PATH_5_4) so
+            -- our values aren't shadowed by stale ones from the parent env.
+            if not k:upper():match("^LUA_C?PATH") then
+                table.insert(spawn_env, k .. "=" .. v)
+            end
+        end
+        table.insert(spawn_env, "LUA_PATH=" .. package.path)
+        table.insert(spawn_env, "LUA_CPATH=" .. package.cpath)
     end
 
     local handle, err_msg, err_name = uv.spawn(spawn_path, {
-        args = { "--coverage" },
+        args = spawn_args,
         stdio = { stdin_pipe, stdout_pipe, stderr_pipe },
-        verbatim = spawn_verbatim,
+        env = spawn_env,
     }, function(code, signal)
         self._exit_info = { code = code, signal = signal }
     end)
