@@ -18,14 +18,25 @@ function LspClient.new(server_binary)
     self._stdin = stdin_pipe
     self._stdout = stdout_pipe
 
-    if uv.os_getenv("OS") == "Windows_NT" then
-        server_binary = server_binary .. ".bat"
-    end
+    if uv.os_uname().sysname == "Windows_NT" then
+        print("doing windows things")
 
-    self._handle = uv.spawn(server_binary, {
-        args = { "--coverage" },
-        stdio = { stdin_pipe, stdout_pipe, nil },
-    }, function() end)
+        self._handle = uv.spawn("cmd.exe", {
+          stdio = {stdin_pipe, stdout_pipe, nil},
+          args = {
+            "/c",
+            "teal-language-server.bat",
+            "--coverage",
+          },
+          verbatim = true,
+        }, function() end)
+
+    else
+        self._handle = uv.spawn(server_binary, {
+            args = { "--coverage" },
+            stdio = { stdin_pipe, stdout_pipe, nil },
+        }, function() end)
+    end
 
     assert(self._handle, "failed to spawn server: " .. tostring(server_binary))
 
