@@ -18,27 +18,31 @@ function LspClient.new(server_binary)
     self._stdin = stdin_pipe
     self._stdout = stdout_pipe
 
+    local spawn_path = server_binary
+    local spawn_verbatim = false
     if uv.os_uname().sysname == "Windows_NT" then
-        print("doing windows things")
-
-        self._handle = uv.spawn("cmd.exe", {
-          stdio = {stdin_pipe, stdout_pipe, nil},
-          args = {
-            "/c",
-            "teal-language-server.bat",
-            "--coverage",
-          },
-          verbatim = true,
-        }, function() end)
-
-    else
-        self._handle = uv.spawn(server_binary, {
-            args = { "--coverage" },
-            stdio = { stdin_pipe, stdout_pipe, nil },
-        }, function() end)
+        -- luarocks installs binaries as ".bat" wrappers on Windows. libuv
+        -- (>=1.48) spawns .bat/.cmd files itself with CVE-2024-27980-safe
+        -- quoting, so we can target the wrapper directly. An earlier attempt
+        -- routed through `cmd.exe /c` instead; that succeeded on MSVC but the
+        -- client never received a response — cmd.exe applies CRLF translation
+        -- on inherited stdio pipes, which corrupts the `\r\n\r\n` terminator
+        -- in LSP `Content-Length` framing. verbatim=true skips libuv's arg
+        -- quoting (our only arg has no special chars) which avoids re-escaping
+        -- surprises from the batch-file code path.
+        spawn_path = server_binary .. ".bat"
+        spawn_verbatim = true
     end
 
-    assert(self._handle, "failed to spawn server: " .. tostring(server_binary))
+    local handle, err_msg, err_name = uv.spawn(spawn_path, {
+        args = { "--coverage" },
+        stdio = { stdin_pipe, stdout_pipe, nil },
+        verbatim = spawn_verbatim,
+    }, function() end)
+    self._handle = handle
+
+    assert(handle, "failed to spawn server: " .. tostring(spawn_path)
+        .. " (" .. tostring(err_msg) .. " / " .. tostring(err_name) .. ")")
 
     uv.read_start(stdout_pipe, function(_err, data)
         if data then
