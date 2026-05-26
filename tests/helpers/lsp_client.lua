@@ -46,19 +46,32 @@ function LspClient.new(server_binary)
         -- without the wrapper.
         spawn_path = uv.exepath()
         spawn_args = {
-            -- Diagnostic: hook require() so we see every module load on the
-            -- child's stderr. The previous run showed "[startup] alive" but
-            -- nothing else, so the server is hanging somewhere between
-            -- require('teal_language_server.main') and the LSP request loop.
-            -- The last "[req] X" before the silence narrows it down.
-            "-e", "io.stderr:write('[startup] alive\\n'); io.stderr:flush();" ..
-                  "local orig_require = require;" ..
-                  "_G.require = function(mod) " ..
-                      "io.stderr:write('[req] '..mod..'\\n'); io.stderr:flush(); " ..
-                      "local r = orig_require(mod); " ..
-                      "io.stderr:write('[req] '..mod..' DONE\\n'); io.stderr:flush(); " ..
-                      "return r " ..
-                  "end",
+            -- Diagnostic: hook require() and uv.run() to trace progress on
+            -- the child's stderr. The previous run showed requires up to
+            -- "luacov DONE" then silence, but stderr was 7916 bytes (likely
+            -- truncated in display). Hook uv.run so we know whether main()
+            -- got past setup into the event loop.
+            "-e",
+                "io.stderr:write('[startup] alive\\n'); io.stderr:flush();" ..
+                "local orig_require = require;" ..
+                "_G.require = function(mod)" ..
+                    "  io.stderr:write('[req] '..mod..'\\n'); io.stderr:flush();" ..
+                    "  local r = orig_require(mod);" ..
+                    "  io.stderr:write('[req] '..mod..' DONE\\n'); io.stderr:flush();" ..
+                    "  if mod == 'luv' then" ..
+                    "    local orig_run = r.run;" ..
+                    "    r.run = function(...) " ..
+                    "      io.stderr:write('[hook] uv.run called\\n'); io.stderr:flush();" ..
+                    "      return orig_run(...) " ..
+                    "    end;" ..
+                    "    local orig_new_timer = r.new_timer;" ..
+                    "    r.new_timer = function(...) " ..
+                    "      io.stderr:write('[hook] uv.new_timer called\\n'); io.stderr:flush();" ..
+                    "      return orig_new_timer(...) " ..
+                    "    end;" ..
+                    "  end;" ..
+                    "  return r " ..
+                "end",
             uv.cwd() .. "\\bin\\teal-language-server",
             "--coverage",
         }
@@ -129,7 +142,16 @@ function LspClient:_diagnostics()
             .. " signal=" .. tostring(self._exit_info.signal))
     end
     if self._stderr_buffer and #self._stderr_buffer > 0 then
-        table.insert(parts, "server stderr (" .. #self._stderr_buffer .. " bytes):\n" .. self._stderr_buffer)
+        local stderr = self._stderr_buffer
+        local total = #stderr
+        -- Show head + tail when very large so the last-line-before-hang is
+        -- visible even if a display layer (markdown, terminal scroll) clips.
+        if total > 4000 then
+            stderr = stderr:sub(1, 2000)
+                .. "\n...[truncated " .. (total - 4000) .. " middle bytes]...\n"
+                .. stderr:sub(-2000)
+        end
+        table.insert(parts, "server stderr (" .. total .. " bytes):\n" .. stderr)
     else
         table.insert(parts, "server stderr: <empty>")
     end
