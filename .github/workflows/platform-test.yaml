@@ -118,6 +118,13 @@ jobs:
         env:
           CFLAGS: "-O2 -Wno-int-conversion -Wno-incompatible-pointer-types"
 
+      - name: Save Cache
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            lua_install
+          key: ${{ matrix.lua }}-${{ matrix.target }}-lua_install
+
       # luarocks test resolves 'tested' by path without .bat extension, which doesn't
       # exist on Windows — invoke tested.bat directly after installing it explicitly.
       - name: Run tests (VS)
@@ -135,13 +142,6 @@ jobs:
           luarocks test
         env:
           CFLAGS: "-O2 -Wno-int-conversion"
-
-      - name: Save Cache
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            lua_install
-          key: ${{ matrix.lua }}-${{ matrix.target }}-lua_install
 
       # - name: Report test coverage
       #   if: success()

@@ -21,8 +21,12 @@ function LspClient.new(server_binary)
 
     local stdin_pipe = uv.new_pipe(false)
     local stdout_pipe = uv.new_pipe(false)
+    local stderr_pipe = uv.new_pipe(false)
     self._stdin = stdin_pipe
     self._stdout = stdout_pipe
+    self._stderr = stderr_pipe
+    self._stderr_buffer = ""
+    self._exit_info = nil
 
     local spawn_path = server_binary
     local spawn_verbatim = false
@@ -42,9 +46,11 @@ function LspClient.new(server_binary)
 
     local handle, err_msg, err_name = uv.spawn(spawn_path, {
         args = { "--coverage" },
-        stdio = { stdin_pipe, stdout_pipe, nil },
+        stdio = { stdin_pipe, stdout_pipe, stderr_pipe },
         verbatim = spawn_verbatim,
-    }, function() end)
+    }, function(code, signal)
+        self._exit_info = { code = code, signal = signal }
+    end)
     self._handle = handle
 
     assert(handle, "failed to spawn server: " .. tostring(spawn_path)
@@ -57,7 +63,31 @@ function LspClient.new(server_binary)
         end
     end)
 
+    uv.read_start(stderr_pipe, function(_err, data)
+        if data then
+            self._stderr_buffer = self._stderr_buffer .. data
+        end
+    end)
+
     return self
+end
+
+function LspClient:_diagnostics()
+    local parts = {}
+    if self._exit_info then
+        table.insert(parts, "server exited code=" .. tostring(self._exit_info.code)
+            .. " signal=" .. tostring(self._exit_info.signal))
+    end
+    if self._stderr_buffer and #self._stderr_buffer > 0 then
+        table.insert(parts, "server stderr:\n" .. self._stderr_buffer)
+    end
+    if self._buffer and #self._buffer > 0 then
+        table.insert(parts, "unparsed stdout buffer (" .. #self._buffer .. " bytes):\n" .. self._buffer)
+    end
+    if #parts == 0 then
+        return ""
+    end
+    return "\n" .. table.concat(parts, "\n")
 end
 
 function LspClient:_parse_frames()
@@ -121,7 +151,8 @@ function LspClient:wait_for_response(id, timeout_ms)
     uv.timer_stop(timer)
     uv.close(timer)
 
-    assert(not timed_out, "timeout waiting for LSP response id=" .. tostring(id))
+    assert(not timed_out, "timeout waiting for LSP response id=" .. tostring(id)
+        .. self:_diagnostics())
 
     local response = self._pending[id]
     self._pending[id] = nil
@@ -142,7 +173,8 @@ function LspClient:wait_for_notification(method, timeout_ms)
     uv.timer_stop(timer)
     uv.close(timer)
 
-    assert(not timed_out, "timeout waiting for LSP notification: " .. tostring(method))
+    assert(not timed_out, "timeout waiting for LSP notification: " .. tostring(method)
+        .. self:_diagnostics())
 
     return table.remove(self._notifications[method], 1)
 end
@@ -233,6 +265,9 @@ function LspClient:shutdown()
     end
     if self._stdout and not uv.is_closing(self._stdout) then
         uv.close(self._stdout)
+    end
+    if self._stderr and not uv.is_closing(self._stderr) then
+        uv.close(self._stderr)
     end
     if self._handle and not uv.is_closing(self._handle) then
         uv.close(self._handle)
