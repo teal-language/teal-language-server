@@ -6,6 +6,12 @@ LspClient.__index = LspClient
 
 local DEFAULT_TIMEOUT_MS = 15000
 
+-- Lua's package.config first byte is the platform directory separator: "\" on
+-- Windows builds of Lua, "/" elsewhere. Set at Lua compile time, so it's a
+-- more reliable Windows indicator than uv.os_uname()/os_getenv("OS"), both of
+-- which were observed to miss on the MinGW CI runner.
+local IS_WINDOWS = package.config:sub(1, 1) == "\\"
+
 function LspClient.new(server_binary)
     local self = setmetatable({}, LspClient)
     self._buffer = ""
@@ -20,7 +26,7 @@ function LspClient.new(server_binary)
 
     local spawn_path = server_binary
     local spawn_verbatim = false
-    if uv.os_uname().sysname == "Windows_NT" then
+    if IS_WINDOWS then
         -- luarocks installs binaries as ".bat" wrappers on Windows. libuv
         -- (>=1.48) spawns .bat/.cmd files itself with CVE-2024-27980-safe
         -- quoting, so we can target the wrapper directly. An earlier attempt
