@@ -45,7 +45,16 @@ function LspClient.new(server_binary)
         -- LUA_PATH/LUA_CPATH so the child resolves teal_language_server.*
         -- without the wrapper.
         spawn_path = uv.exepath()
-        spawn_args = { uv.cwd() .. "\\bin\\teal-language-server", "--coverage" }
+        spawn_args = {
+            -- Diagnostic: confirm the child's lua.exe is actually running our
+            -- code and that its stderr pipe reaches us. If "[startup]" never
+            -- appears in captured stderr, the silent failure is upstream of
+            -- the Lua script (process inheritance, missing DLL, etc.). If it
+            -- does appear, the hang is inside the server's startup.
+            "-e", "io.stderr:write('[startup] alive _VERSION='.._VERSION..'\\n'); io.stderr:flush()",
+            uv.cwd() .. "\\bin\\teal-language-server",
+            "--coverage",
+        }
 
         spawn_env = {}
         for k, v in pairs(uv.os_environ()) do
