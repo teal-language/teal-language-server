@@ -46,12 +46,19 @@ function LspClient.new(server_binary)
         -- without the wrapper.
         spawn_path = uv.exepath()
         spawn_args = {
-            -- Diagnostic: confirm the child's lua.exe is actually running our
-            -- code and that its stderr pipe reaches us. If "[startup]" never
-            -- appears in captured stderr, the silent failure is upstream of
-            -- the Lua script (process inheritance, missing DLL, etc.). If it
-            -- does appear, the hang is inside the server's startup.
-            "-e", "io.stderr:write('[startup] alive _VERSION='.._VERSION..'\\n'); io.stderr:flush()",
+            -- Diagnostic: hook require() so we see every module load on the
+            -- child's stderr. The previous run showed "[startup] alive" but
+            -- nothing else, so the server is hanging somewhere between
+            -- require('teal_language_server.main') and the LSP request loop.
+            -- The last "[req] X" before the silence narrows it down.
+            "-e", "io.stderr:write('[startup] alive\\n'); io.stderr:flush();" ..
+                  "local orig_require = require;" ..
+                  "_G.require = function(mod) " ..
+                      "io.stderr:write('[req] '..mod..'\\n'); io.stderr:flush(); " ..
+                      "local r = orig_require(mod); " ..
+                      "io.stderr:write('[req] '..mod..' DONE\\n'); io.stderr:flush(); " ..
+                      "return r " ..
+                  "end",
             uv.cwd() .. "\\bin\\teal-language-server",
             "--coverage",
         }
