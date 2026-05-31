@@ -12,6 +12,17 @@ local DEFAULT_TIMEOUT_MS = 15000
 -- which were observed to miss on the MinGW CI runner.
 local IS_WINDOWS = package.config:sub(1, 1) == "\\"
 
+-- On Windows, file:///tmp resolves to the relative path "tmp" (the URI parser
+-- strips the leading "/"), which doesn't exist. Use the system temp directory
+-- instead, which is guaranteed to exist on any Windows installation.
+local function get_root_uri()
+    if IS_WINDOWS then
+        local temp = os.getenv("TEMP") or os.getenv("TMP") or "C:\\Windows\\Temp"
+        return "file:///" .. temp:gsub("\\", "/")
+    end
+    return "file:///tmp"
+end
+
 function LspClient.new(server_binary)
     local self = setmetatable({}, LspClient)
     self._buffer = ""
@@ -34,58 +45,41 @@ function LspClient.new(server_binary)
     if IS_WINDOWS then
         -- Bypass the luarocks-generated .bat wrapper. libuv spawns .bat files
         -- through an internal cmd.exe invocation, and in that chain stdin
-        -- never reached the eventual lua.exe child on the GH Windows runners
-        -- (both MinGW and MSVC) — the server stayed alive but silent,
-        -- waiting on a stdin that nothing was being written to. Instead,
-        -- spawn the current lua.exe with the source script directly. The
-        -- script (bin/teal-language-server) is identical to what luarocks
-        -- copies into the rocks tree; the wrapper's only added value is
-        -- pointing Lua at the rocks tree via `-e "package.path=..."`. We do
-        -- the same here by propagating our own package.path/cpath through
-        -- LUA_PATH/LUA_CPATH so the child resolves teal_language_server.*
-        -- without the wrapper.
+        -- never reaches the eventual lua.exe child on Windows runners.
+        -- Spawn the current lua.exe with the source script directly and
+        -- propagate LUA_PATH/LUA_CPATH so the child resolves modules without
+        -- the wrapper.
         spawn_path = uv.exepath()
         spawn_args = {
-            -- Diagnostic: hook require() and uv.run() to trace progress on
-            -- the child's stderr. The previous run showed requires up to
-            -- "luacov DONE" then silence, but stderr was 7916 bytes (likely
-            -- truncated in display). Hook uv.run so we know whether main()
-            -- got past setup into the event loop.
-            "-e",
-                "io.stderr:write('[startup] alive\\n'); io.stderr:flush();" ..
-                "local orig_require = require;" ..
-                "_G.require = function(mod)" ..
-                    "  io.stderr:write('[req] '..mod..'\\n'); io.stderr:flush();" ..
-                    "  local r = orig_require(mod);" ..
-                    "  io.stderr:write('[req] '..mod..' DONE\\n'); io.stderr:flush();" ..
-                    "  if mod == 'luv' then" ..
-                    "    local orig_run = r.run;" ..
-                    "    r.run = function(...) " ..
-                    "      io.stderr:write('[hook] uv.run called\\n'); io.stderr:flush();" ..
-                    "      return orig_run(...) " ..
-                    "    end;" ..
-                    "    local orig_new_timer = r.new_timer;" ..
-                    "    r.new_timer = function(...) " ..
-                    "      io.stderr:write('[hook] uv.new_timer called\\n'); io.stderr:flush();" ..
-                    "      return orig_new_timer(...) " ..
-                    "    end;" ..
-                    "  end;" ..
-                    "  return r " ..
-                "end",
             uv.cwd() .. "\\bin\\teal-language-server",
             "--coverage",
         }
 
+        -- Derive a clean LUA_PATH/LUA_CPATH from the venv structure instead
+        -- of using package.path/cpath directly. When running under
+        -- "luarocks test", the parent process's package.cpath may include
+        -- extra global-luarocks paths (e.g. AppData\Roaming\luarocks\...)
+        -- that do not exist but still cause ltreesitter's dynamic-library
+        -- loader to segfault on Windows when it iterates them.
+        local venv_bin  = uv.exepath():match("^(.*)[\\][^\\]+$")  -- strip lua.exe
+        local venv_root = venv_bin and venv_bin:match("^(.*)[\\]bin$") or venv_bin
+        local venv_lib   = (venv_root or "") .. "\\lib\\lua\\5.4"
+        local venv_share = (venv_root or "") .. "\\share\\lua\\5.4"
         spawn_env = {}
         for k, v in pairs(uv.os_environ()) do
-            -- Skip every LUA_PATH/LUA_CPATH variant (incl. LUA_PATH_5_4) so
-            -- our values aren't shadowed by stale ones from the parent env.
+            -- Strip every LUA_PATH/LUA_CPATH variant so our values win.
             if not k:upper():match("^LUA_C?PATH") then
                 table.insert(spawn_env, k .. "=" .. v)
             end
         end
-        table.insert(spawn_env, "LUA_PATH=" .. package.path)
-        table.insert(spawn_env, "LUA_CPATH=" .. package.cpath)
+        table.insert(spawn_env, "LUA_PATH=" ..
+            venv_share .. "\\?.lua;" ..
+            venv_share .. "\\?\\init.lua;" ..
+            ".\\?.lua")
+        table.insert(spawn_env, "LUA_CPATH=" ..
+            venv_lib .. "\\?.dll;" ..
+            venv_lib .. "\\loadall.dll;" ..
+            ".\\?.dll")
     end
 
     local handle, err_msg, err_name = uv.spawn(spawn_path, {
@@ -260,7 +254,7 @@ end
 function LspClient:initialize(root_uri)
     local id = self:request("initialize", {
         processId = cjson.null,
-        rootUri = root_uri or "file:///tmp",
+        rootUri = root_uri or get_root_uri(),
         capabilities = {},
     })
     local response = self:wait_for_response(id)
