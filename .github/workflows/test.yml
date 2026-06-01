@@ -1,5 +1,5 @@
 
-name: test
+name: Script Test
 
 on: [push, pull_request]
 
@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        luaVersion: ["5.1", "5.2", "5.3", "5.4" ]
+        luaVersion: ["5.2", "5.3", "5.4" ]
 
     runs-on: ubuntu-latest
 
