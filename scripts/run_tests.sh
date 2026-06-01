@@ -16,5 +16,4 @@ export PATH
 
 # Run unit tests
 echo "Run LuaRocks tests:"
-luarocks install tested --tree="$LUAROCKS_TREE"
 luarocks test --tree="$LUAROCKS_TREE"

@@ -25,18 +25,19 @@ On macOS and Linux, the standard `luarocks install` should work:
 - `luarocks install teal-language-server`
 
 On Windows:
-- If using Visual Studio, please be sure to have the C++ build tools, and note that the default cmake generator (`Visual Studio 14 2015`) does not work.
+- If using Visual Studio, please be sure to have the C++ build tools, and note that the default cmake generator (`Visual Studio 14 2015`) does not work. We recommend using `NMake Makefiles`
     ```bash
     luarocks config cmake_generator "NMake Makefiles"
     luarocks install teal-language-server
     ```
 
-- If using mingw:
+- If using mingw, additional `CFLAGS` also need to be set so some of the upstream dependencies will compile:
     ```bash
     set CFLAGS=-O2 -Wno-int-conversion -Wno-incompatible-pointer-types
-    luarocks config cmake_generator "Ninja"
+    luarocks config cmake_generator "MinGW Makefiles"
     luarocks install teal-language-server
     ```
+    If using Powershell, set the CFLAGS with: `$env:CFLAGS = "-O2 -Wno-int-conversion -Wno-incompatible-pointer-types"`
 
 
 ### From source
