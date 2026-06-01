@@ -113,7 +113,7 @@ jobs:
         if: matrix.target == 'mingw'
         run: |
           .\lua_install\bin\activate
-          luarocks config cmake_generator "Ninja"
+          luarocks config cmake_generator "MinGW Makefiles"
           luarocks make
         env:
           CFLAGS: "-O2 -Wno-int-conversion -Wno-incompatible-pointer-types"
