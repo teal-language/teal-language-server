@@ -63,8 +63,12 @@ function LspClient.new(server_binary)
         -- loader to segfault on Windows when it iterates them.
         local venv_bin  = uv.exepath():match("^(.*)[\\][^\\]+$")  -- strip lua.exe
         local venv_root = venv_bin and venv_bin:match("^(.*)[\\]bin$") or venv_bin
-        local venv_lib   = (venv_root or "") .. "\\lib\\lua\\5.4"
-        local venv_share = (venv_root or "") .. "\\share\\lua\\5.4"
+        -- Use the running Lua version ("5.4", "5.1", etc.) rather than a
+        -- hardcoded string so this works under both Lua 5.4 and LuaJIT 2.1
+        -- (which self-reports as "Lua 5.1" and installs to lua/5.1/ paths).
+        local lua_ver    = _VERSION:match("%d+%.%d+")
+        local venv_lib   = (venv_root or "") .. "\\lib\\lua\\" .. lua_ver
+        local venv_share = (venv_root or "") .. "\\share\\lua\\" .. lua_ver
         spawn_env = {}
         for k, v in pairs(uv.os_environ()) do
             -- Strip every LUA_PATH/LUA_CPATH variant so our values win.
