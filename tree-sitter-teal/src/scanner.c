@@ -91,6 +91,8 @@ static inline void reset_state(State *state) {
 }
 
 unsigned tree_sitter_teal_external_scanner_serialize(void *payload, char *buffer) {
+    if (sizeof(State) > TREE_SITTER_SERIALIZATION_BUFFER_SIZE)
+        return 0;
     memcpy(buffer, payload, sizeof(State));
     return sizeof(State);
 }
