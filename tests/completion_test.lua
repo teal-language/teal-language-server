@@ -16,7 +16,7 @@ local client
 
 tested.before(function()
     client = LspClient.new("teal-language-server")
-    client:initialize("file:///tmp")
+    client:initialize()
 end)
 
 tested.after(function()

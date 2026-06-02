@@ -407,7 +407,7 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
 
    local file_uri: Uri
 
-   if #type_info.file == 0 then
+   if #type_info.file == 0 or type_info.file == doc.uri.path then
       file_uri = doc.uri
    else
       local full_path: string

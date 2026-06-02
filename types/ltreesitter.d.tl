@@ -3,57 +3,107 @@
 local record ltreesitter
    -- Exports
 
-   record Cursor userdata
-      current_field_name: function(Cursor): string  -- csrc/tree_cursor.c:32
-      current_node: function(Cursor): Node  -- csrc/tree_cursor.c:20
-      goto_first_child: function(Cursor): boolean  -- csrc/tree_cursor.c:74
-      goto_first_child_for_byte: function(Cursor, integer): integer  -- csrc/tree_cursor.c:83
-      goto_next_sibling: function(Cursor): boolean  -- csrc/tree_cursor.c:65
-      goto_parent: function(Cursor): boolean  -- csrc/tree_cursor.c:56
-      reset: function(Cursor, Node)  -- csrc/tree_cursor.c:46
+   record Cursor is userdata
+      copy: function(Cursor): Cursor
+      current_depth: function(Cursor): integer
+      current_descendant_index: function(Cursor): integer
+      current_field_id: function(Cursor): FieldId
+      current_field_name: function(Cursor): string
+      current_node: function(Cursor): Node
+      goto_descendant: function(Cursor, integer)
+      goto_first_child: function(Cursor): boolean
+      goto_first_child_for_byte: function(Cursor, integer): integer
+      goto_first_child_for_point: function(Cursor, Point): integer
+      goto_next_sibling: function(Cursor): boolean
+      goto_parent: function(Cursor): boolean
+      reset: function(Cursor, Node)
+      reset_to: function(Cursor, Cursor)
    end
-   record Node userdata
-      child: function(Node, idx: integer): Node  -- csrc/node.c:129
-      child_by_field_name: function(Node, string): Node  -- csrc/node.c:339
-      child_count: function(Node): integer  -- csrc/node.c:146
-      children: function(Node): function(): Node  -- csrc/node.c:218
-      create_cursor: function(Node): Cursor  -- csrc/node.c:372
-      end_byte: function(Node): integer  -- csrc/node.c:39
-      end_point: function(Node): Point  -- csrc/node.c:72
-      is_extra: function(Node): boolean  -- csrc/node.c:106
-      is_missing: function(Node): boolean  -- csrc/node.c:97
-      is_named: function(Node): boolean  -- csrc/node.c:88
-      name: function(Node): string  -- csrc/node.c:319
-      named_child: function(Node, idx: integer): Node  -- csrc/node.c:155
-      named_child_count: function(Node): integer  -- csrc/node.c:170
-      named_children: function(Node): function(): Node  -- csrc/node.c:232
-      next_named_sibling: function(Node): Node  -- csrc/node.c:274
-      next_sibling: function(Node): Node  -- csrc/node.c:244
-      prev_named_sibling: function(Node): Node  -- csrc/node.c:289
-      prev_sibling: function(Node): Node  -- csrc/node.c:259
-      source: function(Node): string  -- csrc/node.c:357
-      start_byte: function(Node): integer  -- csrc/node.c:30
-      start_point: function(Node): Point  -- csrc/node.c:55
-      type: function(Node): string  -- csrc/node.c:21
+   record Language is userdata
+      abi_version: function(Language): integer
+      field_count: function(Language): integer
+      field_id_for_name: function(Language, string): FieldId
+      metadata: function(Language): LanguageMetadata
+      name: function(Language): string
+      name_for_field_id: function(Language, FieldId): string
+      next_state: function(Language, StateId, Symbol): StateId
+      parser: function(Language): Parser
+      query: function(Language, string): Query
+      state_count: function(Language): integer
+      subtypes: function(Language, supertype: Symbol): {Symbol}
+      supertypes: function(Language): {Symbol}
+      symbol_count: function(Language): integer
+      symbol_for_name: function(Language, string, is_named: boolean): Symbol
+      symbol_name: function(Language, Symbol): string
+      symbol_type: function(Language, Symbol): SymbolType
    end
-   record Parser userdata
-      get_ranges: function(Parser): {Range}  -- csrc/parser.c:633
-      get_version: function(Parser): integer  -- csrc/parser.c:682
-      parse_string: function(Parser, string, ? Tree): Tree  -- csrc/parser.c:377
-      parse_with: function(Parser, reader: function(integer, Point): (string), old_tree: Tree): Tree  -- csrc/parser.c:470
-      query: function(Parser, string): Query  -- csrc/parser.c:650
-      set_ranges: function(Parser, {Range}): boolean  -- csrc/parser.c:554
-      set_timeout: function(Parser, integer)  -- csrc/parser.c:520
+   record Node is userdata
+      child: function(Node, idx: integer): Node
+      child_by_field_id: function(Node, FieldId): Node
+      child_by_field_name: function(Node, string): Node
+      child_count: function(Node): integer
+      children: function(Node): function(): Node
+      create_cursor: function(Node): Cursor
+      end_byte_offset: function(Node): integer
+      end_index: function(Node): integer
+      end_point: function(Node): Point
+      grammar_symbol: function(Node): Symbol
+      grammar_type: function(Node): string
+      is_extra: function(Node): boolean
+      is_missing: function(Node): boolean
+      is_named: function(Node): boolean
+      name: function(Node): string
+      named_child: function(Node, idx: integer): Node
+      named_child_count: function(Node): integer
+      named_children: function(Node): function(): Node
+      next_named_sibling: function(Node): Node
+      next_parse_state: function(Node): StateId
+      next_sibling: function(Node): Node
+      parse_state: function(Node): StateId
+      prev_named_sibling: function(Node): Node
+      prev_sibling: function(Node): Node
+      source: function(Node): string
+      start_byte_offset: function(Node): integer
+      start_index: function(Node): integer
+      start_point: function(Node): Point
+      symbol: function(Node): Symbol
+      type: function(Node): string
    end
-   record Query userdata
-      capture: function(Query, Node, start: integer | Point, end_: integer | Point): function(): (Node, string)  -- csrc/query.c:514
-      exec: function(Query, Node, start: integer | Point, end_: integer | Point)  -- csrc/query.c:602
-      match: function(Query, Node, start: integer | Point, end_: integer | Point): function(): Match  -- csrc/query.c:468
-      source: function(Query): string  -- csrc/query.c:657
-      with: function(Query, {string:function(...: string | Node | {Node}): any...}): Query  -- csrc/query.c:543
+   record Parser is userdata
+      get_ranges: function(Parser): {Range}
+      parse_string: function(Parser, string, ?Encoding, ?Tree): Tree
+      parse_with: function(
+         Parser,
+         reader: (function(integer, Point): string),
+         progress_callback?: (function(has_error: boolean, byte_offset: integer): boolean),
+         encoding?: Encoding,
+         old_tree?: Tree
+      ): Tree
+      reset: function(Parser)
+      set_ranges: function(Parser, {Range}): boolean
    end
-   record Tree userdata
-      copy: function(Tree): Tree  -- csrc/tree.c:90
+   record Query is userdata
+      capture: function(Query, Node, predicates?: {string:Predicate}, start?: integer | Point, end_?: integer | Point): function(): (Node, string)
+      cursor: function(Query, Node): QueryCursor
+      exec: function(Query, Node, predicates?: {string:Predicate}, start?: integer | Point, end_?: integer | Point)
+      match: function(Query, Node, predicates?: {string:Predicate}, start?: integer | Point, end_?: integer | Point): function(): Match
+      predicates_for_pattern: function(Query, pattern_index: integer): {{string | Capture}}
+   end
+   record QueryCursor is userdata
+      did_exceed_match_limit: function(QueryCursor): boolean
+      match_limit: function(QueryCursor): integer
+      next_capture_without_executing_predicates: function(QueryCursor): Node, string
+      next_match_without_executing_predicates: function(QueryCursor): Match
+      remove_match: function(QueryCursor, match_id: integer)
+      set_byte_range: function(QueryCursor, start: integer, end_: integer): boolean
+      set_match_limit: function(QueryCursor, integer)
+      set_max_start_depth: function(QueryCursor, integer)
+      set_point_range: function(QueryCursor, start: Point, end_: Point): boolean
+   end
+   TREE_SITTER_LANGUAGE_VERSION: integer
+   TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION: integer
+   record Tree is userdata
+      copy: function(Tree): Tree
       edit: function(
          Tree,
          start_byte: integer,
@@ -65,18 +115,40 @@ local record ltreesitter
          old_end_point_col: integer,
          new_end_point_row: integer,
          new_end_point_col: integer
-      )  -- csrc/tree.c:177
-      edit_s: function(Tree, TreeEdit)  -- csrc/tree.c:120
-      get_changed_ranges: function(old: Tree, new: Tree): {Range}  -- csrc/tree.c:206
-      root: function(Tree): Node  -- csrc/tree.c:71
+      )
+      edit_s: function(Tree, TreeEdit)
+      get_changed_ranges: function(old: Tree, new: Tree): {Range}
+      root: function(Tree): Node
    end
-   load: function(file_name: string, language_name: string): Parser, string  -- csrc/parser.c:111
-   require: function(library_file_name: string, language_name: string): Parser  -- csrc/parser.c:167
-   version: string -- csrc/ltreesitter.c:14
+   load: function(file_name: string, language_name: string): Language, string
+   require: function(library_file_name: string, language_name?: string): Language, string
+   tree_sitter_version: string
+   version: string
 
    -- Inlines
 
-   record TreeEdit
+   enum Encoding
+      "utf-8"
+      "utf-16le"
+      "utf-16be"
+   end
+
+   enum SymbolType
+      "regular"
+      "anonymous"
+      "supertype"
+      "auxiliary"
+   end
+
+   interface Range
+      start_byte: integer
+      end_byte: integer
+
+      start_point: Point
+      end_point: Point
+   end
+
+   interface TreeEdit
       start_byte: integer
       old_end_byte: integer
       new_end_byte: integer
@@ -84,28 +156,35 @@ local record ltreesitter
       start_point: Point
       old_end_point: Point
       new_end_point: Point
-   end -- csrc/tree.c:109
+   end
 
-   record Match
+   interface Match
       id: integer
       pattern_index: integer
       capture_count: integer
       captures: {string:Node|{Node}}
-   end -- csrc/query.c:328
+   end
 
-   record Point
+   type Predicate = function(...: string | Node | {Node}): any...
+
+   interface Capture
+      capture_name: string
+   end
+
+   interface Point
       row: integer
       column: integer
-   end -- csrc/node.c:48
+   end
 
-   record Range
-      start_byte: integer
-      end_byte: integer
+   type StateId = integer
+   type Symbol = integer
+   type FieldId = integer
 
-      start_point: Point
-      end_point: Point
-   end -- csrc/parser.c:531
+   interface LanguageMetadata
+      major_version: integer
+      minor_version: integer
+      patch_version: integer
+   end
 end
 
 return ltreesitter
-

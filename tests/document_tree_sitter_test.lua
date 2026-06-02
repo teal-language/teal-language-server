@@ -1,6 +1,30 @@
 -- Prepend gen/ so we test local source rather than whatever is installed in the luarocks tree
 package.path = "gen/?.lua;" .. package.path
 
+-- This fix was found by AI
+-- On Windows, "luarocks test" prepends the global luarocks DLL directory
+-- (AppData\Roaming\luarocks\...) to package.cpath, but teal.dll lives in the
+-- project venv. ltreesitter's dynamic loader calls LoadLibrary on each cpath
+-- entry in order; when LoadLibrary returns NULL for a path that doesn't
+-- contain teal.dll it crashes (null deref) instead of skipping gracefully.
+-- Filter package.cpath to the project venv before document.lua is required,
+-- since that module calls ltreesitter.require("teal","teal") at the top level.
+-- Note: this is a test-harness-specific problem — real server installs have
+-- teal.dll in the first cpath entry luarocks generates, so they don't hit
+-- the bad path.
+if package.config:sub(1, 1) == "\\" then
+    local uv = require("luv")
+    local project_dir = uv.cwd():lower()
+    local entries = {}
+    for path in package.cpath:gmatch("[^;]+") do
+        local low = path:lower()
+        if low == ".\\?.dll" or low:find(project_dir, 1, true) then
+            table.insert(entries, path)
+        end
+    end
+    if #entries > 0 then package.cpath = table.concat(entries, ";") end
+end
+
 local tested = require("tested")
 local Document = require("teal_language_server.document")
 local ServerState = require("teal_language_server.server_state")

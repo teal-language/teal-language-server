@@ -78,7 +78,10 @@ function Uri.parse(text)
 
 
 
-   if util.get_platform() == "windows" and util.string_starts_with(parsed.path, "/") then
+
+   if util.get_platform() == "windows" and
+      util.string_starts_with(parsed.path, "/") and
+      parsed.path:match("^/[A-Za-z]:[/\\]") then
       parsed.path = parsed.path:sub(2)
    end
 
@@ -112,9 +115,17 @@ function Uri.uri_from_path(path)
 end
 
 function Uri.tostring(u)
+   local path = u.path or ""
+
+
+
+   if u.scheme == "file" and util.get_platform() == "windows" and
+      #path > 0 and not util.string_starts_with(path, "/") then
+      path = "/" .. path
+   end
    return u.scheme .. "://" ..
    (u.authority or "") ..
-   (u.path or "") ..
+   path ..
    (u.query and "?" .. u.query or "") ..
    (u.fragment and "#" .. u.fragment or "")
 end
