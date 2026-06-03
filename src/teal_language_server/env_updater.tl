@@ -2,6 +2,7 @@ local _module_name = "env_updater"
 
 -- <imports>
 local DocumentManager <const> = require("teal_language_server.document_manager")
+local lua_env <const> = require("teal_language_server.lua_env")
 local lusc <const> = require("lusc")
 local ServerState <const> = require("teal_language_server.server_state")
 local tl <const> = require("tl")
@@ -13,6 +14,8 @@ local class <const> = require("teal_language_server.class")
 
 local init_path <const> = package.path
 local init_cpath <const> = package.cpath
+local discovered_user_path: string = nil
+local discovered_user_cpath: string = nil
 
 local record EnvUpdater
    _document_manager: DocumentManager
@@ -105,6 +108,16 @@ function EnvUpdater:_generate_env(): tl.Env
    package.path = init_path
    package.cpath = init_cpath
 
+   -- append user's environment paths so tl.check can find their installed
+   -- .d.tl and .tl libraries; appending (not prepending) keeps the server's
+   -- own deps authoritative
+   if discovered_user_path then
+      package.path = package.path .. ";" .. discovered_user_path
+   end
+   if discovered_user_cpath then
+      package.cpath = package.cpath .. ";" .. discovered_user_cpath
+   end
+
    local env, errs = self:_init_env_from_config(config)
 
    if errs ~= nil and #errs > 0 then
@@ -154,6 +167,14 @@ function EnvUpdater:schedule_env_update()
 end
 
 function EnvUpdater:initialize()
+   local root = self._server_state.teal_project_root_dir.value
+   local lua_bin = lua_env.find_lua_bin(root)
+   tracing.info(_module_name, "Using lua binary for env discovery: {}", {lua_bin})
+   discovered_user_path, discovered_user_cpath = lua_env.discover_paths(lua_bin)
+   if discovered_user_path then
+      tracing.info(_module_name, "Discovered user lua path: {}", {discovered_user_path})
+   end
+
    local env = self:_generate_env()
    self._server_state:set_env(env)
 
