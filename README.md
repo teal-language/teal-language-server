@@ -44,6 +44,7 @@ On Windows:
 
 1. Clone repo
 2. Run a `luarocks make` - this should work however your LuaRocks is setup!
+    - If using Windows, please set the `cmake_generator` and `CFLAGS` as described in the installation section!
 
 ## Editor Setup
 
