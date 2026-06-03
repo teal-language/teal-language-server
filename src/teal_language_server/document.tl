@@ -7,6 +7,7 @@ local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer"
 local class <const> = require("teal_language_server.class")
 local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
+local json <const> = require("cjson")
 
 local ltreesitter <const> = require("ltreesitter")
 local teal_language = ltreesitter.require("teal", "teal")
@@ -226,6 +227,10 @@ end
 
 function Document:_publish_diagnostics(diagnostics: {lsp.Diagnostic}, version?: number)
    tracing.debug(_module_name, "Publishing diagnostics for {}...", {self._uri.path})
+   -- cjson encodes an empty table as {} (object) rather than [] (array).
+   -- Setting empty_array_mt ensures empty diagnostics serialize as [] per LSP spec.
+   local raw_setmt = setmetatable as function(any, any): any
+   raw_setmt(diagnostics, json.empty_array_mt)
    self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
       uri = Uri.tostring(self._uri),
       diagnostics = diagnostics,

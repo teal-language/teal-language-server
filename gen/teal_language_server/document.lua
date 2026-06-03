@@ -7,6 +7,7 @@ local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
 local class = require("teal_language_server.class")
 local asserts = require("teal_language_server.asserts")
 local tracing = require("teal_language_server.tracing")
+local json = require("cjson")
 
 local ltreesitter = require("ltreesitter")
 local teal_language = ltreesitter.require("teal", "teal")
@@ -226,6 +227,10 @@ end
 
 function Document:_publish_diagnostics(diagnostics, version)
    tracing.debug(_module_name, "Publishing diagnostics for {}...", { self._uri.path })
+
+
+   local raw_setmt = setmetatable
+   raw_setmt(diagnostics, json.empty_array_mt)
    self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
       uri = Uri.tostring(self._uri),
       diagnostics = diagnostics,

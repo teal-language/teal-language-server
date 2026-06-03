@@ -369,6 +369,11 @@ function MiscHandlers:_on_signature_help(params, id)
 
    tracing.debug(_module_name, "[_on_signature_help] Found type info: {}", { type_info })
 
+   if #output.signatures == 0 then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
