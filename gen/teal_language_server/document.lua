@@ -229,8 +229,7 @@ function Document:_publish_diagnostics(diagnostics, version)
    tracing.debug(_module_name, "Publishing diagnostics for {}...", { self._uri.path })
 
 
-   local raw_setmt = setmetatable
-   raw_setmt(diagnostics, json.empty_array_mt)
+   setmetatable(diagnostics, json.empty_array_mt)
    self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
       uri = Uri.tostring(self._uri),
       diagnostics = diagnostics,

@@ -229,8 +229,7 @@ function Document:_publish_diagnostics(diagnostics: {lsp.Diagnostic}, version?: 
    tracing.debug(_module_name, "Publishing diagnostics for {}...", {self._uri.path})
    -- cjson encodes an empty table as {} (object) rather than [] (array).
    -- Setting empty_array_mt ensures empty diagnostics serialize as [] per LSP spec.
-   local raw_setmt = setmetatable as function(any, any): any
-   raw_setmt(diagnostics, json.empty_array_mt)
+   setmetatable(diagnostics, json.empty_array_mt as metatable<{lsp.Diagnostic}>)
    self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
       uri = Uri.tostring(self._uri),
       diagnostics = diagnostics,
