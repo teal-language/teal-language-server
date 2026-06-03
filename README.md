@@ -42,10 +42,8 @@ On Windows:
 
 ### From source
 
-* Clone repo
-* From repo root: 
-  * `scripts/setup_local_luarocks`
-  * `./lua_modules/bin/teal-language-server`
+1. Clone repo
+2. Run a `luarocks make` - this should work however your LuaRocks is setup!
 
 ## Editor Setup
 
