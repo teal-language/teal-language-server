@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local package = _tl_compat and _tl_compat.package or package; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local _module_name = "env_updater"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local package = _tl_compat and _tl_compat.package or package; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "env_updater"
 
 
 local DocumentManager = require("teal_language_server.document_manager")
@@ -14,8 +14,20 @@ local class = require("teal_language_server.class")
 
 local init_path = package.path
 local init_cpath = package.cpath
-local discovered_user_path = nil
-local discovered_user_cpath = nil
+
+local function dedup_path(path_str)
+   local seen = {}
+   local result = {}
+
+
+   for entry in path_str:gmatch("[^;]+") do
+      if not seen[entry] then
+         seen[entry] = true
+         table.insert(result, entry)
+      end
+   end
+   return table.concat(result, ";")
+end
 
 local EnvUpdater = {}
 
@@ -108,16 +120,6 @@ function EnvUpdater:_generate_env()
    package.path = init_path
    package.cpath = init_cpath
 
-
-
-
-   if discovered_user_path then
-      package.path = package.path .. ";" .. discovered_user_path
-   end
-   if discovered_user_cpath then
-      package.cpath = package.cpath .. ";" .. discovered_user_cpath
-   end
-
    local env, errs = self:_init_env_from_config(config)
 
    if errs ~= nil and #errs > 0 then
@@ -170,9 +172,15 @@ function EnvUpdater:initialize()
    local root = self._server_state.teal_project_root_dir.value
    local lua_bin = lua_env.find_lua_bin(root)
    tracing.info(_module_name, "Using lua binary for env discovery: {}", { lua_bin })
-   discovered_user_path, discovered_user_cpath = lua_env.discover_paths(lua_bin)
+   local discovered_user_path, discovered_user_cpath = lua_env.discover_paths(lua_bin)
    if discovered_user_path then
+      init_path = dedup_path(init_path .. ";" .. discovered_user_path)
       tracing.info(_module_name, "Discovered user lua path: {}", { discovered_user_path })
+   end
+
+   if discovered_user_cpath then
+      init_cpath = dedup_path(init_cpath .. ";" .. discovered_user_cpath)
+      tracing.info(_module_name, "Discovered user lua cpath: {}", { discovered_user_cpath })
    end
 
    local env = self:_generate_env()
