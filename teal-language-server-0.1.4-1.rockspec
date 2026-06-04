@@ -44,6 +44,7 @@ build = {
       ["teal_language_server.document"] = "gen/teal_language_server/document.lua",
       ["teal_language_server.document_manager"] = "gen/teal_language_server/document_manager.lua",
       ["teal_language_server.env_updater"] = "gen/teal_language_server/env_updater.lua",
+      ["teal_language_server.lua_env"] = "gen/teal_language_server/lua_env.lua",
       ["teal_language_server.lsp"] = "gen/teal_language_server/lsp.lua",
       ["teal_language_server.lsp_events_manager"] = "gen/teal_language_server/lsp_events_manager.lua",
       ["teal_language_server.lsp_formatter"] = "gen/teal_language_server/lsp_formatter.lua",

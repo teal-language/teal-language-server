@@ -2,6 +2,7 @@ local _module_name = "env_updater"
 
 -- <imports>
 local DocumentManager <const> = require("teal_language_server.document_manager")
+local lua_env <const> = require("teal_language_server.lua_env")
 local lusc <const> = require("lusc")
 local ServerState <const> = require("teal_language_server.server_state")
 local tl <const> = require("tl")
@@ -11,8 +12,22 @@ local asserts <const> = require("teal_language_server.asserts")
 local tracing <const> = require("teal_language_server.tracing")
 local class <const> = require("teal_language_server.class")
 
-local init_path <const> = package.path
-local init_cpath <const> = package.cpath
+local init_path: string = package.path
+local init_cpath: string = package.cpath
+
+local function dedup_path(path_str: string): string
+   local seen: {string: boolean} = {}
+   local result: {string} = {}
+   -- should keep the order, the de-duping feels a little risky, and this feels like it could be a premature optimzation?
+   -- I'll keep it for now and hope we wont regret it later
+   for entry in path_str:gmatch("[^;]+") do
+      if not seen[entry] then
+         seen[entry] = true
+         table.insert(result, entry)
+      end
+   end
+   return table.concat(result, ";")
+end
 
 local record EnvUpdater
    _document_manager: DocumentManager
@@ -154,6 +169,20 @@ function EnvUpdater:schedule_env_update()
 end
 
 function EnvUpdater:initialize()
+   local root = self._server_state.teal_project_root_dir.value
+   local lua_bin = lua_env.find_lua_bin(root)
+   tracing.info(_module_name, "Using lua binary for env discovery: {}", {lua_bin})
+   local discovered_user_path, discovered_user_cpath = lua_env.discover_paths(lua_bin)
+   if discovered_user_path then
+      init_path = dedup_path(init_path .. ";" .. discovered_user_path)
+      tracing.info(_module_name, "Discovered user lua path: {}", {discovered_user_path})
+   end
+
+   if discovered_user_cpath then
+      init_cpath = dedup_path(init_cpath .. ";" .. discovered_user_cpath)
+      tracing.info(_module_name, "Discovered user lua cpath: {}", {discovered_user_cpath})
+   end
+
    local env = self:_generate_env()
    self._server_state:set_env(env)
 
