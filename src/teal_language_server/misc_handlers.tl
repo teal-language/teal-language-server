@@ -150,6 +150,19 @@ local function split_by_symbols(input: string, self_type: string, stop_at?: stri
    return t
 end
 
+-- Builds the token chain for a node under the cursor. For definition lookups we
+-- keep `self` literal (passing "self" as the self_type makes the substitution in
+-- split_by_symbols a no-op) so it resolves as a real in-scope parameter symbol
+-- rather than relying on the tree-sitter self_type detection, which is only set
+-- for named methods and not for function literals.
+local function tokens_for_node(node_info: Document.NodeInfo, self_type: string): {string}
+   if indexable_parent_types[node_info.parent_type] then
+      return split_by_symbols(node_info.parent_source, self_type, node_info.source)
+   else
+      return split_by_symbols(node_info.source, self_type)
+   end
+end
+
 function MiscHandlers:_get_node_info(params:lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 
@@ -377,6 +390,45 @@ function MiscHandlers:_on_signature_help(params:lsp.Method.Params, id:integer):n
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
+-- Resolves a (possibly relative) source file path to a Uri and replies to `id`
+-- with an LSP Location pointing at the 1-indexed (y, x). Returns true if a
+-- location was sent, false if `file` was nil (no location available).
+function MiscHandlers:_send_location(id: integer, doc: Document, file: string, y: integer, x: integer): boolean
+   if file == nil or y == nil or x == nil then
+      return false
+   end
+
+   local file_uri: Uri
+
+   if #file == 0 or file == doc.uri.path then
+      file_uri = doc.uri
+   else
+      local full_path: string
+
+      if Path(file):is_absolute() then
+         full_path = file
+      else
+         full_path = self._server_state.teal_project_root_dir.value .. "/" .. file
+      end
+
+      file_uri = Uri.uri_from_path(Path(full_path).value)
+   end
+
+   self._lsp_reader_writer:send_rpc(id, {
+      uri = Uri.tostring(file_uri),
+      range = {
+         start = lsp.position(y - 1, x - 1),
+         ["end"] = lsp.position(y - 1, x - 1),
+      },
+   })
+   return true
+end
+
+-- "Go to definition": jump to where the *symbol* under the cursor is declared.
+-- For a base symbol this is its declaration site; for a field access it is where
+-- that field's type is declared (which works across files for record/function
+-- fields), falling back to the enclosing record's declaration when the field's
+-- type has no position (e.g. primitives like boolean).
 function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
    local pos <const> = params.position as lsp.Position
    local node_info, doc = self:_get_node_info(params, pos)
@@ -387,53 +439,74 @@ function MiscHandlers:_on_definition(params:lsp.Method.Params, id:integer):nil
 
    tracing.trace(_module_name, "Received request for on_definition at position: {@}", {pos})
 
-   local tks: {string} = {}
-   if node_info.type == "identifier" then
-      -- parent types that show up with multiparts
-      if indexable_parent_types[node_info.parent_type] then
-         tks = split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
-      else
-         tks = split_by_symbols(node_info.source, node_info.self_type)
-      end
-   else
-      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", {node_info.type})
+   if node_info.type ~= "identifier" then
+      tracing.warning(_module_name, "Can't go to definition of anything that isn't an identifier atm: {}", {node_info.type})
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
+   local tks = tokens_for_node(node_info, "self")
+
+   -- Base symbol (e.g. `apple`, `self`, `TestType_mt`): go to its declaration.
+   if #tks == 1 then
+      local decl_y, decl_x = doc:symbol_declaration_position(tks[1], pos.line, pos.character)
+      if decl_y ~= nil and self:_send_location(id, doc, doc.uri.path, decl_y, decl_x) then
+         return
+      end
+      -- Not a tracked symbol (e.g. a global or a type name used as a value):
+      -- fall back to where its type is declared so we don't regress those.
+   end
+
+   -- Field access (e.g. `self.test_value`, `mod.func`): the field's type carries
+   -- the declaration position for record/function fields.
+   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   if type_info and self:_send_location(id, doc, type_info.file, type_info.y, type_info.x) then
+      tracing.trace(_module_name, "[on_definition] Resolved via field/type position", {})
+      return
+   end
+
+   -- The field's type has no position (e.g. a primitive). Fall back to the
+   -- enclosing record's declaration.
+   if #tks > 1 then
+      local parent_tks: {string} = {}
+      for i = 1, #tks - 1 do parent_tks[i] = tks[i] end
+      local parent_info = doc:type_information_for_tokens(parent_tks, pos.line, pos.character)
+      if parent_info and self:_send_location(id, doc, parent_info.file, parent_info.y, parent_info.x) then
+         tracing.trace(_module_name, "[on_definition] Resolved via enclosing record position", {})
+         return
+      end
+   end
+
+   self._lsp_reader_writer:send_rpc(id, nil)
+end
+
+-- "Go to type definition": jump to where the *type* of the symbol under the
+-- cursor is declared. This is the behavior `textDocument/definition` previously
+-- had.
+function MiscHandlers:_on_type_definition(params:lsp.Method.Params, id:integer):nil
+   local pos <const> = params.position as lsp.Position
+   local node_info, doc = self:_get_node_info(params, pos)
+   if node_info == nil then
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   tracing.trace(_module_name, "Received request for on_type_definition at position: {@}", {pos})
+
+   if node_info.type ~= "identifier" then
+      tracing.warning(_module_name, "Can't go to type definition of anything that isn't an identifier atm: {}", {node_info.type})
+      self._lsp_reader_writer:send_rpc(id, nil)
+      return
+   end
+
+   local tks = tokens_for_node(node_info, "self")
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
-   if not type_info or type_info.file == nil then
+   tracing.trace(_module_name, "[on_type_definition] Found type type_info: {}", {type_info})
+
+   if not type_info or not self:_send_location(id, doc, type_info.file, type_info.y, type_info.x) then
       self._lsp_reader_writer:send_rpc(id, nil)
-      return
    end
-
-   tracing.trace(_module_name, "[on_definition] Found type type_info: {}", {type_info})
-
-   local file_uri: Uri
-
-   if #type_info.file == 0 or type_info.file == doc.uri.path then
-      file_uri = doc.uri
-   else
-      local full_path: string
-
-      if Path(type_info.file):is_absolute() then
-         full_path = type_info.file
-      else
-         full_path = self._server_state.teal_project_root_dir.value .. "/" .. type_info.file
-      end
-
-      local file_path = Path(full_path)
-      file_uri = Uri.uri_from_path(file_path.value)
-   end
-
-   self._lsp_reader_writer:send_rpc(id, {
-      uri = Uri.tostring(file_uri),
-      range = {
-         start = lsp.position(type_info.y - 1, type_info.x - 1),
-         ["end"] = lsp.position(type_info.y - 1, type_info.x - 1),
-      },
-   })
 end
 
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
@@ -512,8 +585,8 @@ function MiscHandlers:initialize()
    self:_add_handler("textDocument/signatureHelp", self._on_signature_help)
    self:_add_handler("textDocument/hover", self._on_hover)
 
-   -- planning to figure out what defintion/declaration vs type definition/declaration should go to
    self:_add_handler("textDocument/definition", self._on_definition)
+   self:_add_handler("textDocument/typeDefinition", self._on_type_definition)
 end
 
 class.setup(MiscHandlers, "MiscHandlers", {
