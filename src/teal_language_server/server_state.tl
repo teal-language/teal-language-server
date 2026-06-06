@@ -1,16 +1,35 @@
 local _module_name = "server_state"
 
 -- <imports>
-local asserts <const> = require("teal_language_server.asserts")
-local lsp <const> = require("teal_language_server.lsp")
-local Path <const> = require("teal_language_server.path")
+local asserts <const> = require("teal_language_server.util.asserts")
+local lsp <const> = require("teal_language_server.lsp.protocol")
+local Path <const> = require("teal_language_server.util.path")
 local lfs <const> = require("lfs")
-local TealProjectConfig = require("teal_language_server.teal_project_config")
 local tl <const> = require("tl")
-local tracing <const> = require("teal_language_server.tracing")
-local class <const> = require("teal_language_server.class")
+local tracing <const> = require("teal_language_server.logging.tracing")
+local class <const> = require("teal_language_server.util.class")
 
 local record ServerState
+   record TealProjectConfig
+      build_dir: string
+      source_dir: string
+      include: {string}
+      exclude: {string}
+      global_env_def: string
+      include_dir: {string}
+      module_name: string
+      scripts: {string:{string}}
+
+      gen_compat: tl.GenCompat
+      gen_target: tl.GenTarget
+      disable_warnings: {tl.WarningKind}
+      warning_error: {tl.WarningKind}
+
+      -- externals field to allow for external tools to take entries in the config
+      -- without our type checking complaining
+      externals: {string:any}
+   end
+
    capabilities:{string:any}
    name: string
    version: string
@@ -49,7 +68,7 @@ local capabilities = {
    }
 }
 
-function ServerState:_validate_config(c:TealProjectConfig)
+function ServerState:_validate_config(c:ServerState.TealProjectConfig)
    asserts.that(type(c) == "table", "Expected table, got {}", type(c))
 
    local function sort_in_place<Value>(t: {Value}, fn?: function(Value, Value): boolean): {Value}
@@ -201,16 +220,16 @@ function ServerState:_validate_config(c:TealProjectConfig)
    end
 end
 
-function ServerState:_load_config(root_dir:Path):TealProjectConfig
+function ServerState:_load_config(root_dir:Path):ServerState.TealProjectConfig
    local config_path = root_dir:join("tlconfig.lua")
    if config_path:exists() == false then
-      return {} as TealProjectConfig
+      return {} as ServerState.TealProjectConfig
    end
 
    local success, result = pcall(dofile, config_path.value)
 
    if success then
-      local config = result as TealProjectConfig
+      local config = result as ServerState.TealProjectConfig
       self:_validate_config(config)
       return config
    end
@@ -252,7 +271,7 @@ class.setup(ServerState, "ServerState", {
       teal_project_root_dir = function(self:ServerState):Path
          return self._teal_project_root_dir
       end,
-      config = function(self:ServerState):TealProjectConfig
+      config = function(self:ServerState):ServerState.TealProjectConfig
          return self._config
       end,
    },

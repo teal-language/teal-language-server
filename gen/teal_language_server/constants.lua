@@ -1,5 +1,0 @@
-
-local constants = {}
-
-
-return constants

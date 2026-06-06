@@ -1,21 +1,21 @@
 local _module_name = "main"
 
 -- <imports>
-local EnvUpdater <const> = require("teal_language_server.env_updater")
-local DocumentManager <const> = require("teal_language_server.document_manager")
+local EnvUpdater <const> = require("teal_language_server.analysis.env_updater")
+local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
 local ServerState <const> = require("teal_language_server.server_state")
-local LspEventsManager <const> = require("teal_language_server.lsp_events_manager")
+local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local lusc <const> = require("lusc")
 local uv <const> = require("luv")
-local TraceStream <const> = require("teal_language_server.trace_stream")
+local TraceStream <const> = require("teal_language_server.logging.trace_stream")
 local args_parser <const> = require("teal_language_server.args_parser")
-local MiscHandlers <const> = require("teal_language_server.misc_handlers")
-local StdinReader <const> = require("teal_language_server.stdin_reader")
-local LspReaderWriter <const> = require("teal_language_server.lsp_reader_writer")
-local lsp <const> = require("teal_language_server.lsp")
-local tracing <const> = require("teal_language_server.tracing")
-local util <const> = require("teal_language_server.util")
-local TraceEntry <const> = require("teal_language_server.trace_entry")
+local MiscHandlers <const> = require("teal_language_server.handlers.misc_handlers")
+local StdinReader <const> = require("teal_language_server.lsp.stdin_reader")
+local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
+local lsp <const> = require("teal_language_server.lsp.protocol")
+local tracing <const> = require("teal_language_server.logging.tracing")
+local util <const> = require("teal_language_server.util.util")
+local TraceEntry <const> = require("teal_language_server.logging.trace_entry")
 
 local record IDisposable
    dispose: function(IDisposable)
