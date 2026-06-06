@@ -8,6 +8,15 @@ local uv <const> = require("luv")
 
 local default_dir_permissions = tonumber('755', 8)
 
+local function string_escape_special_chars(value:string):string
+   -- gsub is not ideal in cases where we want to do a literal
+   -- replace, so to do this just escape all special characters with '%'
+   value = value:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
+   -- Note that we don't put this all in the return statement to avoid
+   -- forwarding the multiple return values causing subtle errors
+   return value
+end
+
 local record Path
    record WriteTextOpts
       overwrite: boolean
@@ -34,7 +43,7 @@ function Path:__init(value:string)
 end
 
 function Path:is_valid():boolean
-   local result = self._value:find("[" .. util.string_escape_special_chars("<>\"|?*") .. "]")
+   local result = self._value:find("[" .. string_escape_special_chars("<>\"|?*") .. "]")
    return result == nil
 end
 

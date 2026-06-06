@@ -8,6 +8,15 @@ local uv = require("luv")
 
 local default_dir_permissions = tonumber('755', 8)
 
+local function string_escape_special_chars(value)
+
+
+   value = value:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
+
+
+   return value
+end
+
 local Path = { WriteTextOpts = {}, CreateDirectoryArgs = {} }
 
 
@@ -34,7 +43,7 @@ function Path:__init(value)
 end
 
 function Path:is_valid()
-   local result = self._value:find("[" .. util.string_escape_special_chars("<>\"|?*") .. "]")
+   local result = self._value:find("[" .. string_escape_special_chars("<>\"|?*") .. "]")
    return result == nil
 end
 

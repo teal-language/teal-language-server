@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "util"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local debug = _tl_compat and _tl_compat.debug or debug; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "util"
 
 local uv = require("luv")
 local tracing = require("teal_language_server.logging.tracing")
@@ -34,64 +34,8 @@ local function _on_error(error_obj)
    return debug.traceback(error_obj, 2)
 end
 
-function util.string_escape_special_chars(value)
-
-
-   value = value:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
-
-
-   return value
-end
-
 function util.string_starts_with(str, prefix)
    return str:sub(1, #prefix) == prefix
-end
-
-function util.string_split(str, delimiter)
-
-
-
-   assert(#str > 0, "Unclear how to split an empty string")
-
-   assert(delimiter ~= nil, "missing delimiter")
-   assert(type(delimiter) == "string")
-   assert(#delimiter > 0)
-
-   local num_delimiter_chars = #delimiter
-
-   delimiter = util.string_escape_special_chars(delimiter)
-
-   local start_index = 1
-   local result = {}
-
-   while true do
-      local delimiter_index, _ = str:find(delimiter, start_index)
-
-      if delimiter_index == nil then
-         table.insert(result, str:sub(start_index))
-         break
-      end
-
-      table.insert(result, str:sub(start_index, delimiter_index - 1))
-
-      start_index = delimiter_index + num_delimiter_chars
-   end
-
-   return result
-end
-
-function util.string_join(delimiter, items)
-   assert(type(delimiter) == "string")
-   assert(items ~= nil)
-
-   local result = ''
-   for _, item in ipairs(items) do
-      if #result ~= 0 then
-         result = result .. delimiter
-      end
-      result = result .. tostring(item)
-   end
-   return result
 end
 
 function util.get_platform()
