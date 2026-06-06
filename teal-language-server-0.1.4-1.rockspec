@@ -36,24 +36,41 @@ test = {
 build = {
    type = "builtin",
    modules = {
+      -- tree-sitter-teal (removes need for tree-sitter-cli and a build dep)
       ["teal"] = {"tree-sitter-teal/src/parser.c", "tree-sitter-teal/src/scanner.c", "tree-sitter-teal/src/lua_stub.c", incdirs = {"tree-sitter-teal/src"},},
+
+      -- core
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
       ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
       ["teal_language_server.server_state"] = "gen/teal_language_server/server_state.lua",
+
+      -- teal analysis
       ["teal_language_server.analysis.document"] = "gen/teal_language_server/analysis/document.lua",
       ["teal_language_server.analysis.document_manager"] = "gen/teal_language_server/analysis/document_manager.lua",
       ["teal_language_server.analysis.env_updater"] = "gen/teal_language_server/analysis/env_updater.lua",
       ["teal_language_server.analysis.lua_env"] = "gen/teal_language_server/analysis/lua_env.lua",
+
+      -- handler
+      ["teal_language_server.handlers.definitions"] = "gen/teal_language_server/handlers/definitions.lua",
+      ["teal_language_server.handlers.handler_helper"] = "gen/teal_language_server/handlers/handler_helper.lua",
+      ["teal_language_server.handlers.document_sync"] = "gen/teal_language_server/handlers/document_sync.lua",
+      ["teal_language_server.handlers.language_features"] = "gen/teal_language_server/handlers/language_features.lua",
       ["teal_language_server.handlers.misc_handlers"] = "gen/teal_language_server/handlers/misc_handlers.lua",
+
+      -- logging
       ["teal_language_server.logging.trace_entry"] = "gen/teal_language_server/logging/trace_entry.lua",
       ["teal_language_server.logging.trace_stream"] = "gen/teal_language_server/logging/trace_stream.lua",
       ["teal_language_server.logging.tracing"] = "gen/teal_language_server/logging/tracing.lua",
       ["teal_language_server.logging.tracing_util"] = "gen/teal_language_server/logging/tracing_util.lua",
+
+      -- lsp protocol
       ["teal_language_server.lsp.events_manager"] = "gen/teal_language_server/lsp/events_manager.lua",
       ["teal_language_server.lsp.formatter"] = "gen/teal_language_server/lsp/formatter.lua",
       ["teal_language_server.lsp.protocol"] = "gen/teal_language_server/lsp/protocol.lua",
       ["teal_language_server.lsp.reader_writer"] = "gen/teal_language_server/lsp/reader_writer.lua",
       ["teal_language_server.lsp.stdin_reader"] = "gen/teal_language_server/lsp/stdin_reader.lua",
+
+      -- util
       ["teal_language_server.util.asserts"] = "gen/teal_language_server/util/asserts.lua",
       ["teal_language_server.util.class"] = "gen/teal_language_server/util/class.lua",
       ["teal_language_server.util.path"] = "gen/teal_language_server/util/path.lua",
