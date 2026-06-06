@@ -1,21 +1,21 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local table = _tl_compat and _tl_compat.table or table; local _module_name = "main"
 
 
-local EnvUpdater = require("teal_language_server.env_updater")
-local DocumentManager = require("teal_language_server.document_manager")
+local EnvUpdater = require("teal_language_server.analysis.env_updater")
+local DocumentManager = require("teal_language_server.analysis.document_manager")
 local ServerState = require("teal_language_server.server_state")
-local LspEventsManager = require("teal_language_server.lsp_events_manager")
+local LspEventsManager = require("teal_language_server.lsp.events_manager")
 local lusc = require("lusc")
 local uv = require("luv")
-local TraceStream = require("teal_language_server.trace_stream")
+local TraceStream = require("teal_language_server.logging.trace_stream")
 local args_parser = require("teal_language_server.args_parser")
-local MiscHandlers = require("teal_language_server.misc_handlers")
-local StdinReader = require("teal_language_server.stdin_reader")
-local LspReaderWriter = require("teal_language_server.lsp_reader_writer")
-local lsp = require("teal_language_server.lsp")
-local tracing = require("teal_language_server.tracing")
-local util = require("teal_language_server.util")
-local TraceEntry = require("teal_language_server.trace_entry")
+local MiscHandlers = require("teal_language_server.handlers.misc_handlers")
+local StdinReader = require("teal_language_server.lsp.stdin_reader")
+local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
+local lsp = require("teal_language_server.lsp.protocol")
+local tracing = require("teal_language_server.logging.tracing")
+local util = require("teal_language_server.util.util")
+local TraceEntry = require("teal_language_server.logging.trace_entry")
 
 
 

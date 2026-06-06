@@ -26,7 +26,7 @@ if package.config:sub(1, 1) == "\\" then
 end
 
 local tested = require("tested")
-local Document = require("teal_language_server.document")
+local Document = require("teal_language_server.analysis.document")
 local ServerState = require("teal_language_server.server_state")
 
 local function doc(content)

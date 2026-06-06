@@ -1,16 +1,35 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local _module_name = "server_state"
 
 
-local asserts = require("teal_language_server.asserts")
-local lsp = require("teal_language_server.lsp")
-local Path = require("teal_language_server.path")
+local asserts = require("teal_language_server.util.asserts")
+local lsp = require("teal_language_server.lsp.protocol")
+local Path = require("teal_language_server.util.path")
 local lfs = require("lfs")
-local TealProjectConfig = require("teal_language_server.teal_project_config")
 local tl = require("tl")
-local tracing = require("teal_language_server.tracing")
-local class = require("teal_language_server.class")
+local tracing = require("teal_language_server.logging.tracing")
+local class = require("teal_language_server.util.class")
 
-local ServerState = {}
+local ServerState = { TealProjectConfig = {} }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
