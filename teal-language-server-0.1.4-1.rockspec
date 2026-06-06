@@ -17,7 +17,6 @@ description = {
 
 dependencies = {
    "luafilesystem",
-   "tl == 0.24.8",
    "lua-cjson",
    "argparse",
    "inspect",
@@ -38,6 +37,9 @@ build = {
    modules = {
       -- tree-sitter-teal (removes need for tree-sitter-cli and a build dep)
       ["teal"] = {"tree-sitter-teal/src/parser.c", "tree-sitter-teal/src/scanner.c", "tree-sitter-teal/src/lua_stub.c", incdirs = {"tree-sitter-teal/src"},},
+
+      -- vendored teal compiler (patched: see src/teal_language_server/tl.tl)
+      ["teal_language_server.tl"] = "gen/teal_language_server/tl.lua",
 
       -- core
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",

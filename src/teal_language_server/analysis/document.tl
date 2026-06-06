@@ -13,7 +13,7 @@ local ltreesitter <const> = require("ltreesitter")
 local teal_language = ltreesitter.require("teal", "teal")
 local teal_parser = teal_language:parser()
 
-local tl <const> = require("tl")
+local tl <const> = require("teal_language_server.tl")
 
 local record Cache
    tokens: {tl.Token}
@@ -33,6 +33,11 @@ local record Document
       parent_source: string
       preceded_by: string
       self_type: string
+      -- the (1-indexed) position to look this request's type up in by_pos:
+      -- for completion the preceding expression's result, for signature help the
+      -- called object, for hover the identifier under the cursor
+      bypos_y: integer
+      bypos_x: integer
       metamethod __tostring: function(NodeInfo): string
    end
 
@@ -63,6 +68,14 @@ local record ArgListNode is tl.Node
     end
 
     args: {ArgInfo}
+end
+
+-- tl.Node is exposed as an opaque interface, but its concrete AST nodes are
+-- arrays of children carrying source positions. This view lets us walk them.
+local interface PositionedNode
+   is {PositionedNode}
+   y: integer
+   x: integer
 end
 
 function Document:__init(uri: Uri, content: string, version: integer, lsp_reader_writer: LspReaderWriter, server_state: ServerState)
@@ -148,9 +161,9 @@ function Document:get_type_report(): tl.TypeReport
 end
 
 local function _get_node_at(ast: tl.Node, y: integer, x: integer): tl.Node
-   for _, node in ipairs(ast) do
+   for _, node in ipairs(ast as PositionedNode) do
       if node.y == y and node.x == x then
-         return node
+         return node as tl.Node
       end
    end
 end
@@ -308,6 +321,22 @@ function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    end
 end
 
+-- "quick get": resolve the type of an expression directly from its source
+-- position via the type report's by_pos map. y/x are 1-indexed (tl convention).
+-- Works for call results now that tl records them at the funcall "(" position.
+function Document:type_information_for_position(y: integer, x: integer): tl.TypeInfo
+   local tr <const> = self:get_type_report()
+   local file = tr.by_pos[self._uri.path]
+   if file == nil or file[y] == nil then
+      return nil
+   end
+   local type_id = file[y][x]
+   if type_id == nil then
+      return nil
+   end
+   return self:resolve_type_ref(type_id)
+end
+
 function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
 
@@ -448,6 +477,36 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
    return nil
 end
 
+-- Map a tree-sitter expression node to the (1-indexed) position where tl records
+-- its result type in by_pos:
+--   function_call      -> the "(" (arguments start); tl stores the call result there
+--   index/method_index -> the "."/":" operator child; the access result lives there
+--   anything else      -> the node's own start
+local function bypos_key_for(node: ltreesitter.Node): integer, integer
+   if node == nil then
+      return nil
+   end
+   local nt = node:type()
+   if nt == "function_call" then
+      local args = node:child_by_field_name("arguments")
+      if args == nil then
+         return nil
+      end
+      local sp = args:start_point()
+      return sp.row + 1, sp.column + 1
+   elseif nt == "index" or nt == "method_index" then
+      for child in node:children() do
+         local ct = child:type()
+         if ct == "." or ct == ":" then
+            local sp = child:start_point()
+            return sp.row + 1, sp.column + 1
+         end
+      end
+   end
+   local sp = node:start_point()
+   return sp.row + 1, sp.column + 1
+end
+
 function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
@@ -470,13 +529,19 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
          local prev = node:prev_sibling()
          if prev then
             out.preceded_by = prev:source()
+            -- record where the preceding expression's result type lives in by_pos
+            -- so completion can resolve it directly (calls, chains, dotted access)
+            out.bypos_y, out.bypos_x = bypos_key_for(prev)
          else
             parent_node = parent_node:prev_sibling()
             if parent_node:child_count() > 0 then
                -- no previous symbol, so get parent's previous sibling's last child
-               out.preceded_by = parent_node:child(parent_node:child_count()-1):source()
+               local last = parent_node:child(parent_node:child_count()-1)
+               out.preceded_by = last:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(last)
             else
                out.preceded_by = parent_node:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(parent_node)
             end
          end
 
@@ -487,16 +552,30 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
             local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
             if function_call then
                out.preceded_by = function_call:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(function_call)
             end
 
          elseif parent_node:type() == "ERROR" then
+            -- in an error state fields aren't reachable by name; take the last
+            -- expression-like child before the "(" as the called object
+            local cand: ltreesitter.Node
             for child in parent_node:children() do
-               if child:name() == "index" then
-                  out.preceded_by = child:source()
-                  break
+               local ct = child:type()
+               if ct == "index" or ct == "method_index" or ct == "function_call" or ct == "identifier" then
+                  cand = child
                end
             end
+            if cand then
+               out.preceded_by = cand:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(cand)
+            end
          end
+
+      -- for hover: a cursor sitting on an identifier resolves at its own position
+      elseif node:type() == "identifier" then
+         local sp = node:start_point()
+         out.bypos_y = sp.row + 1
+         out.bypos_x = sp.column + 1
       end
 
       if out.preceded_by == "self" or

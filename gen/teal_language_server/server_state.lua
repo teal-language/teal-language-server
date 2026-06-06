@@ -5,7 +5,7 @@ local asserts = require("teal_language_server.util.asserts")
 local lsp = require("teal_language_server.lsp.protocol")
 local Path = require("teal_language_server.util.path")
 local lfs = require("lfs")
-local tl = require("tl")
+local tl = require("teal_language_server.tl")
 local tracing = require("teal_language_server.logging.tracing")
 local class = require("teal_language_server.util.class")
 

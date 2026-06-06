@@ -3,7 +3,7 @@
 -- most of these are adapted from the typescript types the spec gives at
 -- https://microsoft.github.io/language-server-protocol/specifications/specification-current/
 
-local tl <const> = require("tl")
+local tl <const> = require("teal_language_server.tl")
 
 local record lsp
 

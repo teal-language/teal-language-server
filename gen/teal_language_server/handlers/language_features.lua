@@ -7,7 +7,7 @@ local LspEventsManager = require("teal_language_server.lsp.events_manager")
 local lsp = require("teal_language_server.lsp.protocol")
 local tracing = require("teal_language_server.logging.tracing")
 local class = require("teal_language_server.util.class")
-local tl = require("tl")
+local tl = require("teal_language_server.tl")
 local lsp_formatter = require("teal_language_server.lsp.formatter")
 
 local LanguageFeatureHandlers = {}
@@ -42,12 +42,21 @@ function LanguageFeatureHandlers:_on_completion(params, id)
    tracing.debug(_module_name, "Found node info: {@}", { node_info })
 
    local tks
+   local type_info
 
 
 
    if node_info.type == "." or node_info.type == ":" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.debug(_module_name, "Received request for completion at character: {@}", { tks })
+
+
+      if node_info.bypos_y then
+         type_info = doc:type_information_for_position(node_info.bypos_y, node_info.bypos_x)
+         tracing.debug(_module_name, "Quick-get for preceding expr at {}:{} -> {@}", { node_info.bypos_y, node_info.bypos_x, type_info })
+      end
+      if type_info == nil then
+         tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
+         tracing.debug(_module_name, "Received request for completion at character: {@}", { tks })
+      end
 
 
    elseif node_info.type == "identifier" then
@@ -77,7 +86,9 @@ function LanguageFeatureHandlers:_on_completion(params, id)
    end
 
    local items = {}
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   if type_info == nil then
+      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   end
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
@@ -176,16 +187,25 @@ function LanguageFeatureHandlers:_on_signature_help(params, id)
    tracing.debug(_module_name, "Got nodeinfo: {}", { node_info })
 
    local tks
+   local type_info
 
    if node_info.type == "(" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.debug(_module_name, "Received request for signature help at character: {}", { tks })
+
+      if node_info.bypos_y then
+         type_info = doc:type_information_for_position(node_info.bypos_y, node_info.bypos_x)
+      end
+      if type_info == nil then
+         tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
+         tracing.debug(_module_name, "Received request for signature help at character: {}", { tks })
+      end
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   if type_info == nil then
+      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   end
 
    if type_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -241,7 +261,13 @@ function LanguageFeatureHandlers:_on_hover(params, id)
    end
 
    local tks = {}
+   local quick_type_info
    if node_info.type == "identifier" then
+
+
+      if node_info.bypos_y then
+         quick_type_info = doc:type_information_for_position(node_info.bypos_y, node_info.bypos_x)
+      end
 
       if handler_helper.indexable_parent_types[node_info.parent_type] then
          tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
@@ -260,7 +286,7 @@ function LanguageFeatureHandlers:_on_hover(params, id)
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = quick_type_info or doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       tracing.warning(_module_name, "Also failed to find type info based on token", {})

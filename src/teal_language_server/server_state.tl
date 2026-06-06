@@ -5,7 +5,7 @@ local asserts <const> = require("teal_language_server.util.asserts")
 local lsp <const> = require("teal_language_server.lsp.protocol")
 local Path <const> = require("teal_language_server.util.path")
 local lfs <const> = require("lfs")
-local tl <const> = require("tl")
+local tl <const> = require("teal_language_server.tl")
 local tracing <const> = require("teal_language_server.logging.tracing")
 local class <const> = require("teal_language_server.util.class")
 

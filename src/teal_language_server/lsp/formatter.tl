@@ -1,4 +1,4 @@
-local tl <const> = require("tl")
+local tl <const> = require("teal_language_server.tl")
 
 local Document <const> = require("teal_language_server.analysis.document")
 

@@ -3,7 +3,7 @@
 
 
 
-local tl = require("tl")
+local tl = require("teal_language_server.tl")
 
 local lsp = { Message = { ResponseError = {} }, Position = {}, Range = {}, Location = {}, Diagnostic = {}, Method = {}, TextDocument = {}, TextDocumentContentChangeEvent = {}, CompletionContext = {} }
 

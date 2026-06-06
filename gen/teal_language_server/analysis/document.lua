@@ -13,7 +13,7 @@ local ltreesitter = require("ltreesitter")
 local teal_language = ltreesitter.require("teal", "teal")
 local teal_parser = teal_language:parser()
 
-local tl = require("tl")
+local tl = require("teal_language_server.tl")
 
 
 
@@ -26,6 +26,19 @@ local tl = require("tl")
 
 
 local Document = { NodeInfo = {} }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -308,6 +321,22 @@ function Document:resolve_type_ref(type_number)
    end
 end
 
+
+
+
+function Document:type_information_for_position(y, x)
+   local tr = self:get_type_report()
+   local file = tr.by_pos[self._uri.path]
+   if file == nil or file[y] == nil then
+      return nil
+   end
+   local type_id = file[y][x]
+   if type_id == nil then
+      return nil
+   end
+   return self:resolve_type_ref(type_id)
+end
+
 function Document:type_information_for_tokens(tokens, y, x)
    local tr = self:get_type_report()
 
@@ -448,6 +477,36 @@ function Document:symbol_declaration_position(name, y, x)
    return nil
 end
 
+
+
+
+
+
+local function bypos_key_for(node)
+   if node == nil then
+      return nil
+   end
+   local nt = node:type()
+   if nt == "function_call" then
+      local args = node:child_by_field_name("arguments")
+      if args == nil then
+         return nil
+      end
+      local sp = args:start_point()
+      return sp.row + 1, sp.column + 1
+   elseif nt == "index" or nt == "method_index" then
+      for child in node:children() do
+         local ct = child:type()
+         if ct == "." or ct == ":" then
+            local sp = child:start_point()
+            return sp.row + 1, sp.column + 1
+         end
+      end
+   end
+   local sp = node:start_point()
+   return sp.row + 1, sp.column + 1
+end
+
 function Document:_tree_sitter_token(y, x)
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
@@ -470,13 +529,19 @@ function Document:_tree_sitter_token(y, x)
          local prev = node:prev_sibling()
          if prev then
             out.preceded_by = prev:source()
+
+
+            out.bypos_y, out.bypos_x = bypos_key_for(prev)
          else
             parent_node = parent_node:prev_sibling()
             if parent_node:child_count() > 0 then
 
-               out.preceded_by = parent_node:child(parent_node:child_count() - 1):source()
+               local last = parent_node:child(parent_node:child_count() - 1)
+               out.preceded_by = last:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(last)
             else
                out.preceded_by = parent_node:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(parent_node)
             end
          end
 
@@ -487,16 +552,30 @@ function Document:_tree_sitter_token(y, x)
             local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
             if function_call then
                out.preceded_by = function_call:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(function_call)
             end
 
          elseif parent_node:type() == "ERROR" then
+
+
+            local cand
             for child in parent_node:children() do
-               if child:name() == "index" then
-                  out.preceded_by = child:source()
-                  break
+               local ct = child:type()
+               if ct == "index" or ct == "method_index" or ct == "function_call" or ct == "identifier" then
+                  cand = child
                end
             end
+            if cand then
+               out.preceded_by = cand:source()
+               out.bypos_y, out.bypos_x = bypos_key_for(cand)
+            end
          end
+
+
+      elseif node:type() == "identifier" then
+         local sp = node:start_point()
+         out.bypos_y = sp.row + 1
+         out.bypos_x = sp.column + 1
       end
 
       if out.preceded_by == "self" or

@@ -243,4 +243,70 @@ tested.test("dot completion on enum-keyed table returns enum values", function()
     end
 end)
 
+tested.test("colon completion after a chained method call returns the return type's methods", function()
+    local uri = "file:///tmp/tls_complete_8.tl"
+    -- Builder-pattern record whose methods return the record itself.
+    -- Valid document so tl.check populates by_pos for the chain.
+    local doc = table.concat({
+        "local record Builder",
+        "   foo: function(self: Builder): Builder",
+        "   bar: function(self: Builder): Builder",
+        "end",
+        "local b: Builder",
+        "local _ = b:foo():bar()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 5 "local _ = b:foo():bar()": the second ':' (before bar) is at col 17;
+    -- cursor at col 18 -> server uses col 17. It is preceded by the call b:foo(),
+    -- whose result type (Builder) is resolved via by_pos.
+    local response = client:get_completions_triggered(uri, 5, 18, ":")
+
+    tested.assert({
+        given = "chained colon completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "foo", "bar" }) do
+        tested.assert({
+            given = "chained colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("colon completion on a narrowed variable returns the narrowed type's methods", function()
+    local uri = "file:///tmp/tls_complete_9.tl"
+    -- 'z' is number|string at declaration but narrowed to string inside the branch.
+    -- by_pos reflects the narrowing; the old declared-type walk would not.
+    local doc = table.concat({
+        "local function f(z: number | string)",
+        "   if z is string then",
+        "      local _ = z:sub(1, 1)",
+        "   end",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 2 "      local _ = z:sub(1, 1)": ':' at col 17; cursor at col 18 -> col 17
+    local response = client:get_completions_triggered(uri, 2, 18, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "sub", "rep", "len" }) do
+        tested.assert({
+            given = "narrowed colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
 return tested

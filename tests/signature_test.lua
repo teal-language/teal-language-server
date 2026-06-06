@@ -47,4 +47,36 @@ tested.test("signatureHelp for 'math.sqrt(' returns a signature with parameter t
     })
 end)
 
+tested.test("signatureHelp on a chained method call resolves the prior call's return type", function()
+    local uri = "file:///tmp/tls_signature_2.tl"
+    -- ("hello"):rep(2) returns string, so the second :rep( must resolve through
+    -- the first call's return type.
+    client:open_document(uri, 'local _ = ("hello"):rep(2):rep(2)')
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- the second '(' is at col 30; cursor at col 31 -> server subtracts 1 -> col 30
+    local response = client:get_signature_help(uri, 0, 31)
+
+    tested.assert({
+        given = "chained signatureHelp response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local sigs = response.result and response.result.signatures or {}
+    tested.assert({
+        given = "chained signatureHelp signatures",
+        should = "be non-empty",
+        expected = true,
+        actual = #sigs > 0,
+    })
+    tested.assert({
+        given = "chained signature label",
+        should = "contain 'string' (rep's signature)",
+        expected = true,
+        actual = sigs[1] ~= nil and sigs[1].label:find("string") ~= nil,
+    })
+end)
+
 return tested
