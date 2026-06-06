@@ -85,6 +85,7 @@ local record lsp
          "textDocument/didClose"
          "textDocument/hover"
          "textDocument/definition"
+         "textDocument/typeDefinition"
          "textDocument/publishDiagnostics"
          "textDocument/completion"
          "textDocument/signatureHelp"

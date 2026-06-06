@@ -402,6 +402,52 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
    return nil
 end
 
+-- Finds where a symbol named `name` was *declared* (as opposed to where its type
+-- is declared). Mirrors the backward scope walk in tl.symbols_in_scope, but
+-- returns the matched symbol's declaration position instead of its type id.
+-- `y`/`x` are 0-indexed (LSP); the returned y/x are 1-indexed (tl convention).
+function Document:symbol_declaration_position(name: string, y: integer, x: integer): integer, integer
+   local tr <const> = self:get_type_report()
+   local symbols = tr.symbols_by_file[self._uri.path]
+   if not symbols then
+      return nil
+   end
+
+   -- Symbols are stored in source order, so the last one whose position is at or
+   -- before the cursor is our starting point. (tl uses a binary search here, but
+   -- that helper is private to tl, so we scan linearly.)
+   local target_y <const> = y + 1
+   local target_x <const> = x + 1
+   local n = 0
+   for i = 1, #symbols do
+      local s = symbols[i]
+      if s[1] < target_y or (s[1] == target_y and s[2] <= target_x) then
+         n = i
+      else
+         break
+      end
+   end
+
+   -- Walk backwards, honoring the @{ / @} scope markers, and return the position
+   -- of the nearest in-scope declaration matching `name`.
+   while n >= 1 do
+      local s = symbols[n]
+      local symbol_name = s[3]
+      if symbol_name == "@{" then
+         n = n - 1
+      elseif symbol_name == "@}" then
+         n = s[4]
+      else
+         if symbol_name == name then
+            return s[1], s[2]
+         end
+         n = n - 1
+      end
+   end
+
+   return nil
+end
+
 function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()

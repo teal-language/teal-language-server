@@ -313,6 +313,14 @@ function LspClient:get_definition(uri, line, character)
     return self:wait_for_response(id)
 end
 
+function LspClient:get_type_definition(uri, line, character)
+    local id = self:request("textDocument/typeDefinition", {
+        textDocument = { uri = uri },
+        position = { line = line, character = character },
+    })
+    return self:wait_for_response(id)
+end
+
 function LspClient:change_document(uri, text, version)
     self:notify("textDocument/didChange", {
         textDocument = { uri = uri, version = version or 2 },

@@ -402,6 +402,52 @@ function Document:type_information_for_tokens(tokens, y, x)
    return nil
 end
 
+
+
+
+
+function Document:symbol_declaration_position(name, y, x)
+   local tr = self:get_type_report()
+   local symbols = tr.symbols_by_file[self._uri.path]
+   if not symbols then
+      return nil
+   end
+
+
+
+
+   local target_y = y + 1
+   local target_x = x + 1
+   local n = 0
+   for i = 1, #symbols do
+      local s = symbols[i]
+      if s[1] < target_y or (s[1] == target_y and s[2] <= target_x) then
+         n = i
+      else
+         break
+      end
+   end
+
+
+
+   while n >= 1 do
+      local s = symbols[n]
+      local symbol_name = s[3]
+      if symbol_name == "@{" then
+         n = n - 1
+      elseif symbol_name == "@}" then
+         n = s[4]
+      else
+         if symbol_name == name then
+            return s[1], s[2]
+         end
+         n = n - 1
+      end
+   end
+
+   return nil
+end
+
 function Document:_tree_sitter_token(y, x)
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
