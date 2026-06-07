@@ -13918,13 +13918,6 @@ self:expand_type(node, values, elements) })
                   end
                end
 
-
-
-
-               if self.collector then
-                  self.collector.store_type(node.e2.y, node.e2.x, t)
-               end
-
                return t
             end
 
@@ -14813,8 +14806,22 @@ self:expand_type(node, values, elements) })
 
 
 
+
             if store_t.typename == "tuple" and #store_t.tuple == 1 then
-               store_t = self:to_structural(store_t.tuple[1])
+               store_t = store_t.tuple[1]
+
+
+
+               if store_t.typename == "typevar" and store_t.constraint then
+                  store_t = store_t.constraint
+               elseif store_t.typename == "typearg" and store_t.constraint then
+                  store_t = store_t.constraint
+               end
+
+
+               if store_t.typename == "nominal" then
+                  self:resolve_nominal(store_t)
+               end
             end
             self.collector.store_type(w.y, w.x, store_t)
          end

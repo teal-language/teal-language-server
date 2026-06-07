@@ -495,9 +495,11 @@ local function bypos_key_for(node)
       local sp = args:start_point()
       return sp.row + 1, sp.column + 1
    elseif nt == "index" or nt == "method_index" then
+
+
       for child in node:children() do
          local ct = child:type()
-         if ct == "." or ct == ":" then
+         if ct == "." or ct == ":" or ct == "[" then
             local sp = child:start_point()
             return sp.row + 1, sp.column + 1
          end
@@ -572,8 +574,12 @@ function Document:_tree_sitter_token(y, x)
          end
 
 
+
+
       elseif node:type() == "identifier" then
-         local sp = node:start_point()
+         local prev = node:prev_sibling()
+         local key_node = (prev and (prev:type() == "." or prev:type() == ":")) and prev or node
+         local sp = key_node:start_point()
          out.bypos_y = sp.row + 1
          out.bypos_x = sp.column + 1
       end

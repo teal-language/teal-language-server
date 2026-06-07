@@ -495,9 +495,11 @@ local function bypos_key_for(node: ltreesitter.Node): integer, integer
       local sp = args:start_point()
       return sp.row + 1, sp.column + 1
    elseif nt == "index" or nt == "method_index" then
+      -- the access result is recorded at the operator: "." / ":" for field and
+      -- method access, "[" for bracket indexing
       for child in node:children() do
          local ct = child:type()
-         if ct == "." or ct == ":" then
+         if ct == "." or ct == ":" or ct == "[" then
             local sp = child:start_point()
             return sp.row + 1, sp.column + 1
          end
@@ -571,9 +573,13 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
             end
          end
 
-      -- for hover: a cursor sitting on an identifier resolves at its own position
+      -- for hover: a cursor sitting on an identifier resolves via by_pos. A field
+      -- access (preceded by "." / ":") has its result recorded at the operator,
+      -- so look there; a plain variable resolves at its own position.
       elseif node:type() == "identifier" then
-         local sp = node:start_point()
+         local prev = node:prev_sibling()
+         local key_node = (prev and (prev:type() == "." or prev:type() == ":")) and prev or node
+         local sp = key_node:start_point()
          out.bypos_y = sp.row + 1
          out.bypos_x = sp.column + 1
       end

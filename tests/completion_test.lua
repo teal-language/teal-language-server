@@ -309,4 +309,114 @@ tested.test("colon completion on a narrowed variable returns the narrowed type's
     end
 end)
 
+tested.test("dot completion on a function call result returns the return record's fields", function()
+    local uri = "file:///tmp/tls_complete_10.tl"
+    local doc = table.concat({
+        "local record Config",
+        "  name: string",
+        "  port: number",
+        "end",
+        "local function getConfig(): Config",
+        "  return nil",
+        "end",
+        "local _ = getConfig().name",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = getConfig().name": '.' at col 21; cursor at col 22 -> col 21
+    local response = client:get_completions_triggered(uri, 7, 22, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "name", "port" }) do
+        tested.assert({
+            given = "call-result dot completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("dot completion on a constrained type parameter returns the constraint's fields", function()
+    local uri = "file:///tmp/tls_complete_11.tl"
+    -- inside the generic body, first(items) has type "T is R" (a type argument);
+    -- its result should expose R's fields via the constraint.
+    local doc = table.concat({
+        "local record R",
+        "  val: number",
+        "end",
+        "local function first<T>(items: {T}): T",
+        "  return items[1]",
+        "end",
+        "local function use<T is R>(items: {T})",
+        "  local _ = first(items).val",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "  local _ = first(items).val": '.' at col 24; cursor at col 25 -> col 24
+    local response = client:get_completions_triggered(uri, 7, 25, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "constrained type-parameter dot completion items",
+        should = "include 'val'",
+        expected = true,
+        actual = has_label(items, "val"),
+    })
+end)
+
+tested.test("dot completion after bracket (map) indexing returns the value type's fields", function()
+    local uri = "file:///tmp/tls_complete_12.tl"
+    local doc = table.concat({
+        "local record Foo",
+        "  field: number",
+        "  other: string",
+        "end",
+        "local m: {string: Foo}",
+        'local _ = m["hello"].field',
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 5 'local _ = m["hello"].field': '.' at col 20; cursor at col 21 -> col 20
+    local response = client:get_completions_triggered(uri, 5, 21, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "field", "other" }) do
+        tested.assert({
+            given = "bracket-then-dot completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("colon completion after bracket (array) indexing returns the element's methods", function()
+    local uri = "file:///tmp/tls_complete_13.tl"
+    local doc = table.concat({
+        "local record Foo",
+        "  go: function(self: Foo): number",
+        "end",
+        "local a: {Foo}",
+        "local _ = a[1]:go()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 'local _ = a[1]:go()': ':' at col 14; cursor at col 15 -> col 14
+    local response = client:get_completions_triggered(uri, 4, 15, ":")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "bracket-then-colon completion items",
+        should = "include 'go'",
+        expected = true,
+        actual = has_label(items, "go"),
+    })
+end)
+
 return tested

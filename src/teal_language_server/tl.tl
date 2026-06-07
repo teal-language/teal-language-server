@@ -13918,13 +13918,6 @@ do
                   end
                end
 
-               -- also record the access result at the field identifier itself so
-               -- a cursor on the field (e.g. hover) resolves directly, not just
-               -- at the "." operator position
-               if self.collector then
-                  self.collector.store_type(node.e2.y, node.e2.x, t)
-               end
-
                return t
             end
 
@@ -14811,10 +14804,24 @@ do
             local store_t = t
             -- a single-value tuple (e.g. a function call's return) is otherwise
             -- skipped by store_type; record its underlying value so tooling can
-            -- resolve results positionally (and resolve nominals to structural
-            -- form so consumers reach record fields)
+            -- resolve results positionally. A result that isn't used further
+            -- during checking is never resolved, so its nominal would be recorded
+            -- without a ref -- resolve it here so the entry is linked like any other.
             if store_t is TupleType and #store_t.tuple == 1 then
-               store_t = self:to_structural(store_t.tuple[1])
+               store_t = store_t.tuple[1]
+               -- a constrained type variable / type argument (e.g. inside a
+               -- generic body) has no fields of its own; record its constraint
+               -- so tooling sees the members it's guaranteed to have
+               if store_t is TypeVarType and store_t.constraint then
+                  store_t = store_t.constraint
+               elseif store_t is TypeArgType and store_t.constraint then
+                  store_t = store_t.constraint
+               end
+               -- keep nominals as-is but ensure they're linked (resolve_nominal
+               -- sets .found + the reporter ref), matching every other entry
+               if store_t is NominalType then
+                  self:resolve_nominal(store_t)
+               end
             end
             self.collector.store_type(w.y, w.x, store_t)
          end

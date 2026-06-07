@@ -19,8 +19,10 @@ function args_parser.parse_args()
 
    parser:option("-V --verbose", "")
 
+
    parser:option("-L --log-mode", "Specify approach to logging.  By default it is none which means no logging.  by_date names the file according to date.  by_proj_path names file according to the teal project path"):
    choices({ "none", "by_date", "by_proj_path" })
+
 
    parser:flag("-C --coverage", "Enable luacov code coverage tracking (luacov must be installed; use 'luarocks test' or install it manually)"):hidden(true)
 
