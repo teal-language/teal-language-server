@@ -340,30 +340,6 @@ end
 function Document:type_information_for_tokens(tokens, y, x)
    local tr = self:get_type_report()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
    local type_info
 
    local scope_symbols = tl.symbols_in_scope(tr, y + 1, x + 1, self._uri.path)
@@ -486,27 +462,27 @@ local function bypos_key_for(node)
    if node == nil then
       return nil
    end
-   local nt = node:type()
-   if nt == "function_call" then
+   local node_type = node:type()
+   if node_type == "function_call" then
       local args = node:child_by_field_name("arguments")
       if args == nil then
          return nil
       end
-      local sp = args:start_point()
-      return sp.row + 1, sp.column + 1
-   elseif nt == "index" or nt == "method_index" then
+      local start_point = args:start_point()
+      return start_point.row + 1, start_point.column + 1
+   elseif node_type == "index" or node_type == "method_index" then
 
 
       for child in node:children() do
-         local ct = child:type()
-         if ct == "." or ct == ":" or ct == "[" then
+         local child_type = child:type()
+         if child_type == "." or child_type == ":" or child_type == "[" then
             local sp = child:start_point()
             return sp.row + 1, sp.column + 1
          end
       end
    end
-   local sp = node:start_point()
-   return sp.row + 1, sp.column + 1
+   local start_point = node:start_point()
+   return start_point.row + 1, start_point.column + 1
 end
 
 function Document:_tree_sitter_token(y, x)

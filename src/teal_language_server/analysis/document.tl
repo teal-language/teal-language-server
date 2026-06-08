@@ -321,7 +321,7 @@ function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    end
 end
 
--- "quick get": resolve the type of an expression directly from its source
+-- the old "quick get": resolve the type of an expression directly from its source
 -- position via the type report's by_pos map. y/x are 1-indexed (tl convention).
 -- Works for call results now that tl records them at the funcall "(" position.
 function Document:type_information_for_position(y: integer, x: integer): tl.TypeInfo
@@ -339,30 +339,6 @@ end
 
 function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
-
-   -- try the quick get first (works well for self and raw types)
-   -- also seems to be necessary when type changes in the middle
-   -- of scope (eg. when using assert(x is Foo))
-
-   -- (Commented out because this breaks things more often than it helps currently)
-   -- local quick_pos_info = tr.by_pos[self._uri.path]
-
-   -- if quick_pos_info ~= nil then
-   --    local quick_line_info = quick_pos_info[y+1]
-
-   --    if quick_line_info ~= nil then
-   --       local type_ref = quick_line_info[x+1]
-
-   --       if type_ref ~= nil then
-   --          local type_info = self:resolve_type_ref(type_ref)
-
-   --          if type_info ~= nil then
-   --             tracing.info(_module_name, "Found via quick match at {}, {}", {y, x})
-   --             return type_info
-   --          end
-   --       end
-   --    end
-   -- end
 
    local type_info: tl.TypeInfo
    -- try and find it in scope
@@ -486,27 +462,27 @@ local function bypos_key_for(node: ltreesitter.Node): integer, integer
    if node == nil then
       return nil
    end
-   local nt = node:type()
-   if nt == "function_call" then
+   local node_type = node:type()
+   if node_type == "function_call" then
       local args = node:child_by_field_name("arguments")
       if args == nil then
          return nil
       end
-      local sp = args:start_point()
-      return sp.row + 1, sp.column + 1
-   elseif nt == "index" or nt == "method_index" then
+      local start_point = args:start_point()
+      return start_point.row + 1, start_point.column + 1
+   elseif node_type == "index" or node_type == "method_index" then
       -- the access result is recorded at the operator: "." / ":" for field and
       -- method access, "[" for bracket indexing
       for child in node:children() do
-         local ct = child:type()
-         if ct == "." or ct == ":" or ct == "[" then
+         local child_type = child:type()
+         if child_type == "." or child_type == ":" or child_type == "[" then
             local sp = child:start_point()
             return sp.row + 1, sp.column + 1
          end
       end
    end
-   local sp = node:start_point()
-   return sp.row + 1, sp.column + 1
+   local start_point = node:start_point()
+   return start_point.row + 1, start_point.column + 1
 end
 
 function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
