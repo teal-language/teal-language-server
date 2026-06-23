@@ -292,7 +292,7 @@ end
 function Path:delete_file()
    asserts.that(self:is_file(), "Called delete_file for non-file at path '{}'", self._value)
    assert(uv.fs_unlink(self._value))
-   logger:trace("Deleted file at path '%s'")
+   logger:trace("Deleted file at path '%s'", self._value)
 end
 
 function Path:create_directory(args)

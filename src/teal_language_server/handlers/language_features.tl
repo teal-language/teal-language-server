@@ -86,7 +86,7 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
    end
 
    if type_info then
-      logger:debug("Successfully found type_info %s")
+      logger:debug("Successfully found type_info")
       local tr = doc:get_type_report()
 
       if type_info.ref then

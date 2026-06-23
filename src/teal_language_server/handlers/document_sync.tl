@@ -40,7 +40,7 @@ function DocumentSyncHandlers:_on_did_save(params: lsp.Method.Params): nil
    local doc <const> = self._document_manager:get(Uri.parse(td.uri))
 
    if not doc then
-      logger:warning("Unable to find document: %s")
+      logger:warning("Unable to find document: %s", td.uri)
       return
    end
 

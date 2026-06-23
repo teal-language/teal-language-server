@@ -183,7 +183,7 @@ function Document:clear_cache()
 end
 
 function Document:update_text(text: string, version: integer)
-   logger:debug("document update_text called (version %s)")
+   logger:debug("document update_text called (version %s)", version)
 
    if not version or not self._version or self._version < version then
       self:clear_cache()
@@ -361,7 +361,7 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
       type_info = self:resolve_type_ref(type_id)
 
       if type_info == nil then
-         logger:warning("Failed to resolve type ref for id {}", {})
+         logger:warning("Failed to resolve type ref for id")
       end
    end
 

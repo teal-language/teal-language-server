@@ -144,10 +144,10 @@ function DefinitionHandlers:_on_type_definition(params: lsp.Method.Params, id: i
       return
    end
 
-   logger:trace("Received request for on_type_definition at position: %s")
+   logger:trace("Received request for on_type_definition at position: %s", pos)
 
    if node_info.type ~= "identifier" then
-      logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s")
+      logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
@@ -155,7 +155,7 @@ function DefinitionHandlers:_on_type_definition(params: lsp.Method.Params, id: i
    local tks = tokens_for_node(node_info, "self")
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
-   logger:trace("[on_type_definition] Found type type_info: %s")
+   logger:trace("[on_type_definition] Found type type_info: %s", type_info)
 
    if not type_info or not self:_send_location(id, doc, type_info.file, type_info.y, type_info.x) then
       self._lsp_reader_writer:send_rpc(id, nil)

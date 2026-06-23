@@ -28,7 +28,7 @@ function lua_env.find_lua_bin(workspace_root)
       end
    end
 
-   logger:debug("No local lua binary found, falling back to system %s")
+   logger:debug("No local lua binary found, falling back to system %s", bin_name)
    return bin_name
 end
 
@@ -50,7 +50,7 @@ function lua_env.discover_paths(lua_bin)
       [[ -e 'pcall(require,"luarocks.loader"); io.write(package.path.."\n"..package.cpath)']]
    end
 
-   logger:debug("Running lua path discovery: %s")
+   logger:debug("Running lua path discovery: %s", cmd)
 
    local handle = io.popen(cmd)
    if not handle then
