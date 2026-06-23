@@ -1,37 +1,37 @@
-local _module_name = "language_feature_handlers"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local table = _tl_compat and _tl_compat.table or table; local _module_name = "language_feature_handlers"
 
-local handler_helper <const> = require("teal_language_server.handlers.handler_helper")
-local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
-local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
-local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
-local lsp <const> = require("teal_language_server.lsp.protocol")
-local logging <const> = require("teal_language_server.logging")
-local class <const> = require("teal_language_server.util.class")
-local tl <const> = require("tl")
-local lsp_formatter <const> = require("teal_language_server.lsp.formatter")
+local handler_helper = require("teal_language_server.handlers.handler_helper")
+local DocumentManager = require("teal_language_server.analysis.document_manager")
+local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
+local LspEventsManager = require("teal_language_server.lsp.events_manager")
+local lsp = require("teal_language_server.lsp.protocol")
+local logging = require("teal_language_server.logging")
+local class = require("teal_language_server.util.class")
+local tl = require("tl")
+local lsp_formatter = require("teal_language_server.lsp.formatter")
 
 local logger = logging.get_logger(_module_name)
 
-local record LanguageFeatureHandlers
-   _document_manager: DocumentManager
-   _lsp_reader_writer: LspReaderWriter
-   _lsp_events_manager: LspEventsManager
+local LanguageFeatureHandlers = {}
 
-   metamethod __call: function(self: LanguageFeatureHandlers, lsp_events_manager: LspEventsManager, lsp_reader_writer: LspReaderWriter, document_manager: DocumentManager): LanguageFeatureHandlers
-end
 
-function LanguageFeatureHandlers:__init(lsp_events_manager: LspEventsManager, lsp_reader_writer: LspReaderWriter, document_manager: DocumentManager)
+
+
+
+
+
+function LanguageFeatureHandlers:__init(lsp_events_manager, lsp_reader_writer, document_manager)
    self._lsp_events_manager = lsp_events_manager
    self._lsp_reader_writer = lsp_reader_writer
    self._document_manager = document_manager
 end
 
-function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: integer): nil
-   local pos = params.position as lsp.Position
+function LanguageFeatureHandlers:_on_completion(params, id)
+   local pos = params.position
    logger:info("Received request for completion at position: %s", pos)
 
-   -- Subtract one since neovim passes the character where the cursor is, which is after the '.' / ':'
-   -- and this position doesn't exist in the doc so can lead to tree sitter query fails
+
+
    pos.character = pos.character - 1
 
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
@@ -43,30 +43,30 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
 
    logger:debug("Found node info: %s", node_info)
 
-   local tks: {string}
+   local tks
 
-   -- literally at the . or : and are trying to autocomplete
-   -- preceded_by should have everything we need in it.
+
+
    if node_info.type == "." or node_info.type == ":" then
       tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
       logger:debug("Received request for completion at character: %s", tks)
 
-   -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
+
    elseif node_info.type == "identifier" then
-      -- the types that we would need to index into to get type info from
+
       if handler_helper.indexable_parent_types[node_info.parent_type] then
          tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type)
       else
          tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
       end
 
-      -- takes it back to the just after the first dot, then does completion
-      -- if there's only one symbol, will return an empty list and type_information_for_tokens will just
-      -- show what's in scope
+
+
+
       tks[#tks] = nil
 
-      -- trying to define something new, probably don't want the in-scope thing to popup
-      -- we could probably help complete simple types
+
+
       if node_info.parent_type == "var" or
          node_info.parent_type == "simple_type" or
          node_info.parent_type == "table_type" then
@@ -78,7 +78,7 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
       return
    end
 
-   local items:{any} = { }
+   local items = {}
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
@@ -93,41 +93,41 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
          type_info = doc:resolve_type_ref(type_info.ref)
       end
 
-      -- string
+
       local was_string_type = type_info.t == tl.typecodes.STRING
       if was_string_type then
          type_info = tr.types[tr.globals["string"]]
       end
 
-      -- this seemed to be the best way to compare the first arg with itself when comparing ":",
-      -- sometimes the types come in as nominal and don't resolve all the way back, so the name is
-      -- what seems to work the most reliably
+
+
+
       local original_str = type_info.str
 
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
-            local was_added:boolean
-            -- self based access should only show functions
+            local was_added
+
             if node_info.type == ":" then
                if type_info.t == tl.typecodes.FUNCTION then
-                  -- local args = doc:get_function_args_string(type_info)
+
                   if type_info.args and #type_info.args >= 1 then
                      local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF
-                        or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str)
-                        or (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
+                     if first_arg_type.t == tl.typecodes.SELF or
+                        ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) or
+                        (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
                         logger:debug("Adding self method %s", key)
-                        table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                        table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
                         was_added = true
                      else
                         logger:debug("Ignoring method %s with arg type 0x%08x, type info str %s, first arg str %s",
-                           key, first_arg_type.t, original_str, first_arg_type.str)
+                        key, first_arg_type.t, original_str, first_arg_type.str)
                      end
                   end
                end
             else
-               table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+               table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
                was_added = true
             end
 
@@ -136,13 +136,13 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
             end
          end
 
-      -- at a table, we might be able to help resolve the keys!
+
       elseif type_info.keys then
          type_info = doc:resolve_type_ref(type_info.keys)
 
          if type_info.enums then
             for _, enum_value in ipairs(type_info.enums) do
-               table.insert(items, {label = enum_value, kind = lsp.typecodes_to_kind[type_info.t]})
+               table.insert(items, { label = enum_value, kind = lsp.typecodes_to_kind[type_info.t] })
             end
          end
       else
@@ -151,21 +151,21 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
    end
 
    if #items == 0 then
-      table.insert(items, {label = "(none)"})
+      table.insert(items, { label = "(none)" })
    end
 
    logger:debug("Sending %d back to client", #items)
 
    self._lsp_reader_writer:send_rpc(id, {
       isIncomplete = false,
-      items = items
+      items = items,
    })
 end
 
-function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, id: integer): nil
-   local pos = params.position as lsp.Position
+function LanguageFeatureHandlers:_on_signature_help(params, id)
+   local pos = params.position
 
-   -- Subtract one to get function identifier instead of bracket
+
    pos.character = pos.character - 1
 
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
@@ -174,10 +174,10 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
       return
    end
 
-   local output: lsp_formatter.SignatureHelp = {}
+   local output = {}
    logger:debug("Got nodeinfo: %s", node_info)
 
-   local tks: {string}
+   local tks
 
    if node_info.type == "(" then
       tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
@@ -201,19 +201,19 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
          local args = doc:get_function_args_string(type_info)
          if args ~= nil then
             local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
-            table.insert(output.signatures, {label = func_str})
+            table.insert(output.signatures, { label = func_str })
 
          else
-            table.insert(output.signatures, {label = type_info.str})
+            table.insert(output.signatures, { label = type_info.str })
          end
       end
    else
       local args = doc:get_function_args_string(type_info)
       if args ~= nil then
          local func_str = lsp_formatter.create_function_string(type_info.str, args, node_info.preceded_by)
-         table.insert(output.signatures, {label = func_str})
+         table.insert(output.signatures, { label = func_str })
       else
-         table.insert(output.signatures, {label = type_info.str})
+         table.insert(output.signatures, { label = type_info.str })
       end
    end
 
@@ -227,8 +227,8 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
-function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: integer): nil
-   local pos <const> = params.position as lsp.Position
+function LanguageFeatureHandlers:_on_hover(params, id)
+   local pos = params.position
    logger:trace("Received request for hover at position: %s", pos)
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
    if node_info == nil then
@@ -242,9 +242,9 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
       return
    end
 
-   local tks: {string} = {}
+   local tks = {}
    if node_info.type == "identifier" then
-      -- parent types that show up with multiparts
+
       if handler_helper.indexable_parent_types[node_info.parent_type] then
          tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
       else
@@ -278,7 +278,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
 
    logger:debug("Successfully found type_info: %s", type_info)
 
-   local type_str <const> = lsp_formatter.show_type(node_info, type_info, doc)
+   local type_str = lsp_formatter.show_type(node_info, type_info, doc)
    self._lsp_reader_writer:send_rpc(id, {
       contents = type_str,
       range = {
@@ -289,9 +289,9 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
 end
 
 function LanguageFeatureHandlers:initialize()
-   self._lsp_events_manager:set_handler("textDocument/completion", function(params: lsp.Method.Params, id: integer) self:_on_completion(params, id) end)
-   self._lsp_events_manager:set_handler("textDocument/signatureHelp", function(params: lsp.Method.Params, id: integer) self:_on_signature_help(params, id) end)
-   self._lsp_events_manager:set_handler("textDocument/hover", function(params: lsp.Method.Params, id: integer) self:_on_hover(params, id) end)
+   self._lsp_events_manager:set_handler("textDocument/completion", function(params, id) self:_on_completion(params, id) end)
+   self._lsp_events_manager:set_handler("textDocument/signatureHelp", function(params, id) self:_on_signature_help(params, id) end)
+   self._lsp_events_manager:set_handler("textDocument/hover", function(params, id) self:_on_hover(params, id) end)
 end
 
 class.setup(LanguageFeatureHandlers, "LanguageFeatureHandlers", {})

@@ -1,25 +1,25 @@
-local _module_name = "main"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local _module_name = "main"
 
--- <imports>
-local EnvUpdater <const> = require("teal_language_server.analysis.env_updater")
-local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
-local ServerState <const> = require("teal_language_server.server_state")
-local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
-local lusc <const> = require("lusc")
-local uv <const> = require("luv")
-local args_parser <const> = require("teal_language_server.args_parser")
-local MiscHandlers <const> = require("teal_language_server.handlers.misc_handlers")
-local StdinReader <const> = require("teal_language_server.lsp.stdin_reader")
-local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
-local lsp <const> = require("teal_language_server.lsp.protocol")
-local logging <const> = require("teal_language_server.logging")
-local util <const> = require("teal_language_server.util.util")
+
+local EnvUpdater = require("teal_language_server.analysis.env_updater")
+local DocumentManager = require("teal_language_server.analysis.document_manager")
+local ServerState = require("teal_language_server.server_state")
+local LspEventsManager = require("teal_language_server.lsp.events_manager")
+local lusc = require("lusc")
+local uv = require("luv")
+local args_parser = require("teal_language_server.args_parser")
+local MiscHandlers = require("teal_language_server.handlers.misc_handlers")
+local StdinReader = require("teal_language_server.lsp.stdin_reader")
+local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
+local lsp = require("teal_language_server.lsp.protocol")
+local logging = require("teal_language_server.logging")
+local util = require("teal_language_server.util.util")
 
 local logger = logging.get_logger(_module_name)
 
-local record IDisposable
-   dispose: function(IDisposable)
-end
+
+
+
 
 local function main()
    local args = args_parser.parse_args()
@@ -35,7 +35,7 @@ local function main()
    logger:info("Received command line args: %s", args)
    logger:info("CWD = %s", uv.cwd())
 
-   local disposables:{IDisposable}
+   local disposables
 
    local function initialize()
       logger:debug("Running object graph construction phase...")
@@ -55,15 +55,15 @@ local function main()
       lsp_events_manager:initialize()
       misc_handlers:initialize()
 
-      lsp_events_manager:set_handler("shutdown", function(_params:lsp.Method.Params, id:integer)
+      lsp_events_manager:set_handler("shutdown", function(_params, id)
          logger:info("Received shutdown request from client.  Sending null response and cancelling all lusc tasks...")
          lsp_reader_writer:send_rpc(id, nil)
          root_nursery.cancel_scope:cancel()
       end)
 
-      disposables =  {
-         stdin_reader, lsp_reader_writer
-      } as {IDisposable}
+      disposables = {
+         stdin_reader, lsp_reader_writer,
+      }
    end
 
    local function dispose()
@@ -80,10 +80,10 @@ local function main()
    lusc_timer:start(0, 0, function()
       logger:trace("Received entry point call from luv")
 
-      lusc.start {
-         -- TODO - consider turning this off by default
+      lusc.start({
+
          generate_debug_names = true,
-         on_completed = function(err:lusc.ErrorGroup)
+         on_completed = function(err)
             if err ~= nil then
                logger:error("Received on_completed request with error:\n%s", err)
             else
@@ -92,24 +92,24 @@ local function main()
 
             dispose()
          end,
-      }
+      })
 
       lusc.schedule(function()
          logger:trace("Received entry point call from lusc luv")
          initialize()
       end)
 
-      -- Tell lusc to end once all tasks complete
+
       lusc.stop()
    end)
 
-   local function run_luv():nil
+   local function run_luv()
       logger:trace("Running luv event loop...")
       uv.run()
       logger:trace("Luv event loop stopped")
       lusc_timer:close()
 
-      uv.walk(function(handle:uv.Handle)
+      uv.walk(function(handle)
          if not handle:is_closing() then
             local handle_type = handle:get_type()
             logger:warning("Found unclosed handle of type '%s', closing it.", handle_type)
@@ -126,14 +126,13 @@ local function main()
       end
    end
 
-   util.try {
+   util.try({
       action = run_luv,
-      catch = function(err:string):nil
+      catch = function(err)
          logger:error("Error: %s", err)
          error(err)
       end,
-   }
+   })
 end
 
 main()
-

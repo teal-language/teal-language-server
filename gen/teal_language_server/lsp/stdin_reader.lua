@@ -1,22 +1,22 @@
-local _module_name = "stdin_reader"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local string = _tl_compat and _tl_compat.string or string; local _module_name = "stdin_reader"
 
--- <imports>
-local lusc <const> = require("lusc")
-local asserts <const> = require("teal_language_server.util.asserts")
-local uv <const> = require("luv")
-local logging <const> = require("teal_language_server.logging")
-local class <const> = require("teal_language_server.util.class")
+
+local lusc = require("lusc")
+local asserts = require("teal_language_server.util.asserts")
+local uv = require("luv")
+local logging = require("teal_language_server.logging")
+local class = require("teal_language_server.util.class")
 
 local logger = logging.get_logger(_module_name)
 
-local record StdinReader
-   _stdin: uv.Pipe
-   _buffer: string
-   _chunk_added_event: lusc.PulseEvent
-   _disposed: boolean
+local StdinReader = {}
 
-   metamethod __call: function(self: StdinReader): StdinReader
-end
+
+
+
+
+
+
 
 function StdinReader:__init()
    self._buffer = ""
@@ -30,7 +30,7 @@ function StdinReader:initialize()
    assert(self._stdin:open(0))
    logger:trace("Opened pipe for stdin.  Now waiting to receive data...")
 
-   assert(self._stdin:read_start(function(err:string, chunk:string)
+   assert(self._stdin:read_start(function(err, chunk)
       if self._disposed then
          return
       end
@@ -52,7 +52,7 @@ function StdinReader:dispose()
    logger:debug("Closed pipe for stdin")
 end
 
-function StdinReader:read_line():string
+function StdinReader:read_line()
    asserts.that(not self._disposed)
    logger:trace("Attempting to read line from stdin...")
    asserts.that(lusc.is_available())
@@ -74,7 +74,7 @@ function StdinReader:read_line():string
    end
 end
 
-function StdinReader:read(len:integer):string
+function StdinReader:read(len)
    asserts.that(not self._disposed)
    logger:trace("Attempting to read %d characters from stdin...", len)
 
@@ -92,7 +92,7 @@ function StdinReader:read(len:integer):string
 end
 
 class.setup(StdinReader, "StdinReader", {
-   nilable_members = { '_stdin' }
+   nilable_members = { '_stdin' },
 })
 
 return StdinReader

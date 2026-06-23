@@ -1,57 +1,57 @@
-local _module_name = "server_state"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local _module_name = "server_state"
 
--- <imports>
-local asserts <const> = require("teal_language_server.util.asserts")
-local lsp <const> = require("teal_language_server.lsp.protocol")
-local Path <const> = require("teal_language_server.util.path")
-local lfs <const> = require("lfs")
-local tl <const> = require("tl")
-local logging <const> = require("teal_language_server.logging")
-local class <const> = require("teal_language_server.util.class")
+
+local asserts = require("teal_language_server.util.asserts")
+local lsp = require("teal_language_server.lsp.protocol")
+local Path = require("teal_language_server.util.path")
+local lfs = require("lfs")
+local tl = require("tl")
+local logging = require("teal_language_server.logging")
+local class = require("teal_language_server.util.class")
 
 local logger = logging.get_logger(_module_name)
 
-local record ServerState
-   record TealProjectConfig
-      build_dir: string
-      source_dir: string
-      include: {string}
-      exclude: {string}
-      global_env_def: string
-      include_dir: {string}
-      module_name: string
-      scripts: {string:{string}}
+local ServerState = { TealProjectConfig = {} }
 
-      gen_compat: tl.GenCompat
-      gen_target: tl.GenTarget
-      disable_warnings: {tl.WarningKind}
-      warning_error: {tl.WarningKind}
 
-      -- externals field to allow for external tools to take entries in the config
-      -- without our type checking complaining
-      externals: {string:any}
-   end
 
-   capabilities:{string:any}
-   name: string
-   version: string
-   config: TealProjectConfig
-   teal_project_root_dir: Path
 
-   _has_initialized: boolean
-   _teal_project_root_dir: Path
-   _config: TealProjectConfig
-   _env: tl.Env
 
-   metamethod __call: function(self: ServerState): ServerState
-end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function ServerState:__init()
    self._has_initialized = false
 end
 
 local capabilities = {
-   -- we basically do the bare minimum
+
    textDocumentSync = {
       openClose = true,
       change = lsp.sync_kind.Full,
@@ -66,19 +66,19 @@ local capabilities = {
       triggerCharacters = { ".", ":" },
    },
    signatureHelpProvider = {
-      triggerCharacters = { "(" }
-   }
+      triggerCharacters = { "(" },
+   },
 }
 
-function ServerState:_validate_config(c:ServerState.TealProjectConfig)
+function ServerState:_validate_config(c)
    asserts.that(type(c) == "table", "Expected table, got {}", type(c))
 
-   local function sort_in_place<Value>(t: {Value}, fn?: function(Value, Value): boolean): {Value}
+   local function sort_in_place(t, fn)
       table.sort(t, fn)
       return t
    end
 
-   local function from<Value>(fn: function(...: any): (Value), ...: any): {Value}
+   local function from(fn, ...)
       local t = {}
       for val in fn, ... do
          table.insert(t, val)
@@ -86,61 +86,61 @@ function ServerState:_validate_config(c:ServerState.TealProjectConfig)
       return t
    end
 
-   local function keys<Key>(t: {Key:any}): function(): Key
-      local k: Key
-      return function(): Key
+   local function keys(t)
+      local k
+      return function()
          k = next(t, k)
          return k
       end
    end
 
-   local function values<Key, Value>(t: {Key:Value}): function(): Value
-      local k, v: Key, Value
-      return function(): Value
+   local function values(t)
+      local k, v
+      return function()
          k, v = next(t, k)
          return v
       end
    end
 
-   local function get_types_in_array(val: {any}, typefn?: function(any): string): {string}
+   local function get_types_in_array(val, typefn)
       typefn = typefn or type
-      local set <const> = {}
+      local set = {}
       for _, v in ipairs(val) do
          set[typefn(v)] = true
       end
       return sort_in_place(from(keys(set)))
    end
 
-   local function get_array_type(val: any, default: string): string
+   local function get_array_type(val, default)
       if type(val) ~= "table" then
          return type(val)
       end
-      local ts <const> = get_types_in_array(val as {any})
+      local ts = get_types_in_array(val)
       if #ts == 0 then
          ts[1] = default
       end
       return "{" .. table.concat(ts, "|") .. "}"
    end
 
-   local function get_map_type(val: any, default_key: string, default_value?: string): string
+   local function get_map_type(val, default_key, default_value)
       if type(val) ~= "table" then
          return type(val)
       end
 
-      local key_types <const> = get_types_in_array(from(keys(val as {any:any})))
+      local key_types = get_types_in_array(from(keys(val)))
       if #key_types == 0 then
          key_types[1] = default_key
       end
 
-      -- bias values towards array types, since we probably won't use nested maps
-      local val_types <const> = get_types_in_array(from(values(val as {any:any})), get_array_type as function(any): string)
+
+      local val_types = get_types_in_array(from(values(val)), get_array_type)
       if #val_types == 0 then
          val_types[1] = default_value
       end
       return "{" .. table.concat(key_types, "|") .. ":" .. table.concat(val_types, "|") .. "}"
    end
 
-   local valid_keys <const>: {string:string|{string:boolean}} = {
+   local valid_keys = {
       build_dir = "string",
       source_dir = "string",
       module_name = "string",
@@ -159,27 +159,27 @@ function ServerState:_validate_config(c:ServerState.TealProjectConfig)
       warning_error = "{string}",
    }
 
-   local errs <const>: {string} = {}
-   local warnings <const>: {string} = {}
+   local errs = {}
+   local warnings = {}
 
-   for k, v in pairs(c as {string:any}) do
+   for k, v in pairs(c) do
       if k == "externals" then
          if type(v) ~= "table" then
             table.insert(errs, "Expected externals to be a table, got " .. type(v))
          end
       else
-         local valid <const> = valid_keys[k]
+         local valid = valid_keys[k]
          if not valid then
             table.insert(warnings, string.format("Unknown key '%s'", k))
-         elseif valid is {string:boolean} then
-            if not valid[v as string] then
+         elseif type(valid) == "table" then
+            if not valid[v] then
                local sorted_keys = sort_in_place(from(keys(valid)))
                table.insert(errs, "Invalid value for " .. k .. ", expected one of: " .. table.concat(sorted_keys, ", "))
             end
          else
-            local vtype <const> = valid:find(":")
-               and get_map_type(v, valid:match("^{(.*):(.*)}$"))
-               or get_array_type(v, valid:match("^{(.*)}$"))
+            local vtype = valid:find(":") and
+            get_map_type(v, valid:match("^{(.*):(.*)}$")) or
+            get_array_type(v, valid:match("^{(.*)}$"))
 
             if vtype ~= valid then
                table.insert(errs, string.format("Expected %s to be a %s, got %s", k, valid, vtype))
@@ -188,10 +188,10 @@ function ServerState:_validate_config(c:ServerState.TealProjectConfig)
       end
    end
 
-   local function verify_non_absolute_path(key: string)
-      local val = (c as {string:string})[key]
+   local function verify_non_absolute_path(key)
+      local val = (c)[key]
       if type(val) ~= "string" then
-         -- error already generated an error or wasn't provided
+
          return
       end
       local as_path = Path(val)
@@ -202,11 +202,11 @@ function ServerState:_validate_config(c:ServerState.TealProjectConfig)
    verify_non_absolute_path("source_dir")
    verify_non_absolute_path("build_dir")
 
-   local function verify_warnings(key: string)
-      local arr <const> = (c as {string:{string}})[key]
+   local function verify_warnings(key)
+      local arr = (c)[key]
       if arr then
          for _, warning in ipairs(arr) do
-            if not tl.warning_kinds[warning as tl.WarningKind] then
+            if not tl.warning_kinds[warning] then
                table.insert(errs, string.format("Unknown warning in %s: %q", key, warning))
             end
          end
@@ -222,16 +222,16 @@ function ServerState:_validate_config(c:ServerState.TealProjectConfig)
    end
 end
 
-function ServerState:_load_config(root_dir:Path):ServerState.TealProjectConfig
+function ServerState:_load_config(root_dir)
    local config_path = root_dir:join("tlconfig.lua")
    if config_path:exists() == false then
-      return {} as ServerState.TealProjectConfig
+      return {}
    end
 
    local success, result = pcall(dofile, config_path.value)
 
    if success then
-      local config = result as ServerState.TealProjectConfig
+      local config = result
       self:_validate_config(config)
       return config
    end
@@ -239,17 +239,17 @@ function ServerState:_load_config(root_dir:Path):ServerState.TealProjectConfig
    asserts.fail("Failed to parse tlconfig: {}", result)
 end
 
-function ServerState:set_env(env:tl.Env)
+function ServerState:set_env(env)
    asserts.is_not_nil(env)
    self._env = env
 end
 
-function ServerState:get_env(): tl.Env
+function ServerState:get_env()
    asserts.is_not_nil(self._env)
    return self._env
 end
 
-function ServerState:initialize(root_dir:Path)
+function ServerState:initialize(root_dir)
    asserts.that(not self._has_initialized)
    self._has_initialized = true
 
@@ -261,25 +261,25 @@ end
 
 class.setup(ServerState, "ServerState", {
    getters = {
-      capabilities = function():{string:any}
+      capabilities = function()
          return capabilities
       end,
-      name = function():string
+      name = function()
          return "teal-language-server"
       end,
-      version = function():string
+      version = function()
          return "0.0.1"
       end,
-      teal_project_root_dir = function(self:ServerState):Path
+      teal_project_root_dir = function(self)
          return self._teal_project_root_dir
       end,
-      config = function(self:ServerState):ServerState.TealProjectConfig
+      config = function(self)
          return self._config
       end,
    },
    nilable_members = {
-      '_teal_project_root_dir', '_config', '_env'
-   }
+      '_teal_project_root_dir', '_config', '_env',
+   },
 })
 
 return ServerState

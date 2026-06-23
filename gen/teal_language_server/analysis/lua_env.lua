@@ -1,17 +1,17 @@
-local _module_name = "lua_env"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local io = _tl_compat and _tl_compat.io or io; local string = _tl_compat and _tl_compat.string or string; local _module_name = "lua_env"
 
-local uv <const> = require("luv")
-local util <const> = require("teal_language_server.util.util")
-local logging <const> = require("teal_language_server.logging")
+local uv = require("luv")
+local util = require("teal_language_server.util.util")
+local logging = require("teal_language_server.logging")
 
 local logger = logging.get_logger(_module_name)
 
-local record lua_env
-end
+local lua_env = {}
 
--- Scan one level deep under workspace_root for any */bin/lua[.exe].
--- Returns the first match, or falls back to the system lua binary name.
-function lua_env.find_lua_bin(workspace_root: string): string
+
+
+
+function lua_env.find_lua_bin(workspace_root)
    local bin_name = util.get_platform() == "windows" and "lua.exe" or "lua"
 
    local req = uv.fs_scandir(workspace_root)
@@ -32,22 +32,22 @@ function lua_env.find_lua_bin(workspace_root: string): string
    return bin_name
 end
 
--- Spawn lua_bin with an inline script that activates the luarocks loader (if
--- present) then writes package.path and package.cpath to stdout.  Returns the
--- two path strings, or nil, nil on any failure.
-function lua_env.discover_paths(lua_bin: string): string, string
+
+
+
+function lua_env.discover_paths(lua_bin)
    local is_windows = util.get_platform() == "windows"
 
-   -- Quote the binary so paths with spaces survive shell expansion.
-   -- On Windows (cmd.exe) use double-quotes around the script; on Unix use
-   -- single-quotes so the inner double-quotes reach Lua unmodified.
-   local cmd: string
+
+
+
+   local cmd
    if is_windows then
       cmd = '"' .. lua_bin .. '"' ..
-         [[ -e "pcall(require,'luarocks.loader'); io.write(package.path..'\n'..package.cpath)"]]
+      [[ -e "pcall(require,'luarocks.loader'); io.write(package.path..'\n'..package.cpath)"]]
    else
       cmd = '"' .. lua_bin .. '"' ..
-         [[ -e 'pcall(require,"luarocks.loader"); io.write(package.path.."\n"..package.cpath)']]
+      [[ -e 'pcall(require,"luarocks.loader"); io.write(package.path.."\n"..package.cpath)']]
    end
 
    logger:debug("Running lua path discovery: %s")

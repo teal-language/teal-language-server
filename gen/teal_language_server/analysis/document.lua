@@ -1,73 +1,73 @@
-local _module_name = "document"
--- <imports>
-local ServerState <const> = require("teal_language_server.server_state")
-local Uri <const> = require("teal_language_server.util.uri")
-local lsp <const> = require("teal_language_server.lsp.protocol")
-local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
-local class <const> = require("teal_language_server.util.class")
-local asserts <const> = require("teal_language_server.util.asserts")
-local logging <const> = require("teal_language_server.logging")
-local json <const> = require("cjson")
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
+
+local ServerState = require("teal_language_server.server_state")
+local Uri = require("teal_language_server.util.uri")
+local lsp = require("teal_language_server.lsp.protocol")
+local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
+local class = require("teal_language_server.util.class")
+local asserts = require("teal_language_server.util.asserts")
+local logging = require("teal_language_server.logging")
+local json = require("cjson")
 
 local logger = logging.get_logger(_module_name)
 
-local ltreesitter <const> = require("ltreesitter")
+local ltreesitter = require("ltreesitter")
 local teal_language = ltreesitter.require("teal", "teal")
 local teal_parser = teal_language:parser()
 
-local tl <const> = require("tl")
+local tl = require("tl")
 
-local record Cache
-   tokens: {tl.Token}
-   err_tokens: {tl.Error}
 
-   ast: tl.Node
-   parse_errors: {tl.Error}
 
-   result: tl.Result
-end
 
-local record Document
-   record NodeInfo
-      type: string
-      source: string
-      parent_type: string
-      parent_source: string
-      preceded_by: string
-      self_type: string
-      metamethod __tostring: function(NodeInfo): string
-   end
 
-   uri: Uri
 
-   _uri: Uri
-   _content: string
-   _content_lines: {string}
-   _version: integer
-   _lsp_reader_writer: LspReaderWriter
-   _server_state: ServerState
-   _cache: Cache
-   _tree: ltreesitter.Tree
-   _tree_cursor: ltreesitter.Cursor
 
-   metamethod __call: function(self: Document, uri: Uri, content: string, version: integer, lsp_reader_writer: LspReaderWriter, server_state: ServerState): Document
-end
 
-local record ArgListNode is tl.Node
-    record ArgType
-        typename: string
-    end
 
-    record ArgInfo
-        tk: string
-        opt: boolean
-        argtype: ArgType
-    end
 
-    args: {ArgInfo}
-end
 
-function Document:__init(uri: Uri, content: string, version: integer, lsp_reader_writer: LspReaderWriter, server_state: ServerState)
+local Document = { NodeInfo = {} }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function Document:__init(uri, content, version, lsp_reader_writer, server_state)
    asserts.is_not_nil(lsp_reader_writer)
    asserts.is_not_nil(server_state)
 
@@ -81,31 +81,31 @@ function Document:__init(uri: Uri, content: string, version: integer, lsp_reader
    self._tree_cursor = self._tree:root():create_cursor()
 end
 
----@desc
---- Create a Set from a list
-local function set<Value>(lst: {Value}): {Value:boolean}
-   local s <const> = {}
+
+
+local function set(lst)
+   local s = {}
    for _, v in ipairs(lst) do
       s[v] = true
    end
    return s
 end
 
---- Create two new lists from `t`: the values that return `true` from `pred` and the values that return false
-local function filter<Value>(t: {Value}, pred: function(Value): boolean): {Value}, {Value}
-   local pass <const>: {Value} = {}
-   local fail <const>: {Value} = {}
+
+local function filter(t, pred)
+   local pass = {}
+   local fail = {}
    for _, v in ipairs(t) do
       table.insert(pred(v) and pass or fail, v)
    end
    return pass, fail
 end
 
-local function is_lua(fname: string): boolean
+local function is_lua(fname)
    return fname:sub(-4) == ".lua"
 end
 
-function Document:_get_tokens(): {tl.Token}, {tl.Error}
+function Document:_get_tokens()
    local cache = self._cache
    if not cache.tokens then
       cache.tokens, cache.err_tokens = tl.lex(self._content, self._uri.path)
@@ -116,10 +116,10 @@ function Document:_get_tokens(): {tl.Token}, {tl.Error}
    return cache.tokens, cache.err_tokens
 end
 
-function Document:_get_ast(tokens?: {tl.Token}): tl.Node, {tl.Error}
+function Document:_get_ast(tokens)
    local cache = self._cache
    if not cache.ast then
-      local _: any
+      local _
       cache.parse_errors = {}
       cache.ast, _ = tl.parse_program(tokens, cache.parse_errors, self._uri.path)
       logger:debug("parse_prog errors: %d", #cache.parse_errors)
@@ -127,29 +127,29 @@ function Document:_get_ast(tokens?: {tl.Token}): tl.Node, {tl.Error}
    return cache.ast, cache.parse_errors
 end
 
-function Document:_get_result(ast: tl.Node): tl.Result
+function Document:_get_result(ast)
    local cache = self._cache
    if not cache.result then
       local lax = is_lua(self._uri.path)
       logger:info("Type checking document%s %s", lax and " (lax)" or "", self._uri.path)
 
-      local opts: tl.CheckOptions = {
+      local opts = {
          feat_lax = lax and "on" or "off",
          feat_arity = "on",
       }
 
       cache.result = tl.check(
-         ast, self._uri.path, opts, self._server_state:get_env())
+      ast, self._uri.path, opts, self._server_state:get_env())
    end
    return cache.result
 end
 
-function Document:get_type_report(): tl.TypeReport
+function Document:get_type_report()
    local env = self._server_state:get_env()
    return env.reporter:get_report()
 end
 
-local function _get_node_at(ast: tl.Node, y: integer, x: integer): tl.Node
+local function _get_node_at(ast, y, x)
    for _, node in ipairs(ast) do
       if node.y == y and node.x == x then
          return node
@@ -157,7 +157,7 @@ local function _get_node_at(ast: tl.Node, y: integer, x: integer): tl.Node
    end
 end
 
-function Document:get_ast_node_at(type_info: tl.TypeInfo): tl.Node
+function Document:get_ast_node_at(type_info)
    if type_info.file == "" then
       return _get_node_at(self:_get_ast(), type_info.y, type_info.x)
    end
@@ -167,10 +167,10 @@ function Document:get_ast_node_at(type_info: tl.TypeInfo): tl.Node
    return _get_node_at(loaded_file.ast, type_info.y, type_info.x)
 end
 
-function Document:get_function_args_string(type_info: tl.TypeInfo): {string}
-   local node = self:get_ast_node_at(type_info) as ArgListNode
+function Document:get_function_args_string(type_info)
+   local node = self:get_ast_node_at(type_info)
    if node == nil then return nil end
-   local output: {string} = {}
+   local output = {}
    for _, arg_info in ipairs(node.args) do
       table.insert(output, arg_info.tk)
    end
@@ -182,7 +182,7 @@ function Document:clear_cache()
    logger:debug("Cleared cache for document %s", self._uri)
 end
 
-function Document:update_text(text: string, version: integer)
+function Document:update_text(text, version)
    logger:debug("document update_text called (version %s)")
 
    if not version or not self._version or self._version < version then
@@ -195,14 +195,14 @@ function Document:update_text(text: string, version: integer)
       end
    end
 
-   -- update tree and tree cursor as well
+
    self._tree = teal_parser:parse_string(self._content)
    self._tree_cursor = self._tree:root():create_cursor()
 end
 
-local function make_diagnostic_from_error(tks: {tl.Token}, err: tl.Error, severity: lsp.Severity): lsp.Diagnostic
-   local x <const>, y <const> = err.x, err.y
-   local err_tk <const> = tl.get_token_at(tks, y, x)
+local function make_diagnostic_from_error(tks, err, severity)
+   local x, y = err.x, err.y
+   local err_tk = tl.get_token_at(tks, y, x)
    return {
       range = {
          start = {
@@ -219,7 +219,7 @@ local function make_diagnostic_from_error(tks: {tl.Token}, err: tl.Error, severi
    }
 end
 
-local function insert_errs(fname: string, diags: {lsp.Diagnostic}, tks: {tl.Token}, errs: {tl.Error}, sev: lsp.Severity)
+local function insert_errs(fname, diags, tks, errs, sev)
    for _, err in ipairs(errs or {}) do
       if fname == err.filename then
          table.insert(diags, make_diagnostic_from_error(tks, err, sev))
@@ -227,20 +227,20 @@ local function insert_errs(fname: string, diags: {lsp.Diagnostic}, tks: {tl.Toke
    end
 end
 
-function Document:_publish_diagnostics(diagnostics: {lsp.Diagnostic}, version?: number)
+function Document:_publish_diagnostics(diagnostics, version)
    logger:debug("Publishing diagnostics for %s...", self._uri.path)
-   -- cjson encodes an empty table as {} (object) rather than [] (array).
-   -- Setting empty_array_mt ensures empty diagnostics serialize as [] per LSP spec.
-   setmetatable(diagnostics, json.empty_array_mt as metatable<{lsp.Diagnostic}>)
+
+
+   setmetatable(diagnostics, json.empty_array_mt)
    self._lsp_reader_writer:send_rpc_notification("textDocument/publishDiagnostics", {
       uri = Uri.tostring(self._uri),
       diagnostics = diagnostics,
       version = version,
-   } as lsp.Method.Params)
+   })
 end
 
-local function imap<V, T>(t: {V}, fn: function(V): (T), start?: integer, finish?: integer): {T}
-   local new: {T} = {}
+local function imap(t, fn, start, finish)
+   local new = {}
    for i = start or 1, finish or #t do
       new[i] = fn(t[i])
    end
@@ -251,7 +251,7 @@ function Document:process_and_publish_results()
    local tks, err_tks = self:_get_tokens()
    logger:debug("Detected %d lex errors", #err_tks)
    if #err_tks > 0 then
-      self:_publish_diagnostics(imap(err_tks, function(t: tl.Error): lsp.Diagnostic
+      self:_publish_diagnostics(imap(err_tks, function(t)
          return {
             range = {
                start = lsp.position(t.y - 1, t.x - 1),
@@ -267,31 +267,31 @@ function Document:process_and_publish_results()
    local ast, parse_errs = self:_get_ast(tks)
    logger:debug("Detected %d parse errors", #parse_errs)
    if #parse_errs > 0 then
-      self:_publish_diagnostics(imap(parse_errs, function(e: tl.Error): lsp.Diagnostic
+      self:_publish_diagnostics(imap(parse_errs, function(e)
          return make_diagnostic_from_error(tks, e, "Error")
       end))
       return
    end
 
-   local diags <const>: {lsp.Diagnostic} = {}
-   local fname <const> = self._uri.path
+   local diags = {}
+   local fname = self._uri.path
    local result = self:_get_result(ast)
 
    logger:debug("Detected %d type errors", #result.type_errors)
 
    local config = self._server_state.config
-   local disabled_warnings <const> = set(config.disable_warnings or {})
-   local warning_errors <const> = set(config.warning_error or {})
-   local enabled_warnings <const> = filter(result.warnings, function(e: tl.Error): boolean
+   local disabled_warnings = set(config.disable_warnings or {})
+   local warning_errors = set(config.warning_error or {})
+   local enabled_warnings = filter(result.warnings, function(e)
       if is_lua(self._uri.path) then
-         return not (disabled_warnings[e.tag]
-            or e.msg:find("unknown variable") as boolean)
+         return not (disabled_warnings[e.tag] or
+         e.msg:find("unknown variable"))
       else
          return not disabled_warnings[e.tag]
       end
       return
    end)
-   local werrors <const>, warnings <const> = filter(enabled_warnings, function(e: tl.Error): boolean
+   local werrors, warnings = filter(enabled_warnings, function(e)
       return warning_errors[e.tag]
    end)
    insert_errs(fname, diags, tks, warnings, "Warning")
@@ -300,8 +300,8 @@ function Document:process_and_publish_results()
    self:_publish_diagnostics(diags)
 end
 
-function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
-   local tr <const> = self:get_type_report()
+function Document:resolve_type_ref(type_number)
+   local tr = self:get_type_report()
    local type_info = tr.types[type_number]
    if type_info and type_info.ref then
       return self:resolve_type_ref(type_info.ref)
@@ -310,49 +310,49 @@ function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    end
 end
 
-function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
-   local tr <const> = self:get_type_report()
+function Document:type_information_for_tokens(tokens, y, x)
+   local tr = self:get_type_report()
 
-   -- try the quick get first (works well for self and raw types)
-   -- also seems to be necessary when type changes in the middle
-   -- of scope (eg. when using assert(x is Foo))
 
-   -- (Commented out because this breaks things more often than it helps currently)
-   -- local quick_pos_info = tr.by_pos[self._uri.path]
 
-   -- if quick_pos_info ~= nil then
-   --    local quick_line_info = quick_pos_info[y+1]
 
-   --    if quick_line_info ~= nil then
-   --       local type_ref = quick_line_info[x+1]
 
-   --       if type_ref ~= nil then
-   --          local type_info = self:resolve_type_ref(type_ref)
 
-   --          if type_info ~= nil then
-   --             tracing.info(_module_name, "Found via quick match at {}, {}", {y, x})
-   --             return type_info
-   --          end
-   --       end
-   --    end
-   -- end
 
-   local type_info: tl.TypeInfo
-   -- try and find it in scope
-   local scope_symbols <const> = tl.symbols_in_scope(tr, y+1, x+1, self._uri.path)
-   logger:trace("Looked up symbols at %d, %d for file %s with result: %s", y+1, x+1, self._uri.path, scope_symbols)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   local type_info
+
+   local scope_symbols = tl.symbols_in_scope(tr, y + 1, x + 1, self._uri.path)
+   logger:trace("Looked up symbols at %d, %d for file %s with result: %s", y + 1, x + 1, self._uri.path, scope_symbols)
    if #tokens == 0 then
       local out = {}
       for key, value in pairs(scope_symbols) do out[key] = value end
       for key, value in pairs(tr.globals) do out[key] = value end
       type_info = {
-         fields = out
+         fields = out,
       }
       return type_info
    end
    local raw_token = tokens[1]
    logger:trace("Processing token %s (all: %s)", raw_token, tokens)
-   local type_id <const> = scope_symbols[raw_token]
+   local type_id = scope_symbols[raw_token]
    if type_id == nil then
       logger:warning("Failed to find type id for token %s", raw_token)
    end
@@ -365,9 +365,9 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
       end
    end
 
-   -- might be global instead
+
    if type_info == nil then
-      type_info = tr.types[tr.globals[raw_token] ]
+      type_info = tr.types[tr.globals[raw_token]]
 
       if type_info == nil then
          logger:warning("Unable to find type info in global table as well..")
@@ -386,8 +386,8 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
          elseif type_info.values and i == #tokens then
             type_info = self:resolve_type_ref(type_info.values)
 
-         -- else
-         --    tracing.warning(_module_name, "Something odd is going on here bruv '{}'", type_info)
+
+
 
          end
 
@@ -404,22 +404,22 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
    return nil
 end
 
--- Finds where a symbol named `name` was *declared* (as opposed to where its type
--- is declared). Mirrors the backward scope walk in tl.symbols_in_scope, but
--- returns the matched symbol's declaration position instead of its type id.
--- `y`/`x` are 0-indexed (LSP); the returned y/x are 1-indexed (tl convention).
-function Document:symbol_declaration_position(name: string, y: integer, x: integer): integer, integer
-   local tr <const> = self:get_type_report()
+
+
+
+
+function Document:symbol_declaration_position(name, y, x)
+   local tr = self:get_type_report()
    local symbols = tr.symbols_by_file[self._uri.path]
    if not symbols then
       return nil
    end
 
-   -- Symbols are stored in source order, so the last one whose position is at or
-   -- before the cursor is our starting point. (tl uses a binary search here, but
-   -- that helper is private to tl, so we scan linearly.)
-   local target_y <const> = y + 1
-   local target_x <const> = x + 1
+
+
+
+   local target_y = y + 1
+   local target_x = x + 1
    local n = 0
    for i = 1, #symbols do
       local s = symbols[i]
@@ -430,8 +430,8 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
       end
    end
 
-   -- Walk backwards, honoring the @{ / @} scope markers, and return the position
-   -- of the nearest in-scope declaration matching `name`.
+
+
    while n >= 1 do
       local s = symbols[n]
       local symbol_name = s[3]
@@ -450,7 +450,7 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
    return nil
 end
 
-function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
+function Document:_tree_sitter_token(y, x)
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
 
@@ -459,30 +459,30 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
 
       local parent_node = self._tree_cursor:current_node()
 
-      local out: Document.NodeInfo = {
+      local out = {
          type = node:type(),
          source = node:source(),
          parent_type = parent_node:type(),
-         parent_source = parent_node:source()
+         parent_source = parent_node:source(),
       }
 
-      -- for completion
+
       if node:type() == "." or node:type() == ":" then
-         -- considered an error and need to get the previous symbol
+
          local prev = node:prev_sibling()
          if prev then
             out.preceded_by = prev:source()
          else
             parent_node = parent_node:prev_sibling()
             if parent_node:child_count() > 0 then
-               -- no previous symbol, so get parent's previous sibling's last child
-               out.preceded_by = parent_node:child(parent_node:child_count()-1):source()
+
+               out.preceded_by = parent_node:child(parent_node:child_count() - 1):source()
             else
                out.preceded_by = parent_node:source()
             end
          end
 
-      -- for function signature
+
       elseif node:type() == "(" then
          if parent_node:type() == "arguments" then
             self._tree_cursor:goto_parent()
@@ -518,7 +518,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
                   end
                end
             elseif parent_node:type() == "ERROR" then
-               -- for some reason you can't get the node by name in an error state, but you can still iterate over to it
+
                for child in parent_node:children() do
                   if child:name() == "function_name" then
                      out.self_type = child:child_by_field_name("base"):source()
@@ -555,16 +555,16 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
    end
 end
 
-function Document:tree_sitter_token(y: integer, x: integer): Document.NodeInfo
+function Document:tree_sitter_token(y, x)
    self._tree_cursor:reset(self._tree:root())
    return self:_tree_sitter_token(y, x)
 end
 
 class.setup(Document, "Document", {
-   getters =  {
-      uri = function(self:Document):Uri
+   getters = {
+      uri = function(self)
          return self._uri
-      end
+      end,
    },
    nilable_members = { '_content_lines' },
 })

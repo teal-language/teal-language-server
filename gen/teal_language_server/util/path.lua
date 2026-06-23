@@ -1,64 +1,64 @@
-local _module_name = "path"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pcall = _tl_compat and _tl_compat.pcall or pcall; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local type = type; local _module_name = "path"
 
-local asserts <const> = require("teal_language_server.util.asserts")
-local class <const> = require("teal_language_server.util.class")
-local util <const> = require("teal_language_server.util.util")
-local logging <const> = require("teal_language_server.logging")
-local uv <const> = require("luv")
+local asserts = require("teal_language_server.util.asserts")
+local class = require("teal_language_server.util.class")
+local util = require("teal_language_server.util.util")
+local logging = require("teal_language_server.logging")
+local uv = require("luv")
 
 local logger = logging.get_logger(_module_name)
 
 local default_dir_permissions = tonumber('755', 8)
 
-local function string_escape_special_chars(value:string):string
-   -- gsub is not ideal in cases where we want to do a literal
-   -- replace, so to do this just escape all special characters with '%'
+local function string_escape_special_chars(value)
+
+
    value = value:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
-   -- Note that we don't put this all in the return statement to avoid
-   -- forwarding the multiple return values causing subtle errors
+
+
    return value
 end
 
-local record Path
-   record WriteTextOpts
-      overwrite: boolean
-   end
+local Path = { WriteTextOpts = {}, CreateDirectoryArgs = {} }
 
-   -- We make these read-only properties to ensure our path is immutable
-   value:string
 
-   _value:string
 
-   record CreateDirectoryArgs
-      parents:boolean
-      exist_ok:boolean
-   end
 
-   metamethod __call: function(self: Path, value:string): Path
-end
 
-function Path:__init(value:string)
-   asserts.that(value is string)
+
+
+
+
+
+
+
+
+
+
+
+
+function Path:__init(value)
+   asserts.that(type(value) == "string")
    asserts.that(#value > 0, "Path must be non empty string")
 
    self._value = value
 end
 
-function Path:is_valid():boolean
+function Path:is_valid()
    local result = self._value:find("[" .. string_escape_special_chars("<>\"|?*") .. "]")
    return result == nil
 end
 
-function Path:get_value():string
+function Path:get_value()
    return self._value
 end
 
-function Path:__tostring():string
-   -- return string.format("Path('%s')", self._value)
+function Path:__tostring()
+
    return self._value
 end
 
-local function get_path_separator():string
+local function get_path_separator()
    if util.get_platform() == "windows" then
       return "\\"
    end
@@ -66,7 +66,7 @@ local function get_path_separator():string
    return "/"
 end
 
-local function _join(left:string, right:string):string
+local function _join(left, right)
    if right == "." then
       return left
    end
@@ -91,8 +91,8 @@ local function _join(left:string, right:string):string
    return combinedPath
 end
 
-function Path:join(...:string):Path
-   local args = {...}
+function Path:join(...)
+   local args = { ... }
    local result = self._value
 
    for _, value in ipairs(args) do
@@ -102,7 +102,7 @@ function Path:join(...:string):Path
    return Path(result)
 end
 
-function Path:is_absolute():boolean
+function Path:is_absolute()
    if util.get_platform() == "windows" then
       return self._value:match('^[a-zA-Z]:[\\/]') ~= nil
    end
@@ -110,17 +110,17 @@ function Path:is_absolute():boolean
    return util.string_starts_with(self._value, '/')
 end
 
-function Path:is_relative():boolean
+function Path:is_relative()
    return not self:is_absolute()
 end
 
-local function _remove_trailing_seperator_if_exists(path:string):string
+local function _remove_trailing_seperator_if_exists(path)
    local result = path:match('^(.*[^\\/])[\\/]*$')
    asserts.is_not_nil(result, "Failed when processing path '{}'", path)
    return result
 end
 
-local function array_from_iterator<T>(itr:(function():T)):{T}
+local function array_from_iterator(itr)
    local result = {}
    for value in itr do
       table.insert(result, value)
@@ -128,32 +128,32 @@ local function array_from_iterator<T>(itr:(function():T)):{T}
    return result
 end
 
-function Path:get_parts():{string}
+function Path:get_parts()
    if self._value == '/' then
       return {}
    end
 
-   -- Remove the trailing seperator if it exists
+
    local fixed_value = _remove_trailing_seperator_if_exists(self._value)
    return array_from_iterator(string.gmatch(fixed_value, "([^\\/]+)"))
 end
 
-function Path:try_get_parent():Path
+function Path:try_get_parent()
    if self._value == '/' then
       return nil
    end
 
-   -- Remove the trailing seperator if it exists
+
    local temp_path = _remove_trailing_seperator_if_exists(self._value)
 
-   -- If we have no seperators then there is no parent
-   -- This works for both windows and linux since on windows temp_path is C: which returns nil
+
+
    if not temp_path:match('[\\/]') then
       return nil
    end
 
-   -- We remove the trailing slash here because this is more likely
-   -- to be the canonical form
+
+
    local parent_path_str = temp_path:match('^(.*)[\\/][^\\/]*$')
 
    if util.get_platform() ~= 'windows' and #parent_path_str == 0 then
@@ -163,14 +163,14 @@ function Path:try_get_parent():Path
    return Path(parent_path_str)
 end
 
-function Path:get_parent():Path
+function Path:get_parent()
    local result = self:try_get_parent()
    asserts.is_not_nil(result, "Expected to find parent but none was found for path '{}'", self._value)
    return result
 end
 
-function Path:get_parents():{Path}
-   local result:{Path} = {}
+function Path:get_parents()
+   local result = {}
    local parent = self:try_get_parent()
    if not parent then
       return result
@@ -184,7 +184,7 @@ function Path:get_parents():{Path}
    return result
 end
 
-function Path:get_file_name():string
+function Path:get_file_name()
    if self._value == "/" then
       return ""
    end
@@ -198,12 +198,12 @@ function Path:get_file_name():string
    return path:match('[\\/]([^\\/]*)$')
 end
 
-function Path:get_extension():string
+function Path:get_extension()
    local result = self._value:match('%.([^%.]*)$')
    return result
 end
 
-function Path:get_file_name_without_extension():string
+function Path:get_file_name_without_extension()
    local fileName = self:get_file_name()
    local extension = self:get_extension()
 
@@ -214,12 +214,12 @@ function Path:get_file_name_without_extension():string
    return fileName:sub(0, #fileName - #extension - 1)
 end
 
-function Path:is_directory():boolean
+function Path:is_directory()
    local stats = uv.fs_stat(self._value)
    return stats ~= nil and stats.type == "directory"
 end
 
-function Path:is_file():boolean
+function Path:is_file()
    local stats = uv.fs_stat(self._value)
    return stats ~= nil and stats.type == "file"
 end
@@ -233,7 +233,7 @@ function Path:delete_empty_directory()
    end
 end
 
-function Path:get_sub_paths():{Path}
+function Path:get_sub_paths()
    asserts.that(self:is_directory(), "Attempted to get sub paths for non directory path '{}'", self._value)
 
    local req, err = uv.fs_scandir(self._value)
@@ -241,17 +241,17 @@ function Path:get_sub_paths():{Path}
       error(string.format("Failed to open dir '%s' for scanning.  Details: '%s'", self._value, err))
    end
 
-   local function iter():string, string
+   local function iter()
       local r1, r2 = uv.fs_scandir_next(req)
-      -- fs_scandir_next returns nil when its complete, but it also returns nil on failure,
-      -- and then passes the error as second return value
+
+
       if not (r1 ~= nil or (r1 == nil and r2 == nil)) then
          error(string.format("Failure while scanning directory '%s': %s", self._value, r2))
       end
       return r1, r2
    end
 
-   local result:{Path} = {}
+   local result = {}
 
    for name, _ in iter do
       table.insert(result, self:join(name))
@@ -260,8 +260,8 @@ function Path:get_sub_paths():{Path}
    return result
 end
 
-function Path:get_sub_directories():{Path}
-   local result:{Path} = {}
+function Path:get_sub_directories()
+   local result = {}
 
    for _, sub_path in ipairs(self:get_sub_paths()) do
       if sub_path:is_directory() then
@@ -272,8 +272,8 @@ function Path:get_sub_directories():{Path}
    return result
 end
 
-function Path:get_sub_files():{Path}
-   local result:{Path} = {}
+function Path:get_sub_files()
+   local result = {}
 
    for _, sub_path in ipairs(self:get_sub_paths()) do
       if sub_path:is_file() then
@@ -284,7 +284,7 @@ function Path:get_sub_files():{Path}
    return result
 end
 
-function Path:exists():boolean
+function Path:exists()
    local stats = uv.fs_stat(self._value)
    return stats ~= nil
 end
@@ -295,7 +295,7 @@ function Path:delete_file()
    logger:trace("Deleted file at path '%s'")
 end
 
-function Path:create_directory(args?:Path.CreateDirectoryArgs)
+function Path:create_directory(args)
    if args and args.exist_ok and self:exists() then
       asserts.that(self:is_directory())
       return
@@ -321,7 +321,7 @@ class.setup(Path, "Path", {
    },
 })
 
-function Path.cwd():Path
+function Path.cwd()
    local cwd, err = uv.cwd()
    if cwd == nil then
       error(string.format("Failed to obtain current directory: %s", err))
@@ -330,4 +330,3 @@ function Path.cwd():Path
 end
 
 return Path
-

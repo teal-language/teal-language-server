@@ -1,49 +1,49 @@
-local _module_name = "lsp.reader_writer"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "lsp.reader_writer"
 
-local StdinReader <const> = require("teal_language_server.lsp.stdin_reader")
-local lsp <const> = require("teal_language_server.lsp.protocol")
-local json <const> = require("cjson")
-local uv <const> = require("luv")
-local asserts <const> = require("teal_language_server.util.asserts")
-local logging <const> = require("teal_language_server.logging")
-local class <const> = require("teal_language_server.util.class")
+local StdinReader = require("teal_language_server.lsp.stdin_reader")
+local lsp = require("teal_language_server.lsp.protocol")
+local json = require("cjson")
+local uv = require("luv")
+local asserts = require("teal_language_server.util.asserts")
+local logging = require("teal_language_server.logging")
+local class = require("teal_language_server.util.class")
 
 local logger = logging.get_logger(_module_name)
 
-local record LspReaderWriter
-   _stdin_reader:StdinReader
-   _stdout: uv.Pipe
-   _disposed: boolean
+local LspReaderWriter = {}
 
-   metamethod __call: function(self: LspReaderWriter, stdin_reader: StdinReader): LspReaderWriter
-end
 
-function LspReaderWriter:__init(stdin_reader: StdinReader)
+
+
+
+
+
+function LspReaderWriter:__init(stdin_reader)
    asserts.is_not_nil(stdin_reader)
    self._stdin_reader = stdin_reader
    self._disposed = false
 end
 
-local record HeaderInfo
-   length:integer
-   content_type:string
-end
 
-local function json_nullable<T>(x: T): T
+
+
+
+
+local function json_nullable(x)
    if x == nil then
-      return json.null as T
+      return json.null
    end
    return x
 end
 
-local contenttype: {string:boolean} = {
+local contenttype = {
    ["application/vscode-jsonrpc; charset=utf8"] = true,
    ["application/vscode-jsonrpc; charset=utf-8"] = true,
 }
 
-function LspReaderWriter:_parse_header(lines:{string}):HeaderInfo
-   local len:integer
-   local content_type:string
+function LspReaderWriter:_parse_header(lines)
+   local len
+   local content_type
 
    for _, line in ipairs(lines) do
       local key, val = line:match("^([^:]+): (.+)$")
@@ -54,7 +54,7 @@ function LspReaderWriter:_parse_header(lines:{string}):HeaderInfo
 
       if key == "Content-Length" then
          asserts.is_nil(len)
-         len = tonumber(val) as integer
+         len = tonumber(val)
       elseif key == "Content-Type" then
          if contenttype[val] == nil then
             asserts.fail("Invalid Content-Type '{}'", val)
@@ -88,8 +88,8 @@ function LspReaderWriter:dispose()
    logger:debug("Closed pipe for stdout")
 end
 
-function LspReaderWriter:_decode_header():HeaderInfo
-   local header_lines:{string} = {}
+function LspReaderWriter:_decode_header()
+   local header_lines = {}
 
    logger:trace("Reading LSP rpc header...")
    while true do
@@ -105,7 +105,7 @@ function LspReaderWriter:_decode_header():HeaderInfo
    return self:_parse_header(header_lines)
 end
 
-function LspReaderWriter:receive_rpc():{string:any}
+function LspReaderWriter:receive_rpc()
    local header_info = self:_decode_header()
 
    logger:trace("Successfully read LSP rpc header: %s\nWaiting to receive body...", header_info)
@@ -120,7 +120,7 @@ function LspReaderWriter:receive_rpc():{string:any}
    return data
 end
 
-function LspReaderWriter:_encode(t: {string:any})
+function LspReaderWriter:_encode(t)
    assert(t.jsonrpc == "2.0", "Expected jsonrpc to be 2.0")
 
    local msg = json.encode(t)
@@ -131,16 +131,16 @@ function LspReaderWriter:_encode(t: {string:any})
    logger:trace("Sending data: %s", content)
 end
 
-function LspReaderWriter:send_rpc(id: integer, t: {string:any})
-   self:_encode {
+function LspReaderWriter:send_rpc(id, t)
+   self:_encode({
       jsonrpc = "2.0",
       id = json_nullable(id),
       result = json_nullable(t),
-   }
+   })
 end
 
-function LspReaderWriter:send_rpc_error(id: integer, name: lsp.ErrorName, msg: string, data: {string:any})
-   self:_encode {
+function LspReaderWriter:send_rpc_error(id, name, msg, data)
+   self:_encode({
       jsonrpc = "2.0",
       id = json_nullable(id),
       error = {
@@ -148,18 +148,18 @@ function LspReaderWriter:send_rpc_error(id: integer, name: lsp.ErrorName, msg: s
          message = msg,
          data = data,
       },
-   }
+   })
 end
 
-function LspReaderWriter:send_rpc_notification(method: lsp.Method.Name, params: lsp.Method.Params)
-   self:_encode {
+function LspReaderWriter:send_rpc_notification(method, params)
+   self:_encode({
       jsonrpc = "2.0",
       method = method,
       params = params,
-   }
+   })
 end
 
 class.setup(LspReaderWriter, "LspReaderWriter", {
-   nilable_members = { '_stdout' }
+   nilable_members = { '_stdout' },
 })
 return LspReaderWriter

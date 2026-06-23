@@ -1,16 +1,16 @@
-local _module_name = "handler_helper"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handler_helper"
 
-local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
-local Document <const> = require("teal_language_server.analysis.document")
-local Uri <const> = require("teal_language_server.util.uri")
-local lsp <const> = require("teal_language_server.lsp.protocol")
-local logging <const> = require("teal_language_server.logging")
+local DocumentManager = require("teal_language_server.analysis.document_manager")
+local Document = require("teal_language_server.analysis.document")
+local Uri = require("teal_language_server.util.uri")
+local lsp = require("teal_language_server.lsp.protocol")
+local logging = require("teal_language_server.logging")
 
 local logger = logging.get_logger(_module_name)
 
-local record handler_helper
-   indexable_parent_types: {string:boolean}
-end
+local handler_helper = {}
+
+
 
 handler_helper.indexable_parent_types = {
    ["index"] = true,
@@ -18,7 +18,7 @@ handler_helper.indexable_parent_types = {
    ["function_name"] = true,
 }
 
-function handler_helper.split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
+function handler_helper.split_by_symbols(input, self_type, stop_at)
    local t = {}
    for str in string.gmatch(input, "([^%.%:]+)") do
       if str == "self" then
@@ -33,16 +33,16 @@ function handler_helper.split_by_symbols(input: string, self_type: string, stop_
    return t
 end
 
-function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
-   local context = params.context as lsp.CompletionContext
+function handler_helper.get_node_info(document_manager, params, pos)
+   local context = params.context
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
       logger:warning("Ignoring completion request given kind: %s", context.triggerKind)
       return nil
    end
 
-   local td <const> = params.textDocument as lsp.TextDocument
-   local doc <const> = document_manager:get(Uri.parse(td.uri))
+   local td = params.textDocument
+   local doc = document_manager:get(Uri.parse(td.uri))
 
    if not doc then
       logger:warning("No doc found for completion request")

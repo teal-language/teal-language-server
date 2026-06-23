@@ -5,8 +5,10 @@ local DocumentManager <const> = require("teal_language_server.analysis.document_
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local Uri <const> = require("teal_language_server.util.uri")
 local lsp <const> = require("teal_language_server.lsp.protocol")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
 local class <const> = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local record DocumentSyncHandlers
    _document_manager: DocumentManager
@@ -38,7 +40,7 @@ function DocumentSyncHandlers:_on_did_save(params: lsp.Method.Params): nil
    local doc <const> = self._document_manager:get(Uri.parse(td.uri))
 
    if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
+      logger:warning("Unable to find document: %s")
       return
    end
 
@@ -46,7 +48,7 @@ function DocumentSyncHandlers:_on_did_save(params: lsp.Method.Params): nil
    -- Don't bother calling process_and_publish_results here because this
    -- will happen anyway after the full env update
 
-   tracing.debug(_module_name, "detected document file saved - enqueuing full env update", {})
+   logger:debug("detected document file saved - enqueuing full env update")
    self._env_updater:schedule_env_update()
 end
 
@@ -54,7 +56,7 @@ function DocumentSyncHandlers:_on_did_change(params: lsp.Method.Params): nil
    local td <const> = params.textDocument as lsp.TextDocument
    local doc <const> = self._document_manager:get(Uri.parse(td.uri))
    if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", {td.uri})
+      logger:warning("Unable to find document: %s", td.uri)
       return
    end
    local changes <const> = params.contentChanges as {lsp.TextDocumentContentChangeEvent}

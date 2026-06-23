@@ -1,26 +1,26 @@
-local _module_name = "env_updater"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local package = _tl_compat and _tl_compat.package or package; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "env_updater"
 
--- <imports>
-local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
-local lua_env <const> = require("teal_language_server.analysis.lua_env")
-local lusc <const> = require("lusc")
-local ServerState <const> = require("teal_language_server.server_state")
-local tl <const> = require("tl")
-local uv <const> = require("luv")
-local asserts <const> = require("teal_language_server.util.asserts")
-local logging <const> = require("teal_language_server.logging")
-local class <const> = require("teal_language_server.util.class")
+
+local DocumentManager = require("teal_language_server.analysis.document_manager")
+local lua_env = require("teal_language_server.analysis.lua_env")
+local lusc = require("lusc")
+local ServerState = require("teal_language_server.server_state")
+local tl = require("tl")
+local uv = require("luv")
+local asserts = require("teal_language_server.util.asserts")
+local logging = require("teal_language_server.logging")
+local class = require("teal_language_server.util.class")
 
 local logger = logging.get_logger(_module_name)
 
-local init_path: string = package.path
-local init_cpath: string = package.cpath
+local init_path = package.path
+local init_cpath = package.cpath
 
-local function dedup_path(path_str: string): string
-   local seen: {string: boolean} = {}
-   local result: {string} = {}
-   -- should keep the order, the de-duping feels a little risky, and this feels like it could be a premature optimzation?
-   -- I'll keep it for now and hope we wont regret it later
+local function dedup_path(path_str)
+   local seen = {}
+   local result = {}
+
+
    for entry in path_str:gmatch("[^;]+") do
       if not seen[entry] then
          seen[entry] = true
@@ -30,16 +30,16 @@ local function dedup_path(path_str: string): string
    return table.concat(result, ";")
 end
 
-local record EnvUpdater
-   _document_manager: DocumentManager
-   _server_state: ServerState
-   _root_nursery:lusc.Nursery
-   _change_detected: lusc.StickyEvent
+local EnvUpdater = {}
 
-   metamethod __call: function(self: EnvUpdater, server_state: ServerState, root_nursery:lusc.Nursery, document_manager: DocumentManager): EnvUpdater
-end
 
-function EnvUpdater:__init(server_state: ServerState, root_nursery:lusc.Nursery, document_manager: DocumentManager)
+
+
+
+
+
+
+function EnvUpdater:__init(server_state, root_nursery, document_manager)
    asserts.is_not_nil(document_manager)
 
    self._change_detected = lusc.new_sticky_event()
@@ -48,10 +48,10 @@ function EnvUpdater:__init(server_state: ServerState, root_nursery:lusc.Nursery,
    self._document_manager = document_manager
 end
 
-function EnvUpdater:_init_env_from_config(cfg: ServerState.TealProjectConfig): tl.Env, string
-   local function ivalues<Value>(t: {any:Value}): function(): Value
+function EnvUpdater:_init_env_from_config(cfg)
+   local function ivalues(t)
       local i = 0
-      return function(): Value
+      return function()
          i = i + 1
          return t[i]
       end
@@ -60,33 +60,33 @@ function EnvUpdater:_init_env_from_config(cfg: ServerState.TealProjectConfig): t
    local path_separator = package.config:sub(1, 1)
    local shared_lib_ext = package.cpath:match("(%.%w+)%s*$") or ".so"
 
-   local function prepend_to_lua_path(path_str: string)
+   local function prepend_to_lua_path(path_str)
       if path_str:sub(-1) == path_separator then
          path_str = path_str:sub(1, -2)
       end
 
       path_str = path_str .. path_separator
 
-      package.path = path_str .. "?.lua;"
-         .. path_str .. "?" .. path_separator .. "init.lua;"
-         .. package.path
+      package.path = path_str .. "?.lua;" ..
+      path_str .. "?" .. path_separator .. "init.lua;" ..
+      package.path
 
-      package.cpath = path_str .. "?." .. shared_lib_ext .. ";"
-         .. package.cpath
+      package.cpath = path_str .. "?." .. shared_lib_ext .. ";" ..
+      package.cpath
    end
 
-   local function init_teal_env(gen_compat: tl.GenCompat, gen_target: tl.GenTarget, env_def: string): tl.Env, string
-      local opts:tl.EnvOptions = {
+   local function init_teal_env(gen_compat, gen_target, env_def)
+      local opts = {
          defaults = {
             gen_compat = gen_compat,
             gen_target = gen_target,
          },
-         predefined_modules = {env_def},
+         predefined_modules = { env_def },
       }
 
       local env = tl.new_env(opts)
       env.report_types = true
-      -- initializes an empty string, so even if the file is not valid, completions should work
+
       tl.check_string("", env, "bootstrap.tl")
       return env
    end
@@ -112,12 +112,12 @@ function EnvUpdater:_init_env_from_config(cfg: ServerState.TealProjectConfig): t
    return env
 end
 
-function EnvUpdater:_generate_env(): tl.Env
+function EnvUpdater:_generate_env()
    local config = self._server_state.config
    asserts.is_not_nil(config)
 
-   -- applying the config to the env adds to package.path
-   -- so lets reset them before doing that
+
+
    package.path = init_path
    package.cpath = init_cpath
 
@@ -137,9 +137,9 @@ function EnvUpdater:_update_env_on_changes()
       self._change_detected:await()
       self._change_detected:unset()
 
-      -- Full env updates can be costly for large projects, and it is common for many
-      -- documents to be saved all at once, so delay slightly so we just perform one
-      -- env update
+
+
+
       while true do
          lusc.await_sleep(required_delay_without_saves_sec)
          if self._change_detected.is_set then

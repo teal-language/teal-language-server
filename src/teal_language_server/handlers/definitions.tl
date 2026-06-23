@@ -9,8 +9,10 @@ local LspEventsManager <const> = require("teal_language_server.lsp.events_manage
 local Path <const> = require("teal_language_server.util.path")
 local Uri <const> = require("teal_language_server.util.uri")
 local lsp <const> = require("teal_language_server.lsp.protocol")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
 local class <const> = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 -- Builds the token chain for a node under the cursor. For definition lookups we
 -- keep `self` literal (passing "self" as the self_type makes the substitution in
@@ -88,10 +90,10 @@ function DefinitionHandlers:_on_definition(params: lsp.Method.Params, id: intege
       return
    end
 
-   tracing.trace(_module_name, "Received request for on_definition at position: {@}", {pos})
+   logger:trace("Received request for on_definition at position: %s", pos)
 
    if node_info.type ~= "identifier" then
-      tracing.warning(_module_name, "Can't go to definition of anything that isn't an identifier atm: {}", {node_info.type})
+      logger:warning("Can't go to definition of anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
@@ -112,7 +114,7 @@ function DefinitionHandlers:_on_definition(params: lsp.Method.Params, id: intege
    -- the declaration position for record/function fields.
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
    if type_info and self:_send_location(id, doc, type_info.file, type_info.y, type_info.x) then
-      tracing.trace(_module_name, "[on_definition] Resolved via field/type position", {})
+      logger:trace("[on_definition] Resolved via field/type position")
       return
    end
 
@@ -123,7 +125,7 @@ function DefinitionHandlers:_on_definition(params: lsp.Method.Params, id: intege
       for i = 1, #tks - 1 do parent_tks[i] = tks[i] end
       local parent_info = doc:type_information_for_tokens(parent_tks, pos.line, pos.character)
       if parent_info and self:_send_location(id, doc, parent_info.file, parent_info.y, parent_info.x) then
-         tracing.trace(_module_name, "[on_definition] Resolved via enclosing record position", {})
+         logger:trace("[on_definition] Resolved via enclosing record position")
          return
       end
    end
@@ -142,10 +144,10 @@ function DefinitionHandlers:_on_type_definition(params: lsp.Method.Params, id: i
       return
    end
 
-   tracing.trace(_module_name, "Received request for on_type_definition at position: {@}", {pos})
+   logger:trace("Received request for on_type_definition at position: %s")
 
    if node_info.type ~= "identifier" then
-      tracing.warning(_module_name, "Can't go to type definition of anything that isn't an identifier atm: {}", {node_info.type})
+      logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s")
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
@@ -153,7 +155,7 @@ function DefinitionHandlers:_on_type_definition(params: lsp.Method.Params, id: i
    local tks = tokens_for_node(node_info, "self")
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
-   tracing.trace(_module_name, "[on_type_definition] Found type type_info: {}", {type_info})
+   logger:trace("[on_type_definition] Found type type_info: %s")
 
    if not type_info or not self:_send_location(id, doc, type_info.file, type_info.y, type_info.x) then
       self._lsp_reader_writer:send_rpc(id, nil)
