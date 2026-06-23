@@ -1,4 +1,4 @@
-[![test](https://github.com/teal-language/teal-language-server/actions/workflows/platform-test.yaml/badge.svg)](https://github.com/teal-language/teal-language-server/actions/workflows/platform-test.yaml)
+[![Test all the OS/Platforms](https://github.com/teal-language/teal-language-server/actions/workflows/platform-test.yaml/badge.svg?branch=main)](https://github.com/teal-language/teal-language-server/actions/workflows/platform-test.yaml)
 
 # Teal Language Server
 
