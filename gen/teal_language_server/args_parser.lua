@@ -13,11 +13,18 @@ local args_parser = { CommandLineArgs = {} }
 
 
 
+
 function args_parser.parse_args()
    local argparse = require("argparse")
    local parser = argparse("teal-language-server", "Teal Language Server")
 
-   parser:option("-V --verbose", "")
+   parser:option("-V --verbose"):
+   description("Deprecated! Will just set -D TRACE")
+
+   parser:option("-d --debug"):
+   description("Set the log level - mostly for debugging issues with tested (default: 'WARNING')"):
+   choices({ "TRACE", "DEBUG", "INFO", "WARNING" }):
+   default("WARNING")
 
    parser:option("-L --log-mode", "Specify approach to logging.  By default it is none which means no logging.  by_date names the file according to date.  by_proj_path names file according to the teal project path"):
    choices({ "none", "by_date", "by_proj_path" })
@@ -26,18 +33,11 @@ function args_parser.parse_args()
 
    local raw_args = parser:parse()
 
-   local verbose = raw_args["verbose"]
-   local log_mode = raw_args["log_mode"]
-   local coverage = raw_args["coverage"]
-
-   if log_mode == nil then
-      log_mode = "none"
-   end
-
    local args = {
-      verbose = verbose,
-      log_mode = log_mode,
-      coverage = coverage,
+      verbose = raw_args["verbose"],
+      debug = raw_args["debug"],
+      log_mode = raw_args["log_mode"] or "none",
+      coverage = raw_args["coverage"],
    }
 
    return args

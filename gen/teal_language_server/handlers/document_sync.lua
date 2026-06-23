@@ -1,12 +1,14 @@
-local _module_name = "document_sync_handlers"
+local _module_name = "handlers.document_sync"
 
 local EnvUpdater = require("teal_language_server.analysis.env_updater")
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local LspEventsManager = require("teal_language_server.lsp.events_manager")
 local Uri = require("teal_language_server.util.uri")
 local lsp = require("teal_language_server.lsp.protocol")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
 local class = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local DocumentSyncHandlers = {}
 
@@ -38,7 +40,7 @@ function DocumentSyncHandlers:_on_did_save(params)
    local doc = self._document_manager:get(Uri.parse(td.uri))
 
    if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", { td.uri })
+      logger:warning("Unable to find document: %s", td.uri)
       return
    end
 
@@ -46,7 +48,7 @@ function DocumentSyncHandlers:_on_did_save(params)
 
 
 
-   tracing.debug(_module_name, "detected document file saved - enqueuing full env update", {})
+   logger:debug("detected document file saved - enqueuing full env update")
    self._env_updater:schedule_env_update()
 end
 
@@ -54,7 +56,7 @@ function DocumentSyncHandlers:_on_did_change(params)
    local td = params.textDocument
    local doc = self._document_manager:get(Uri.parse(td.uri))
    if not doc then
-      tracing.warning(_module_name, "Unable to find document: {}", { td.uri })
+      logger:warning("Unable to find document: %s", td.uri)
       return
    end
    local changes = params.contentChanges

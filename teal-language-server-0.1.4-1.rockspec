@@ -20,13 +20,12 @@ dependencies = {
    "tl == 0.24.8",
    "lua-cjson",
    "argparse",
-   "inspect",
    "luv == 1.52.1",
    "lusc_luv >= 4.0",
    "ltreesitter == 0.3.0",
 }
 
-test_dependencies = { "tested >= 0.2.1", "luacov" }
+test_dependencies = { "tested >= 0.2.1", "luacov", "inspect" }
 
 test = {
    type = "tested",
@@ -43,6 +42,8 @@ build = {
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
       ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
       ["teal_language_server.server_state"] = "gen/teal_language_server/server_state.lua",
+      ["teal_language_server.logging"] = "gen/teal_language_server/logging.lua",
+      ["teal_language_server.log_file"] = "gen/teal_language_server/log_file.lua",
 
       -- teal analysis
       ["teal_language_server.analysis.document"] = "gen/teal_language_server/analysis/document.lua",
@@ -56,12 +57,6 @@ build = {
       ["teal_language_server.handlers.document_sync"] = "gen/teal_language_server/handlers/document_sync.lua",
       ["teal_language_server.handlers.language_features"] = "gen/teal_language_server/handlers/language_features.lua",
       ["teal_language_server.handlers.misc_handlers"] = "gen/teal_language_server/handlers/misc_handlers.lua",
-
-      -- logging
-      ["teal_language_server.logging.trace_entry"] = "gen/teal_language_server/logging/trace_entry.lua",
-      ["teal_language_server.logging.trace_stream"] = "gen/teal_language_server/logging/trace_stream.lua",
-      ["teal_language_server.logging.tracing"] = "gen/teal_language_server/logging/tracing.lua",
-      ["teal_language_server.logging.tracing_util"] = "gen/teal_language_server/logging/tracing_util.lua",
 
       -- lsp protocol
       ["teal_language_server.lsp.events_manager"] = "gen/teal_language_server/lsp/events_manager.lua",

@@ -1,12 +1,14 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "lsp_reader_writer"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "lsp.reader_writer"
 
 local StdinReader = require("teal_language_server.lsp.stdin_reader")
 local lsp = require("teal_language_server.lsp.protocol")
 local json = require("cjson")
 local uv = require("luv")
 local asserts = require("teal_language_server.util.asserts")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
 local class = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local LspReaderWriter = {}
 
@@ -48,7 +50,7 @@ function LspReaderWriter:_parse_header(lines)
 
       asserts.that(key ~= nil and val ~= nil, "invalid header: " .. line)
 
-      tracing.trace(_module_name, "Request Header: {}: {}", { key, val })
+      logger:trace("Request Header: %s: %s", key, val)
 
       if key == "Content-Length" then
          asserts.is_nil(len)
@@ -76,20 +78,20 @@ function LspReaderWriter:initialize()
    self._stdout = uv.new_pipe(false)
    asserts.that(self._stdout ~= nil)
    assert(self._stdout:open(1))
-   tracing.trace(_module_name, "Opened pipe for stdout")
+   logger:trace("Opened pipe for stdout")
 end
 
 function LspReaderWriter:dispose()
    asserts.that(not self._disposed)
    self._disposed = true
    self._stdout:close()
-   tracing.debug(_module_name, "Closed pipe for stdout")
+   logger:debug("Closed pipe for stdout")
 end
 
 function LspReaderWriter:_decode_header()
    local header_lines = {}
 
-   tracing.trace(_module_name, "Reading LSP rpc header...")
+   logger:trace("Reading LSP rpc header...")
    while true do
       local header_line = self._stdin_reader:read_line()
 
@@ -106,9 +108,9 @@ end
 function LspReaderWriter:receive_rpc()
    local header_info = self:_decode_header()
 
-   tracing.trace(_module_name, "Successfully read LSP rpc header: {}\nWaiting to receive body...", { header_info })
+   logger:trace("Successfully read LSP rpc header: %s\nWaiting to receive body...", header_info)
    local body_line = self._stdin_reader:read(header_info.length)
-   tracing.trace(_module_name, "Received request Body: {}", { body_line })
+   logger:trace("Received request Body: %s", body_line)
 
    local data = json.decode(body_line)
 
@@ -126,7 +128,7 @@ function LspReaderWriter:_encode(t)
    local content = "Content-Length: " .. tostring(#msg) .. "\r\n\r\n" .. msg
    assert(self._stdout:write(content))
 
-   tracing.trace(_module_name, "Sending data: {}", { content })
+   logger:trace("Sending data: %s", content)
 end
 
 function LspReaderWriter:send_rpc(id, t)

@@ -1,14 +1,16 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local table = _tl_compat and _tl_compat.table or table; local _module_name = "language_feature_handlers"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handlers.language_feature"
 
 local handler_helper = require("teal_language_server.handlers.handler_helper")
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager = require("teal_language_server.lsp.events_manager")
 local lsp = require("teal_language_server.lsp.protocol")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
 local class = require("teal_language_server.util.class")
 local tl = require("tl")
 local lsp_formatter = require("teal_language_server.lsp.formatter")
+
+local logger = logging.get_logger(_module_name)
 
 local LanguageFeatureHandlers = {}
 
@@ -26,7 +28,7 @@ end
 
 function LanguageFeatureHandlers:_on_completion(params, id)
    local pos = params.position
-   tracing.info(_module_name, "Received request for completion at position: {@}", { pos })
+   logger:info("Received request for completion at position: %s", pos)
 
 
 
@@ -34,12 +36,12 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
    if node_info == nil then
-      tracing.trace(_module_name, "No node found at given position", {})
+      logger:trace("No node found at given position")
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   tracing.debug(_module_name, "Found node info: {@}", { node_info })
+   logger:debug("Found node info: %s", node_info)
 
    local tks
 
@@ -47,7 +49,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
    if node_info.type == "." or node_info.type == ":" then
       tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.debug(_module_name, "Received request for completion at character: {@}", { tks })
+      logger:debug("Received request for completion at character: %s", tks)
 
 
    elseif node_info.type == "identifier" then
@@ -80,11 +82,11 @@ function LanguageFeatureHandlers:_on_completion(params, id)
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
-      tracing.warning(_module_name, "Also failed to find type type_info based on token", {})
+      logger:warning("Also failed to find type type_info based on token")
    end
 
    if type_info then
-      tracing.debug(_module_name, "Successfully found type_info {@}", { type_info })
+      logger:debug("Successfully found type_info")
       local tr = doc:get_type_report()
 
       if type_info.ref then
@@ -115,12 +117,12 @@ function LanguageFeatureHandlers:_on_completion(params, id)
                      if first_arg_type.t == tl.typecodes.SELF or
                         ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) or
                         (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
-                        tracing.debug(_module_name, "Adding self method {}", { key })
+                        logger:debug("Adding self method %s", key)
                         table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
                         was_added = true
                      else
-                        tracing.debug(_module_name, "Ignoring method {} with arg type {0x%08x}, type info str {}, first arg str {}", {
-                           key, first_arg_type.t, original_str, first_arg_type.str, })
+                        logger:debug("Ignoring method %s with arg type 0x%08x, type info str %s, first arg str %s",
+                        key, first_arg_type.t, original_str, first_arg_type.str)
                      end
                   end
                end
@@ -130,7 +132,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
             end
 
             if not was_added then
-               tracing.trace(_module_name, "Ignoring field {}", { key })
+               logger:trace("Ignoring field %s", key)
             end
          end
 
@@ -144,7 +146,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
             end
          end
       else
-         tracing.warning(_module_name, "Unable to get fields for ref type", {})
+         logger:warning("Unable to get fields for ref type")
       end
    end
 
@@ -152,7 +154,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
       table.insert(items, { label = "(none)" })
    end
 
-   tracing.debug(_module_name, "Sending {} back to client", { #items })
+   logger:debug("Sending %d back to client", #items)
 
    self._lsp_reader_writer:send_rpc(id, {
       isIncomplete = false,
@@ -173,13 +175,13 @@ function LanguageFeatureHandlers:_on_signature_help(params, id)
    end
 
    local output = {}
-   tracing.debug(_module_name, "Got nodeinfo: {}", { node_info })
+   logger:debug("Got nodeinfo: %s", node_info)
 
    local tks
 
    if node_info.type == "(" then
       tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      tracing.debug(_module_name, "Received request for signature help at character: {}", { tks })
+      logger:debug("Received request for signature help at character: %s", tks)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -215,7 +217,7 @@ function LanguageFeatureHandlers:_on_signature_help(params, id)
       end
    end
 
-   tracing.debug(_module_name, "[_on_signature_help] Found type info: {}", { type_info })
+   logger:debug("[_on_signature_help] Found type info: %s", type_info)
 
    if #output.signatures == 0 then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -227,7 +229,7 @@ end
 
 function LanguageFeatureHandlers:_on_hover(params, id)
    local pos = params.position
-   tracing.trace(_module_name, "Received request for hover at position: {@}", { pos })
+   logger:trace("Received request for hover at position: %s", pos)
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, {
@@ -249,7 +251,7 @@ function LanguageFeatureHandlers:_on_hover(params, id)
          tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
       end
    else
-      tracing.warning(_module_name, "Can't hover over anything that isn't an identifier atm: {}", { node_info.type })
+      logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, {
          contents = { node_info.parent_type, ":", node_info.type },
          range = {
@@ -263,7 +265,7 @@ function LanguageFeatureHandlers:_on_hover(params, id)
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
-      tracing.warning(_module_name, "Also failed to find type info based on token", {})
+      logger:warning("Also failed to find type info based on token")
       self._lsp_reader_writer:send_rpc(id, {
          contents = { node_info.source .. ":", " No type_info found " },
          range = {
@@ -274,7 +276,7 @@ function LanguageFeatureHandlers:_on_hover(params, id)
       return
    end
 
-   tracing.debug(_module_name, "Successfully found type_info: {@}", { type_info })
+   logger:debug("Successfully found type_info: %s", type_info)
 
    local type_str = lsp_formatter.show_type(node_info, type_info, doc)
    self._lsp_reader_writer:send_rpc(id, {

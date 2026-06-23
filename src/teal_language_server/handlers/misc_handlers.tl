@@ -1,11 +1,10 @@
-local _module_name = "misc_handlers"
+local _module_name = "handlers.misc_handlers"
 
 local DocumentSyncHandlers <const> = require("teal_language_server.handlers.document_sync")
 local LanguageFeatureHandlers <const> = require("teal_language_server.handlers.language_features")
 local DefinitionHandlers <const> = require("teal_language_server.handlers.definitions")
 local EnvUpdater <const> = require("teal_language_server.analysis.env_updater")
 local args_parser <const> = require("teal_language_server.args_parser")
-local TraceStream <const> = require("teal_language_server.logging.trace_stream")
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
 local ServerState <const> = require("teal_language_server.server_state")
 local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
@@ -13,25 +12,28 @@ local Path <const> = require("teal_language_server.util.path")
 local Uri <const> = require("teal_language_server.util.uri")
 local lsp <const> = require("teal_language_server.lsp.protocol")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
-local uv <const> = require("luv")
 local asserts <const> = require("teal_language_server.util.asserts")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
+local uv <const> = require("luv")
 local class <const> = require("teal_language_server.util.class")
+local LogFileHandler = require("teal_language_server.log_file")
+
+local logger = logging.get_logger(_module_name)
 
 local record MiscHandlers
    _env_updater: EnvUpdater
-   _trace_stream: TraceStream
    _document_manager: DocumentManager
    _server_state: ServerState
    _lsp_reader_writer: LspReaderWriter
    _lsp_events_manager: LspEventsManager
    _has_handled_initialize: boolean
    _cl_args: args_parser.CommandLineArgs
+   _log_file: LogFileHandler.LogFile
 
-   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_updater: EnvUpdater): MiscHandlers
+   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, args:args_parser.CommandLineArgs, log_file: LogFileHandler.LogFile, env_updater: EnvUpdater): MiscHandlers
 end
 
-function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, trace_stream: TraceStream, args:args_parser.CommandLineArgs, env_updater: EnvUpdater)
+function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, args:args_parser.CommandLineArgs, log_file: LogFileHandler.LogFile, env_updater: EnvUpdater)
    asserts.is_not_nil(env_updater)
 
    self._document_manager = document_manager
@@ -39,8 +41,8 @@ function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_wri
    self._lsp_reader_writer = lsp_reader_writer
    self._lsp_events_manager = lsp_events_manager
    self._has_handled_initialize = false
-   self._trace_stream = trace_stream
    self._cl_args = args
+   self._log_file = log_file
    self._env_updater = env_updater
 end
 
@@ -58,20 +60,18 @@ function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
    local root_path = Path(root_dir_str)
    asserts.that(root_path:exists(), "Expected path to exist at '{}'", root_path.value)
 
-   -- Now that we have the project path, rename log file so it is more discoverable
-   -- so we can do project specific debugging more easily
-   if self._cl_args.log_mode == "by_proj_path" then
+   if self._cl_args.log_mode == "by_proj_path" and self._log_file then
       local pid = math.floor(uv.os_getpid())
       local new_log_name = root_path.value:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
-      self._trace_stream:rename_output_file(new_log_name)
+      self._log_file:rename_output_file(new_log_name)
    end
 
-   tracing.info(_module_name, "Received initialize request from client. Teal project dir: {}", {root_path.value})
+   logger:info("Received initialize request from client. Teal project dir: %s", root_path.value)
 
    self._server_state:initialize(root_path)
    self._env_updater:initialize()
 
-   tracing.trace(_module_name, "Sending initialize response message...", {})
+   logger:trace("Sending initialize response message...")
 
    self._lsp_reader_writer:send_rpc(id, {
       capabilities = self._server_state.capabilities,
@@ -83,7 +83,7 @@ function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
 end
 
 function MiscHandlers:_on_initialized():nil
-   tracing.debug(_module_name, "Received 'initialized' notification", {})
+   logger:debug("Received 'initialized' notification")
 end
 
 function MiscHandlers:_add_handler(name:lsp.Method.Name, handler:function(MiscHandlers, lsp.Method.Params, integer):nil)

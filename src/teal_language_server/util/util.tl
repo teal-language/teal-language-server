@@ -1,7 +1,8 @@
-local _module_name = "util"
+local _module_name = "util.util"
 
 local uv <const> = require("luv")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
+local logger = logging.get_logger(_module_name)
 
 local record util
    record TryOpts<T>
@@ -49,7 +50,7 @@ function util.get_platform():util.PlatformType
       elseif raw_os_name:find("windows") ~= nil or raw_os_name:find("mingw") ~= nil then
          _os_type = "windows"
       else
-         tracing.warning(_module_name, "Unrecognized platform {}", {raw_os_name})
+         logger:warning("Unrecognized platform %s", raw_os_name)
          _os_type = "unknown"
       end
    end

@@ -1,11 +1,13 @@
-local _module_name = "stdin_reader"
+local _module_name = "lsp.stdin_reader"
 
 -- <imports>
 local lusc <const> = require("lusc")
 local asserts <const> = require("teal_language_server.util.asserts")
 local uv <const> = require("luv")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
 local class <const> = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local record StdinReader
    _stdin: uv.Pipe
@@ -26,7 +28,7 @@ function StdinReader:initialize()
    self._stdin = uv.new_pipe(false)
    asserts.that(self._stdin ~= nil)
    assert(self._stdin:open(0))
-   tracing.trace(_module_name, "Opened pipe for stdin.  Now waiting to receive data...")
+   logger:trace("Opened pipe for stdin.  Now waiting to receive data...")
 
    assert(self._stdin:read_start(function(err:string, chunk:string)
       if self._disposed then
@@ -34,7 +36,7 @@ function StdinReader:initialize()
       end
       assert(not err, err)
       if chunk then
-         tracing.trace(_module_name, "Received new data chunk from stdin: {}", {chunk})
+         logger:trace("Received new data chunk from stdin: %s", chunk)
 
          self._buffer = self._buffer .. chunk
          self._chunk_added_event:set()
@@ -47,12 +49,12 @@ function StdinReader:dispose()
    self._disposed = true
    assert(self._stdin:read_stop())
    self._stdin:close()
-   tracing.debug(_module_name, "Closed pipe for stdin")
+   logger:debug("Closed pipe for stdin")
 end
 
 function StdinReader:read_line():string
    asserts.that(not self._disposed)
-   tracing.trace(_module_name, "Attempting to read line from stdin...")
+   logger:trace("Attempting to read line from stdin...")
    asserts.that(lusc.is_available())
 
    while true do
@@ -62,19 +64,19 @@ function StdinReader:read_line():string
          local line = self._buffer:sub(1, i - 1)
          self._buffer = self._buffer:sub(i + 1)
          line = line:gsub("\r$", "")
-         tracing.trace(_module_name, "Successfully parsed line from buffer: {}.  Buffer is now: {}", {line, self._buffer})
+         logger:trace("Successfully parsed line from buffer: %s.  Buffer is now: %s", line, self._buffer)
          return line
       else
-         tracing.trace(_module_name, "No line available yet.  Waiting for more data...", {})
+         logger:trace("No line available yet.  Waiting for more data...")
          self._chunk_added_event:await()
-         tracing.trace(_module_name, "Checking stdin again for new line...", {})
+         logger:trace("Checking stdin again for new line...")
       end
    end
 end
 
 function StdinReader:read(len:integer):string
    asserts.that(not self._disposed)
-   tracing.trace(_module_name, "Attempting to read {} characters from stdin...", {len})
+   logger:trace("Attempting to read %d characters from stdin...", len)
 
    asserts.that(lusc.is_available())
 

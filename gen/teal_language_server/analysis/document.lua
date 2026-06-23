@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "document"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "analysis.document"
 
 local ServerState = require("teal_language_server.server_state")
 local Uri = require("teal_language_server.util.uri")
@@ -6,8 +6,10 @@ local lsp = require("teal_language_server.lsp.protocol")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
 local class = require("teal_language_server.util.class")
 local asserts = require("teal_language_server.util.asserts")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
 local json = require("cjson")
+
+local logger = logging.get_logger(_module_name)
 
 local ltreesitter = require("ltreesitter")
 local teal_language = ltreesitter.require("teal", "teal")
@@ -120,7 +122,7 @@ function Document:_get_ast(tokens)
       local _
       cache.parse_errors = {}
       cache.ast, _ = tl.parse_program(tokens, cache.parse_errors, self._uri.path)
-      tracing.debug(_module_name, "parse_prog errors: {}", { #cache.parse_errors })
+      logger:debug("parse_prog errors: %d", #cache.parse_errors)
    end
    return cache.ast, cache.parse_errors
 end
@@ -129,7 +131,7 @@ function Document:_get_result(ast)
    local cache = self._cache
    if not cache.result then
       local lax = is_lua(self._uri.path)
-      tracing.info(_module_name, "Type checking document{} {}", { lax and " (lax)" or "", self._uri.path })
+      logger:info("Type checking document%s %s", lax and " (lax)" or "", self._uri.path)
 
       local opts = {
          feat_lax = lax and "on" or "off",
@@ -177,11 +179,11 @@ end
 
 function Document:clear_cache()
    self._cache = {}
-   tracing.debug(_module_name, "Cleared cache for document {@}", { self._uri })
+   logger:debug("Cleared cache for document %s", self._uri)
 end
 
 function Document:update_text(text, version)
-   tracing.debug(_module_name, "document update_text called (version {})", { version })
+   logger:debug("document update_text called (version %s)", version)
 
    if not version or not self._version or self._version < version then
       self:clear_cache()
@@ -226,7 +228,7 @@ local function insert_errs(fname, diags, tks, errs, sev)
 end
 
 function Document:_publish_diagnostics(diagnostics, version)
-   tracing.debug(_module_name, "Publishing diagnostics for {}...", { self._uri.path })
+   logger:debug("Publishing diagnostics for %s...", self._uri.path)
 
 
    setmetatable(diagnostics, json.empty_array_mt)
@@ -247,7 +249,7 @@ end
 
 function Document:process_and_publish_results()
    local tks, err_tks = self:_get_tokens()
-   tracing.debug(_module_name, "Detected {} lex errors", { #err_tks })
+   logger:debug("Detected %d lex errors", #err_tks)
    if #err_tks > 0 then
       self:_publish_diagnostics(imap(err_tks, function(t)
          return {
@@ -263,7 +265,7 @@ function Document:process_and_publish_results()
    end
 
    local ast, parse_errs = self:_get_ast(tks)
-   tracing.debug(_module_name, "Detected {} parse errors", { #parse_errs })
+   logger:debug("Detected %d parse errors", #parse_errs)
    if #parse_errs > 0 then
       self:_publish_diagnostics(imap(parse_errs, function(e)
          return make_diagnostic_from_error(tks, e, "Error")
@@ -275,7 +277,7 @@ function Document:process_and_publish_results()
    local fname = self._uri.path
    local result = self:_get_result(ast)
 
-   tracing.debug(_module_name, "Detected {} type errors", { #result.type_errors })
+   logger:debug("Detected %d type errors", #result.type_errors)
 
    local config = self._server_state.config
    local disabled_warnings = set(config.disable_warnings or {})
@@ -338,7 +340,7 @@ function Document:type_information_for_tokens(tokens, y, x)
    local type_info
 
    local scope_symbols = tl.symbols_in_scope(tr, y + 1, x + 1, self._uri.path)
-   tracing.trace(_module_name, "Looked up symbols at {}, {} for file {} with result: {@}", { y + 1, x + 1, self._uri.path, scope_symbols })
+   logger:trace("Looked up symbols at %d, %d for file %s with result: %s", y + 1, x + 1, self._uri.path, scope_symbols)
    if #tokens == 0 then
       local out = {}
       for key, value in pairs(scope_symbols) do out[key] = value end
@@ -349,17 +351,17 @@ function Document:type_information_for_tokens(tokens, y, x)
       return type_info
    end
    local raw_token = tokens[1]
-   tracing.trace(_module_name, "Processing token {} (all: {@})", { raw_token, tokens })
+   logger:trace("Processing token %s (all: %s)", raw_token, tokens)
    local type_id = scope_symbols[raw_token]
    if type_id == nil then
-      tracing.warning(_module_name, "Failed to find type id for token {}", { raw_token })
+      logger:warning("Failed to find type id for token %s", raw_token)
    end
    if type_id ~= nil then
-      tracing.trace(_module_name, "Matched token {} to type id {}", { raw_token, type_id })
+      logger:trace("Matched token %s to type id %s", raw_token, type_id)
       type_info = self:resolve_type_ref(type_id)
 
       if type_info == nil then
-         tracing.warning(_module_name, "Failed to resolve type ref for id {}", {})
+         logger:warning("Failed to resolve type ref for id")
       end
    end
 
@@ -368,15 +370,15 @@ function Document:type_information_for_tokens(tokens, y, x)
       type_info = tr.types[tr.globals[raw_token]]
 
       if type_info == nil then
-         tracing.warning(_module_name, "Unable to find type info in global table as well..")
+         logger:warning("Unable to find type info in global table as well..")
       end
    end
 
-   tracing.debug(_module_name, "Got type info: {@}", { type_info })
+   logger:debug("Got type info: %s", type_info)
 
    if type_info and #tokens > 1 then
       for i = 2, #tokens do
-         tracing.trace(_module_name, "tokens[i]: {}", { tokens[i] })
+         logger:trace("tokens[i]: %s", tokens[i])
 
          if type_info.fields then
             type_info = self:resolve_type_ref(type_info.fields[tokens[i]])
@@ -394,11 +396,11 @@ function Document:type_information_for_tokens(tokens, y, x)
    end
 
    if type_info then
-      tracing.trace(_module_name, "Successfully found type info", {})
+      logger:trace("Successfully found type info")
       return type_info
    end
 
-   tracing.warning(_module_name, "Failed to find type info at given position", {})
+   logger:warning("Failed to find type info at given position")
    return nil
 end
 

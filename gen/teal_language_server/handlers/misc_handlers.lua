@@ -1,11 +1,10 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local math = _tl_compat and _tl_compat.math or math; local string = _tl_compat and _tl_compat.string or string; local _module_name = "misc_handlers"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local math = _tl_compat and _tl_compat.math or math; local string = _tl_compat and _tl_compat.string or string; local _module_name = "handlers.misc_handlers"
 
 local DocumentSyncHandlers = require("teal_language_server.handlers.document_sync")
 local LanguageFeatureHandlers = require("teal_language_server.handlers.language_features")
 local DefinitionHandlers = require("teal_language_server.handlers.definitions")
 local EnvUpdater = require("teal_language_server.analysis.env_updater")
 local args_parser = require("teal_language_server.args_parser")
-local TraceStream = require("teal_language_server.logging.trace_stream")
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local ServerState = require("teal_language_server.server_state")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
@@ -13,10 +12,13 @@ local Path = require("teal_language_server.util.path")
 local Uri = require("teal_language_server.util.uri")
 local lsp = require("teal_language_server.lsp.protocol")
 local LspEventsManager = require("teal_language_server.lsp.events_manager")
-local uv = require("luv")
 local asserts = require("teal_language_server.util.asserts")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
+local uv = require("luv")
 local class = require("teal_language_server.util.class")
+local LogFileHandler = require("teal_language_server.log_file")
+
+local logger = logging.get_logger(_module_name)
 
 local MiscHandlers = {}
 
@@ -31,7 +33,7 @@ local MiscHandlers = {}
 
 
 
-function MiscHandlers:__init(lsp_events_manager, lsp_reader_writer, server_state, document_manager, trace_stream, args, env_updater)
+function MiscHandlers:__init(lsp_events_manager, lsp_reader_writer, server_state, document_manager, args, log_file, env_updater)
    asserts.is_not_nil(env_updater)
 
    self._document_manager = document_manager
@@ -39,8 +41,8 @@ function MiscHandlers:__init(lsp_events_manager, lsp_reader_writer, server_state
    self._lsp_reader_writer = lsp_reader_writer
    self._lsp_events_manager = lsp_events_manager
    self._has_handled_initialize = false
-   self._trace_stream = trace_stream
    self._cl_args = args
+   self._log_file = log_file
    self._env_updater = env_updater
 end
 
@@ -58,20 +60,18 @@ function MiscHandlers:_on_initialize(params, id)
    local root_path = Path(root_dir_str)
    asserts.that(root_path:exists(), "Expected path to exist at '{}'", root_path.value)
 
-
-
-   if self._cl_args.log_mode == "by_proj_path" then
+   if self._cl_args.log_mode == "by_proj_path" and self._log_file then
       local pid = math.floor(uv.os_getpid())
       local new_log_name = root_path.value:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
-      self._trace_stream:rename_output_file(new_log_name)
+      self._log_file:rename_output_file(new_log_name)
    end
 
-   tracing.info(_module_name, "Received initialize request from client. Teal project dir: {}", { root_path.value })
+   logger:info("Received initialize request from client. Teal project dir: %s", root_path.value)
 
    self._server_state:initialize(root_path)
    self._env_updater:initialize()
 
-   tracing.trace(_module_name, "Sending initialize response message...", {})
+   logger:trace("Sending initialize response message...")
 
    self._lsp_reader_writer:send_rpc(id, {
       capabilities = self._server_state.capabilities,
@@ -83,7 +83,7 @@ function MiscHandlers:_on_initialize(params, id)
 end
 
 function MiscHandlers:_on_initialized()
-   tracing.debug(_module_name, "Received 'initialized' notification", {})
+   logger:debug("Received 'initialized' notification")
 end
 
 function MiscHandlers:_add_handler(name, handler)

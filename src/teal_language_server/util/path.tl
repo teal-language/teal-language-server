@@ -1,10 +1,12 @@
-local _module_name = "path"
+local _module_name = "util.path"
 
 local asserts <const> = require("teal_language_server.util.asserts")
 local class <const> = require("teal_language_server.util.class")
 local util <const> = require("teal_language_server.util.util")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
 local uv <const> = require("luv")
+
+local logger = logging.get_logger(_module_name)
 
 local default_dir_permissions = tonumber('755', 8)
 
@@ -290,7 +292,7 @@ end
 function Path:delete_file()
    asserts.that(self:is_file(), "Called delete_file for non-file at path '{}'", self._value)
    assert(uv.fs_unlink(self._value))
-   tracing.trace(_module_name, "Deleted file at path '{}'", {self._value})
+   logger:trace("Deleted file at path '%s'", self._value)
 end
 
 function Path:create_directory(args?:Path.CreateDirectoryArgs)

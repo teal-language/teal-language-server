@@ -1,4 +1,4 @@
-local _module_name = "document_manager"
+local _module_name = "analysis.document_manager"
 
 -- <imports>
 local ServerState <const> = require("teal_language_server.server_state")

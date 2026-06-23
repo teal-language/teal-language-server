@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local package = _tl_compat and _tl_compat.package or package; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "env_updater"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local package = _tl_compat and _tl_compat.package or package; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "analysis.env_updater"
 
 
 local DocumentManager = require("teal_language_server.analysis.document_manager")
@@ -8,8 +8,10 @@ local ServerState = require("teal_language_server.server_state")
 local tl = require("tl")
 local uv = require("luv")
 local asserts = require("teal_language_server.util.asserts")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
 local class = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local init_path = package.path
 local init_cpath = package.cpath
@@ -99,8 +101,8 @@ function EnvUpdater:_init_env_from_config(cfg)
       prepend_to_lua_path(cfg.source_dir)
    end
 
-   tracing.debug(_module_name, "Final package.path: {}", { package.path })
-   tracing.debug(_module_name, "Final package.cpath: {}", { package.cpath })
+   logger:debug("Final package.path: %s", package.path)
+   logger:debug("Final package.cpath: %s", package.cpath)
 
    local env, err = init_teal_env(cfg.gen_compat, cfg.gen_target, cfg.global_env_def)
    if not env then
@@ -122,7 +124,7 @@ function EnvUpdater:_generate_env()
    local env, errs = self:_init_env_from_config(config)
 
    if errs ~= nil and #errs > 0 then
-      tracing.debug(_module_name, "Loaded env with errors:\n{}", { errs })
+      logger:debug("Loaded env with errors:\n%s", errs)
    end
 
    return env
@@ -141,20 +143,20 @@ function EnvUpdater:_update_env_on_changes()
       while true do
          lusc.await_sleep(required_delay_without_saves_sec)
          if self._change_detected.is_set then
-            tracing.debug(_module_name, "Detected consecutive change events, waiting again...", {})
+            logger:debug("Detected consecutive change events, waiting again...")
             self._change_detected:unset()
          else
-            tracing.debug(_module_name, "Successfully waited for buffer time. Now updating env...", {})
+            logger:debug("Successfully waited for buffer time. Now updating env...")
             break
          end
       end
 
-      tracing.debug(_module_name, "Now updating env...", {})
+      logger:debug("Now updating env...")
       local start_time = uv.hrtime()
       local env = self:_generate_env()
       self._server_state:set_env(env)
       local elapsed_time_ms = (uv.hrtime() - start_time) / 1e6
-      tracing.debug(_module_name, "Completed env update in {} ms", { elapsed_time_ms })
+      logger:debug("Completed env update in %f ms", elapsed_time_ms)
 
       for _, doc in pairs(self._document_manager.docs) do
          doc:clear_cache()
@@ -170,16 +172,16 @@ end
 function EnvUpdater:initialize()
    local root = self._server_state.teal_project_root_dir.value
    local lua_bin = lua_env.find_lua_bin(root)
-   tracing.info(_module_name, "Using lua binary for env discovery: {}", { lua_bin })
+   logger:info("Using lua binary for env discovery: %s", lua_bin)
    local discovered_user_path, discovered_user_cpath = lua_env.discover_paths(lua_bin)
    if discovered_user_path then
       init_path = dedup_path(init_path .. ";" .. discovered_user_path)
-      tracing.info(_module_name, "Discovered user lua path: {}", { discovered_user_path })
+      logger:info("Discovered user lua path: %s", discovered_user_path)
    end
 
    if discovered_user_cpath then
       init_cpath = dedup_path(init_cpath .. ";" .. discovered_user_cpath)
-      tracing.info(_module_name, "Discovered user lua cpath: {}", { discovered_user_cpath })
+      logger:info("Discovered user lua cpath: %s", discovered_user_cpath)
    end
 
    local env = self:_generate_env()

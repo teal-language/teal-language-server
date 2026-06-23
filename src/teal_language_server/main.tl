@@ -7,47 +7,35 @@ local ServerState <const> = require("teal_language_server.server_state")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local lusc <const> = require("lusc")
 local uv <const> = require("luv")
-local TraceStream <const> = require("teal_language_server.logging.trace_stream")
 local args_parser <const> = require("teal_language_server.args_parser")
 local MiscHandlers <const> = require("teal_language_server.handlers.misc_handlers")
 local StdinReader <const> = require("teal_language_server.lsp.stdin_reader")
 local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
 local lsp <const> = require("teal_language_server.lsp.protocol")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
+local LogFileHandler = require("teal_language_server.log_file")
 local util <const> = require("teal_language_server.util.util")
-local TraceEntry <const> = require("teal_language_server.logging.trace_entry")
+
+local logger = logging.get_logger(_module_name)
 
 local record IDisposable
    dispose: function(IDisposable)
 end
 
-local function init_logging(verbose:boolean):TraceStream
-   local trace_stream = TraceStream()
-   trace_stream:initialize()
-
-   tracing.add_stream(function(entry:TraceEntry)
-      trace_stream:log_entry(entry)
-   end)
-
-   if verbose then
-      tracing.set_min_level("TRACE")
-   else
-      tracing.set_min_level("INFO")
-   end
-   return trace_stream
-end
-
 local function main()
-   -- Immediately listen to log events and cache until
-   -- we set up our file logger
-   local cached_entries:{TraceEntry} = {}
-   tracing.add_stream(function(entry:TraceEntry)
-      if cached_entries then
-         table.insert(cached_entries, entry)
-      end
-   end)
-
    local args = args_parser.parse_args()
+
+   local log_file: LogFileHandler.LogFile
+   if args.log_mode ~= "none" then
+      log_file = LogFileHandler.open_log_file(logging)
+   end
+
+   if args.verbose then
+      logging.set_level("TRACE")
+   elseif args.debug then
+      logging.set_level(args.debug as logging.level)
+   end
+
 
    if args.coverage then
       local ok, err = pcall(require, "luacov")
@@ -56,31 +44,14 @@ local function main()
       end
    end
 
-   local trace_stream:TraceStream
-
-   if args.log_mode ~= "none" then
-      trace_stream = init_logging(args.verbose)
-
-      for _, entry in ipairs(cached_entries) do
-         trace_stream:log_entry(entry)
-      end
-
-      -- Uncomment if lusc is suspected to have an issue
-      -- lusc.set_log_handler(function(message:string)
-      --    tracing.debug("lusc", message, {})
-      -- end)
-   end
-
-   cached_entries = nil
-
-   tracing.info(_module_name, "Started new instance teal-language-server. Lua Version: {}. Platform: {}", {_VERSION, util.get_platform()})
-   tracing.info(_module_name, "Received command line args: {}", {args})
-   tracing.info(_module_name, "CWD = {}", {uv.cwd()})
+   logger:info("Started new instance teal-language-server. Lua Version: %s. Platform: %s", _VERSION, util.get_platform())
+   logger:info("Received command line args: %s", args)
+   logger:info("CWD = %s", uv.cwd())
 
    local disposables:{IDisposable}
 
    local function initialize()
-      tracing.debug(_module_name, "Running object graph construction phase...", {})
+      logger:debug("Running object graph construction phase...")
 
       local root_nursery = lusc.get_root_nursery()
       local stdin_reader = StdinReader()
@@ -89,16 +60,16 @@ local function main()
       local server_state = ServerState()
       local document_manager = DocumentManager(lsp_reader_writer, server_state)
       local env_updater = EnvUpdater(server_state, root_nursery, document_manager)
-      local misc_handlers = MiscHandlers(lsp_events_manager, lsp_reader_writer, server_state, document_manager, trace_stream, args, env_updater)
+      local misc_handlers = MiscHandlers(lsp_events_manager, lsp_reader_writer, server_state, document_manager, args, log_file, env_updater)
 
-      tracing.debug(_module_name, "Running initialize phase...", {})
+      logger:debug("Running initialize phase...")
       stdin_reader:initialize()
       lsp_reader_writer:initialize()
       lsp_events_manager:initialize()
       misc_handlers:initialize()
 
       lsp_events_manager:set_handler("shutdown", function(_params:lsp.Method.Params, id:integer)
-         tracing.info(_module_name, "Received shutdown request from client.  Sending null response and cancelling all lusc tasks...", {})
+         logger:info("Received shutdown request from client.  Sending null response and cancelling all lusc tasks...")
          lsp_reader_writer:send_rpc(id, nil)
          root_nursery.cancel_scope:cancel()
       end)
@@ -109,27 +80,31 @@ local function main()
    end
 
    local function dispose()
-      tracing.info(_module_name, "Disposing...", {})
+      logger:info("Disposing...")
 
       if disposables then
          for _, disposable in ipairs(disposables) do
             disposable:dispose()
          end
       end
+
+      if log_file then
+         log_file:close()
+      end
    end
 
    local lusc_timer = uv.new_timer()
    lusc_timer:start(0, 0, function()
-      tracing.trace(_module_name, "Received entry point call from luv")
+      logger:trace("Received entry point call from luv")
 
       lusc.start {
          -- TODO - consider turning this off by default
          generate_debug_names = true,
          on_completed = function(err:lusc.ErrorGroup)
             if err ~= nil then
-               tracing.error(_module_name, "Received on_completed request with error:\n{}", {err})
+               logger:error("Received on_completed request with error:\n%s", err)
             else
-               tracing.info(_module_name, "Received on_completed request")
+               logger:info("Received on_completed request")
             end
 
             dispose()
@@ -137,7 +112,7 @@ local function main()
       }
 
       lusc.schedule(function()
-         tracing.trace(_module_name, "Received entry point call from lusc luv")
+         logger:trace("Received entry point call from lusc luv")
          initialize()
       end)
 
@@ -146,15 +121,15 @@ local function main()
    end)
 
    local function run_luv():nil
-      tracing.trace(_module_name, "Running luv event loop...")
+      logger:trace("Running luv event loop...")
       uv.run()
-      tracing.trace(_module_name, "Luv event loop stopped")
+      logger:trace("Luv event loop stopped")
       lusc_timer:close()
 
       uv.walk(function(handle:uv.Handle)
          if not handle:is_closing() then
             local handle_type = handle:get_type()
-            tracing.warning(_module_name, "Found unclosed handle of type '{}', closing it.", {handle_type})
+            logger:warning("Found unclosed handle of type '%s', closing it.", handle_type)
             handle:close()
          end
       end)
@@ -162,16 +137,16 @@ local function main()
       uv.run('nowait')
 
       if uv.loop_close() then
-         tracing.info(_module_name, "luv event loop closed gracefully")
+         logger:info("luv event loop closed gracefully")
       else
-         tracing.warning(_module_name, "Could not close luv event loop gracefully")
+         logger:warning("Could not close luv event loop gracefully")
       end
    end
 
    util.try {
       action = run_luv,
       catch = function(err:string):nil
-         tracing.error(_module_name, "Error: {}", {err})
+         logger:error("Error: %s", err)
          error(err)
       end,
    }

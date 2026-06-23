@@ -6,8 +6,10 @@ local lsp <const> = require("teal_language_server.lsp.protocol")
 local Path <const> = require("teal_language_server.util.path")
 local lfs <const> = require("lfs")
 local tl <const> = require("tl")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
 local class <const> = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local record ServerState
    record TealProjectConfig
@@ -216,7 +218,7 @@ function ServerState:_validate_config(c:ServerState.TealProjectConfig)
    asserts.that(#errs == 0, "Found {} errors and {} warnings in config:\n{}\n{}", #errs, #warnings, errs, warnings)
 
    if #warnings > 0 then
-      tracing.warning(_module_name, "Found {} warnings in config:\n{}", {#warnings, warnings})
+      logger:warning("Found %d warnings in config:\n%s", #warnings, warnings)
    end
 end
 

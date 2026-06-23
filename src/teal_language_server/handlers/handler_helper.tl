@@ -1,10 +1,12 @@
-local _module_name = "handler_helper"
+local _module_name = "handlers.handler_helper"
 
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
 local Document <const> = require("teal_language_server.analysis.document")
 local Uri <const> = require("teal_language_server.util.uri")
 local lsp <const> = require("teal_language_server.lsp.protocol")
-local tracing <const> = require("teal_language_server.logging.tracing")
+local logging <const> = require("teal_language_server.logging")
+
+local logger = logging.get_logger(_module_name)
 
 local record handler_helper
    indexable_parent_types: {string:boolean}
@@ -35,7 +37,7 @@ function handler_helper.get_node_info(document_manager: DocumentManager, params:
    local context = params.context as lsp.CompletionContext
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
-      tracing.warning(_module_name, "Ignoring completion request given kind: {}", {context.triggerKind})
+      logger:warning("Ignoring completion request given kind: %s", context.triggerKind)
       return nil
    end
 
@@ -43,17 +45,17 @@ function handler_helper.get_node_info(document_manager: DocumentManager, params:
    local doc <const> = document_manager:get(Uri.parse(td.uri))
 
    if not doc then
-      tracing.warning(_module_name, "No doc found for completion request", {})
+      logger:warning("No doc found for completion request")
       return nil
    end
 
-   tracing.debug(_module_name, "Looking up node info at position: {@}", {pos})
+   logger:debug("Looking up node info at position: %s", pos)
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
-      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      logger:warning("Unable to retrieve node info from tree-sitter parser")
       return nil
    end
-   tracing.debug(_module_name, "Found node info: {@}", {node_info})
+   logger:debug("Found node info: %s", node_info)
    return node_info, doc
 end
 

@@ -1,7 +1,8 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local debug = _tl_compat and _tl_compat.debug or debug; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "util"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local debug = _tl_compat and _tl_compat.debug or debug; local string = _tl_compat and _tl_compat.string or string; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "util.util"
 
 local uv = require("luv")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
+local logger = logging.get_logger(_module_name)
 
 local util = { TryOpts = {} }
 
@@ -49,7 +50,7 @@ function util.get_platform()
       elseif raw_os_name:find("windows") ~= nil or raw_os_name:find("mingw") ~= nil then
          _os_type = "windows"
       else
-         tracing.warning(_module_name, "Unrecognized platform {}", { raw_os_name })
+         logger:warning("Unrecognized platform %s", raw_os_name)
          _os_type = "unknown"
       end
    end

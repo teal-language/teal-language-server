@@ -1,11 +1,13 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp_events_manager"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp.events_manager"
 
 local lsp = require("teal_language_server.lsp.protocol")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
 local lusc = require("lusc")
 local asserts = require("teal_language_server.util.asserts")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
 local class = require("teal_language_server.util.class")
+
+local logger = logging.get_logger(_module_name)
 
 local LspEventsManager = {}
 
@@ -31,7 +33,7 @@ function LspEventsManager:set_handler(method, handler)
 end
 
 function LspEventsManager:_trigger(method, params, id)
-   tracing.info(_module_name, "Received request from client for method {}", { method })
+   logger:info("Received request from client for method %s", method)
 
    if self._handlers[method] then
       local ok
@@ -42,12 +44,12 @@ function LspEventsManager:_trigger(method, params, id)
       debug.traceback)
 
       if ok then
-         tracing.debug(_module_name, "Successfully handled request with method {}", { method })
+         logger:debug("Successfully handled request with method %s", method)
       else
-         tracing.error(_module_name, "Error in handler for request with method {}: {}", { method, err })
+         logger:error("Error in handler for request with method %s: %s", method, err)
       end
    else
-      tracing.warning(_module_name, "No handler found for event with method {}", { method })
+      logger:warning("No handler found for event with method %s", method)
    end
 end
 
@@ -59,7 +61,7 @@ function LspEventsManager:_receive_initialize_request()
    asserts.that(initialize_data.method ~= nil, "No method in initial request")
    asserts.that(initialize_data.method == "initialize", "Initial method was not 'initialize'")
 
-   tracing.trace(_module_name, "Received initialize request from client with data: {}", { initialize_data })
+   logger:trace("Received initialize request from client with data: %s", initialize_data)
 
    self:_trigger(
    "initialize", initialize_data.params, initialize_data.id)

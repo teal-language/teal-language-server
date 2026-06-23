@@ -1,10 +1,12 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handler_helper"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handlers.handler_helper"
 
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local Document = require("teal_language_server.analysis.document")
 local Uri = require("teal_language_server.util.uri")
 local lsp = require("teal_language_server.lsp.protocol")
-local tracing = require("teal_language_server.logging.tracing")
+local logging = require("teal_language_server.logging")
+
+local logger = logging.get_logger(_module_name)
 
 local handler_helper = {}
 
@@ -35,7 +37,7 @@ function handler_helper.get_node_info(document_manager, params, pos)
    local context = params.context
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
-      tracing.warning(_module_name, "Ignoring completion request given kind: {}", { context.triggerKind })
+      logger:warning("Ignoring completion request given kind: %s", context.triggerKind)
       return nil
    end
 
@@ -43,17 +45,17 @@ function handler_helper.get_node_info(document_manager, params, pos)
    local doc = document_manager:get(Uri.parse(td.uri))
 
    if not doc then
-      tracing.warning(_module_name, "No doc found for completion request", {})
+      logger:warning("No doc found for completion request")
       return nil
    end
 
-   tracing.debug(_module_name, "Looking up node info at position: {@}", { pos })
+   logger:debug("Looking up node info at position: %s", pos)
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
-      tracing.warning(_module_name, "Unable to retrieve node info from tree-sitter parser", {})
+      logger:warning("Unable to retrieve node info from tree-sitter parser")
       return nil
    end
-   tracing.debug(_module_name, "Found node info: {@}", { node_info })
+   logger:debug("Found node info: %s", node_info)
    return node_info, doc
 end
 
