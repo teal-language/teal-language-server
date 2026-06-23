@@ -1,4 +1,4 @@
-local _module_name = "misc_handlers"
+local _module_name = "handlers.misc_handlers"
 
 local DocumentSyncHandlers <const> = require("teal_language_server.handlers.document_sync")
 local LanguageFeatureHandlers <const> = require("teal_language_server.handlers.language_features")
@@ -14,7 +14,9 @@ local lsp <const> = require("teal_language_server.lsp.protocol")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local asserts <const> = require("teal_language_server.util.asserts")
 local logging <const> = require("teal_language_server.logging")
+local uv <const> = require("luv")
 local class <const> = require("teal_language_server.util.class")
+local LogFileHandler = require("teal_language_server.log_file")
 
 local logger = logging.get_logger(_module_name)
 
@@ -26,11 +28,12 @@ local record MiscHandlers
    _lsp_events_manager: LspEventsManager
    _has_handled_initialize: boolean
    _cl_args: args_parser.CommandLineArgs
+   _log_file: LogFileHandler.LogFile
 
-   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, args:args_parser.CommandLineArgs, env_updater: EnvUpdater): MiscHandlers
+   metamethod __call: function(self: MiscHandlers, lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, args:args_parser.CommandLineArgs, log_file: LogFileHandler.LogFile, env_updater: EnvUpdater): MiscHandlers
 end
 
-function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, args:args_parser.CommandLineArgs, env_updater: EnvUpdater)
+function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_writer: LspReaderWriter, server_state: ServerState, document_manager: DocumentManager, args:args_parser.CommandLineArgs, log_file: LogFileHandler.LogFile, env_updater: EnvUpdater)
    asserts.is_not_nil(env_updater)
 
    self._document_manager = document_manager
@@ -39,6 +42,7 @@ function MiscHandlers:__init(lsp_events_manager:LspEventsManager, lsp_reader_wri
    self._lsp_events_manager = lsp_events_manager
    self._has_handled_initialize = false
    self._cl_args = args
+   self._log_file = log_file
    self._env_updater = env_updater
 end
 
@@ -55,6 +59,12 @@ function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
 
    local root_path = Path(root_dir_str)
    asserts.that(root_path:exists(), "Expected path to exist at '{}'", root_path.value)
+
+   if self._cl_args.log_mode == "by_proj_path" and self._log_file then
+      local pid = math.floor(uv.os_getpid())
+      local new_log_name = root_path.value:gsub('[\\/:*?"<>|]+', '_') .. "_" .. tostring(pid)
+      self._log_file:rename_output_file(new_log_name)
+   end
 
    logger:info("Received initialize request from client. Teal project dir: %s", root_path.value)
 

@@ -1,4 +1,4 @@
-local _module_name = "env_updater"
+local _module_name = "analysis.env_updater"
 
 -- <imports>
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")

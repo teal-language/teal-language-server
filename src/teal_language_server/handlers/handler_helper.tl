@@ -1,4 +1,4 @@
-local _module_name = "handler_helper"
+local _module_name = "handlers.handler_helper"
 
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
 local Document <const> = require("teal_language_server.analysis.document")
@@ -49,7 +49,7 @@ function handler_helper.get_node_info(document_manager: DocumentManager, params:
       return nil
    end
 
-   logger:debug("Looking up node info at position: %s")
+   logger:debug("Looking up node info at position: %s", pos)
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       logger:warning("Unable to retrieve node info from tree-sitter parser")

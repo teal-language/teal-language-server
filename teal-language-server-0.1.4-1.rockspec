@@ -20,13 +20,12 @@ dependencies = {
    "tl == 0.24.8",
    "lua-cjson",
    "argparse",
-   "inspect",
    "luv == 1.52.1",
    "lusc_luv >= 4.0",
    "ltreesitter == 0.3.0",
 }
 
-test_dependencies = { "tested >= 0.2.1", "luacov" }
+test_dependencies = { "tested >= 0.2.1", "luacov", "inspect" }
 
 test = {
    type = "tested",
@@ -44,6 +43,7 @@ build = {
       ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
       ["teal_language_server.server_state"] = "gen/teal_language_server/server_state.lua",
       ["teal_language_server.logging"] = "gen/teal_language_server/logging.lua",
+      ["teal_language_server.log_file"] = "gen/teal_language_server/log_file.lua",
 
       -- teal analysis
       ["teal_language_server.analysis.document"] = "gen/teal_language_server/analysis/document.lua",

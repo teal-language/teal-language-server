@@ -1,4 +1,4 @@
-local _module_name = "util"
+local _module_name = "util.util"
 
 local uv <const> = require("luv")
 local logging <const> = require("teal_language_server.logging")

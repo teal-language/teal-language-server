@@ -13,6 +13,7 @@ local StdinReader = require("teal_language_server.lsp.stdin_reader")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
 local lsp = require("teal_language_server.lsp.protocol")
 local logging = require("teal_language_server.logging")
+local LogFileHandler = require("teal_language_server.log_file")
 local util = require("teal_language_server.util.util")
 
 local logger = logging.get_logger(_module_name)
@@ -23,6 +24,18 @@ local logger = logging.get_logger(_module_name)
 
 local function main()
    local args = args_parser.parse_args()
+
+   local log_file
+   if args.log_mode ~= "none" then
+      log_file = LogFileHandler.open_log_file(logging)
+   end
+
+   if args.verbose then
+      logging.set_level("TRACE")
+   elseif args.debug then
+      logging.set_level(args.debug)
+   end
+
 
    if args.coverage then
       local ok, err = pcall(require, "luacov")
@@ -47,7 +60,7 @@ local function main()
       local server_state = ServerState()
       local document_manager = DocumentManager(lsp_reader_writer, server_state)
       local env_updater = EnvUpdater(server_state, root_nursery, document_manager)
-      local misc_handlers = MiscHandlers(lsp_events_manager, lsp_reader_writer, server_state, document_manager, args, env_updater)
+      local misc_handlers = MiscHandlers(lsp_events_manager, lsp_reader_writer, server_state, document_manager, args, log_file, env_updater)
 
       logger:debug("Running initialize phase...")
       stdin_reader:initialize()
@@ -73,6 +86,10 @@ local function main()
          for _, disposable in ipairs(disposables) do
             disposable:dispose()
          end
+      end
+
+      if log_file then
+         log_file:close()
       end
    end
 

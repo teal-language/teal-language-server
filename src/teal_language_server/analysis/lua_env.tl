@@ -1,4 +1,4 @@
-local _module_name = "lua_env"
+local _module_name = "analysis.lua_env"
 
 local uv <const> = require("luv")
 local util <const> = require("teal_language_server.util.util")

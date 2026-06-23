@@ -1,4 +1,4 @@
-local _module_name = "path"
+local _module_name = "util.path"
 
 local asserts <const> = require("teal_language_server.util.asserts")
 local class <const> = require("teal_language_server.util.class")

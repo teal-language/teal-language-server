@@ -1,4 +1,4 @@
-local _module_name = "document_sync_handlers"
+local _module_name = "handlers.document_sync"
 
 local EnvUpdater = require("teal_language_server.analysis.env_updater")
 local DocumentManager = require("teal_language_server.analysis.document_manager")

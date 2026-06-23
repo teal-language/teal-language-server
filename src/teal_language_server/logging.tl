@@ -95,7 +95,11 @@ function logging._logger_handler(message_level: logging.level, message: string, 
    local args = {...}
    for i, v in ipairs(args) do if type(v) == "table" then args[i] = cjson.encode(v as {string:any}) end end
    if logging.log_levels[message_level] >= (logger_log_level or logging.current_level) then
-      logging.handler(message_level, logger_name, string.format(message, _unpack(args)))
+      if #args > 0 then
+         logging.handler(message_level, logger_name, string.format(message, _unpack(args)))
+      else
+         logging.handler(message_level, logger_name, message)
+      end
    end
 end
 

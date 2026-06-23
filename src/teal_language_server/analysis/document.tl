@@ -1,4 +1,4 @@
-local _module_name = "document"
+local _module_name = "analysis.document"
 -- <imports>
 local ServerState <const> = require("teal_language_server.server_state")
 local Uri <const> = require("teal_language_server.util.uri")

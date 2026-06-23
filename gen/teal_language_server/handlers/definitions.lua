@@ -1,4 +1,4 @@
-local _module_name = "definition_handlers"
+local _module_name = "handlers.definitions"
 
 local handler_helper = require("teal_language_server.handlers.handler_helper")
 local DocumentManager = require("teal_language_server.analysis.document_manager")

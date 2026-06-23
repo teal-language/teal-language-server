@@ -1,4 +1,4 @@
-local _module_name = "stdin_reader"
+local _module_name = "lsp.stdin_reader"
 
 -- <imports>
 local lusc <const> = require("lusc")

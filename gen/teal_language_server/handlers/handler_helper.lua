@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handler_helper"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handlers.handler_helper"
 
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local Document = require("teal_language_server.analysis.document")
@@ -49,7 +49,7 @@ function handler_helper.get_node_info(document_manager, params, pos)
       return nil
    end
 
-   logger:debug("Looking up node info at position: %s")
+   logger:debug("Looking up node info at position: %s", pos)
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       logger:warning("Unable to retrieve node info from tree-sitter parser")
