@@ -1,6 +1,8 @@
 name: Test all the OS/Platforms
-
-on: [pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
 
 jobs:
   lua:
