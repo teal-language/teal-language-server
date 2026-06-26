@@ -51,7 +51,8 @@ function MiscHandlers:_on_initialize(params, id)
    self._has_handled_initialize = true
    local root_dir_str
 
-   if params.rootUri then
+
+   if params.rootUri and type(params.rootUri) == "string" then
       root_dir_str = Uri.path_from_uri(params.rootUri)
    else
       root_dir_str = params.rootPath
