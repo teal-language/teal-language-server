@@ -51,7 +51,8 @@ function MiscHandlers:_on_initialize(params:lsp.Method.Params, id:integer):nil
    self._has_handled_initialize= true
    local root_dir_str:string
 
-   if params.rootUri then
+   -- check type in case rootUri comes in as cjson.null
+   if params.rootUri and type(params.rootUri) == "string" then
       root_dir_str = Uri.path_from_uri(params.rootUri as string)
    else
       root_dir_str = params.rootPath as string
