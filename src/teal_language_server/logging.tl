@@ -63,8 +63,13 @@ function LoggerBase:critical(message: string, ...: any)
    logging._logger_handler("CRITICAL", message, self.name, self.current_level, ...)
 end
 
+local function eprint(error_message: string)
+   io.stderr:write(error_message)
+   io.stderr:write("\n")
+end
+
 logging.loggers = {}
-logging.logger_func = print
+logging.logger_func = eprint
 logging.current_level = 30
 logging.log_levels = {
    ["TRACE"] = 0,

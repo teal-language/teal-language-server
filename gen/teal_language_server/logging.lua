@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _tl_table_unpack = unpack or table.unpack; local luv = require("luv")
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local io = _tl_compat and _tl_compat.io or io; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local os = _tl_compat and _tl_compat.os or os; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _tl_table_unpack = unpack or table.unpack; local luv = require("luv")
 local cjson = require("cjson")
 
 
@@ -63,8 +63,13 @@ function LoggerBase:critical(message, ...)
    logging._logger_handler("CRITICAL", message, self.name, self.current_level, ...)
 end
 
+local function eprint(error_message)
+   io.stderr:write(error_message)
+   io.stderr:write("\n")
+end
+
 logging.loggers = {}
-logging.logger_func = print
+logging.logger_func = eprint
 logging.current_level = 30
 logging.log_levels = {
    ["TRACE"] = 0,
