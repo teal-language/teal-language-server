@@ -82,7 +82,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
-      logger:warning("Also failed to find type type_info based on token")
+      logger:info("Also failed to find type type_info based on token")
    end
 
    if type_info then
@@ -146,7 +146,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
             end
          end
       else
-         logger:warning("Unable to get fields for ref type")
+         logger:info("Unable to get fields for ref type")
       end
    end
 
