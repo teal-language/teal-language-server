@@ -354,7 +354,7 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
    logger:trace("Processing token %s (all: %s)", raw_token, tokens)
    local type_id <const> = scope_symbols[raw_token]
    if type_id == nil then
-      logger:warning("Failed to find type id for token %s", raw_token)
+      logger:info("Failed to find type id for token %s", raw_token)
    end
    if type_id ~= nil then
       logger:trace("Matched token %s to type id %s", raw_token, type_id)
@@ -370,7 +370,7 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
       type_info = tr.types[tr.globals[raw_token] ]
 
       if type_info == nil then
-         logger:warning("Unable to find type info in global table as well..")
+         logger:info("Unable to find type info in global table as well..")
       end
    end
 
@@ -400,7 +400,7 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
       return type_info
    end
 
-   logger:warning("Failed to find type info at given position")
+   logger:info("Failed to find type info at given position")
    return nil
 end
 

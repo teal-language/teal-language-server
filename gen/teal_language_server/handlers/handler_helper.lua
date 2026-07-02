@@ -37,7 +37,7 @@ function handler_helper.get_node_info(document_manager, params, pos)
    local context = params.context
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
-      logger:warning("Ignoring completion request given kind: %s", context.triggerKind)
+      logger:info("Ignoring completion request given kind: %s", context.triggerKind)
       return nil
    end
 
@@ -52,7 +52,7 @@ function handler_helper.get_node_info(document_manager, params, pos)
    logger:debug("Looking up node info at position: %s", pos)
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
-      logger:warning("Unable to retrieve node info from tree-sitter parser")
+      logger:info("Unable to retrieve node info from tree-sitter parser")
       return nil
    end
    logger:debug("Found node info: %s", node_info)
