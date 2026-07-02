@@ -1,11 +1,11 @@
 rockspec_format = "3.0"
 
 package = "teal-language-server"
-version = "0.1.4-1"
+version = "0.2.0-1"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   tag = "0.1.4"
+   tag = "0.2.0"
 }
 
 description = {
