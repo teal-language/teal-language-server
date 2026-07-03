@@ -7,6 +7,9 @@ local Uri = require("teal_language_server.util.uri")
 local Document = require("teal_language_server.analysis.document")
 local asserts = require("teal_language_server.util.asserts")
 local class = require("teal_language_server.util.class")
+local logging = require("teal_language_server.logging")
+
+local logger = logging.get_logger(_module_name)
 
 local DocumentManager = {}
 
@@ -28,17 +31,28 @@ function DocumentManager:__init(lsp_reader_writer, server_state)
 end
 
 function DocumentManager:open(uri, content, version)
+   if uri == nil then
+      logger:error("Invalid Uri, will not be able to open document")
+      return
+   end
    local doc = Document(uri, content, version, self._lsp_reader_writer, self._server_state)
    self._docs[uri.path] = doc
    return doc
 end
 
 function DocumentManager:close(uri)
-   asserts.that(self._docs[uri.path] ~= nil)
+   if uri == nil then
+      logger:error("Invalid Uri, will not be able to close document")
+      return
+   end
    self._docs[uri.path] = nil
 end
 
 function DocumentManager:get(uri)
+   if uri == nil then
+      logger:error("Invalid Uri, will not be able to get document")
+      return
+   end
    return self._docs[uri.path]
 end
 
