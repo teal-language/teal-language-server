@@ -73,12 +73,15 @@ function LspEventsManager:initialize()
       self:_receive_initialize_request()
 
       while true do
-         local data = self._lsp_reader_writer:receive_rpc()
-         asserts.is_not_nil(data)
-         asserts.is_not_nil(data.method)
-
-         self:_trigger(
-            data.method as lsp.Method.Name, data.params as lsp.Method.Params, data.id as integer)
+         local ok, data = pcall(self._lsp_reader_writer.receive_rpc, self._lsp_reader_writer)
+         if not ok and lusc.is_cancelled_error(data) then
+            -- Let shutdown's nursery cancellation actually unwind this task,
+            -- instead of catching it here and retrying forever.
+            error(data, 0)
+         end
+         if ok and data and data.method then
+            self:_trigger(data.method as lsp.Method.Name, data.params as lsp.Method.Params, data.id as integer)
+         end
       end
    end)
 end

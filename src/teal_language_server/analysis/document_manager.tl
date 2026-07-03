@@ -27,8 +27,7 @@ function DocumentManager:__init(lsp_reader_writer: LspReaderWriter, server_state
    self._server_state = server_state
 end
 
-function DocumentManager:open(uri: Uri, content: string, version: integer):Document
-   asserts.that(self._docs[uri.path] == nil)
+function DocumentManager:open(uri: Uri, content: string, version: integer): Document
    local doc = Document(uri, content, version, self._lsp_reader_writer, self._server_state)
    self._docs[uri.path] = doc
    return doc
@@ -39,7 +38,7 @@ function DocumentManager:close(uri: Uri)
    self._docs[uri.path] = nil
 end
 
-function DocumentManager:get(uri: Uri):Document
+function DocumentManager:get(uri: Uri): Document
    return self._docs[uri.path]
 end
 

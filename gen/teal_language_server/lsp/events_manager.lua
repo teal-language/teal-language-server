@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp.events_manager"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local pcall = _tl_compat and _tl_compat.pcall or pcall; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp.events_manager"
 
 local lsp = require("teal_language_server.lsp.protocol")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
@@ -73,12 +73,15 @@ function LspEventsManager:initialize()
       self:_receive_initialize_request()
 
       while true do
-         local data = self._lsp_reader_writer:receive_rpc()
-         asserts.is_not_nil(data)
-         asserts.is_not_nil(data.method)
+         local ok, data = pcall(self._lsp_reader_writer.receive_rpc, self._lsp_reader_writer)
+         if not ok and lusc.is_cancelled_error(data) then
 
-         self:_trigger(
-         data.method, data.params, data.id)
+
+            error(data, 0)
+         end
+         if ok and data and data.method then
+            self:_trigger(data.method, data.params, data.id)
+         end
       end
    end)
 end

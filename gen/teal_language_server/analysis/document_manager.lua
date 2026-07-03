@@ -28,7 +28,6 @@ function DocumentManager:__init(lsp_reader_writer, server_state)
 end
 
 function DocumentManager:open(uri, content, version)
-   asserts.that(self._docs[uri.path] == nil)
    local doc = Document(uri, content, version, self._lsp_reader_writer, self._server_state)
    self._docs[uri.path] = doc
    return doc
