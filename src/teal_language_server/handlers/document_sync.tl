@@ -26,8 +26,12 @@ end
 
 function DocumentSyncHandlers:_on_did_open(params: lsp.Method.Params): nil
    local td <const> = params.textDocument as lsp.TextDocument
-   self._document_manager:open(Uri.parse(td.uri), td.text, td.version)
-      :process_and_publish_results()
+   local uri = Uri.parse(td.uri)
+   if uri then
+      self._document_manager:open(uri, td.text, td.version):process_and_publish_results()
+   else
+      logger:error("Invalid URI, unable to open document: %s", td.uri)
+   end
 end
 
 function DocumentSyncHandlers:_on_did_close(params: lsp.Method.Params): nil
@@ -60,8 +64,10 @@ function DocumentSyncHandlers:_on_did_change(params: lsp.Method.Params): nil
       return
    end
    local changes <const> = params.contentChanges as {lsp.TextDocumentContentChangeEvent}
-   doc:update_text(changes[1].text as string, td.version)
-   doc:process_and_publish_results()
+   if changes and changes[1] and changes[1].text then
+      doc:update_text(changes[1].text as string, td.version)
+      doc:process_and_publish_results()
+   end
 end
 
 function DocumentSyncHandlers:initialize()

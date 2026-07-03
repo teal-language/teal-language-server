@@ -20,6 +20,7 @@ handler_helper.indexable_parent_types = {
 
 function handler_helper.split_by_symbols(input, self_type, stop_at)
    local t = {}
+   if not input then return t end
    for str in string.gmatch(input, "([^%.%:]+)") do
       if str == "self" then
          table.insert(t, self_type)

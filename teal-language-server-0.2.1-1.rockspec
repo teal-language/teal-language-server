@@ -1,11 +1,11 @@
 rockspec_format = "3.0"
 
 package = "teal-language-server"
-version = "0.2.0-1"
+version = "0.2.1-1"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   tag = "0.2.0"
+   tag = "0.2.1"
 }
 
 description = {
@@ -25,7 +25,7 @@ dependencies = {
    "ltreesitter == 0.3.0",
 }
 
-test_dependencies = { "tested >= 0.2.1", "luacov", "inspect" }
+test_dependencies = { "tested >= 0.2.2", "luacov", "inspect" }
 
 test = {
    type = "tested",

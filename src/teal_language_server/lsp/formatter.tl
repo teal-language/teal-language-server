@@ -84,48 +84,56 @@ function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.Typ
    local sb: StringBuilder = {strings = {}}
    sb:add("```teal")
 
+   -- `str` can be nil for some type reports (e.g. `self` used outside a method),
+   -- which would crash the concatenations below; fall back to the source text.
+   local safe_str <const> = type_info.str or node_info.source
+
    if type_info.t == tl.typecodes.FUNCTION then
       local args = doc:get_function_args_string(type_info)
       if args ~= nil then
-         sb:add("function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
+         sb:add("function " .. lsp_formatter.create_function_string(safe_str, args, node_info.source))
       else
-         sb:add(node_info.source .. ": " .. type_info.str)
+         sb:add(node_info.source .. ": " .. safe_str)
       end
 
    elseif type_info.t == tl.typecodes.POLY then
       for i, type_ref in ipairs(type_info.types) do
          local func_info = doc:resolve_type_ref(type_ref)
-         local args = doc:get_function_args_string(func_info)
-         if args ~= nil then
-            sb:add("function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
-         else
-            local replaced_function = func_info.str:gsub("^function", node_info.source)
-            sb:add(replaced_function)
-         end
-         if i < #type_info.types then
-            sb:add("```")
-            sb:add("or")
-            sb:add("```teal")
+         if func_info and func_info.str then
+            local args = doc:get_function_args_string(func_info)
+            if args ~= nil then
+               sb:add("function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
+            else
+               local replaced_function = func_info.str:gsub("^function", node_info.source)
+               sb:add(replaced_function)
+            end
+            if i < #type_info.types then
+               sb:add("```")
+               sb:add("or")
+               sb:add("```teal")
+            end
          end
       end
 
    elseif type_info.t == tl.typecodes.ENUM then
-      sb:add("enum " .. type_info.str)
+      sb:add("enum " .. safe_str)
       for _, _enum in ipairs(type_info.enums) do
          sb:add('   "' .. _enum .. '"')
       end
       sb:add("end")
 
    elseif type_info.t == tl.typecodes.RECORD then
-      sb:add("record " .. type_info.str)
+      sb:add("record " .. safe_str)
       for key, type_ref in pairs(type_info.fields) do
          local type_ref_info = doc:resolve_type_ref(type_ref)
-         sb:add('   ' .. key .. ': ' .. type_ref_info.str)
+         if type_ref_info and type_ref_info.str then
+            sb:add('   ' .. key .. ': ' .. type_ref_info.str)
+         end
       end
       sb:add("end")
 
    else
-      sb:add(node_info.source .. ": " .. type_info.str)
+      sb:add(node_info.source .. ": " .. safe_str)
    end
    sb:add("```")
    output.value = sb:build()

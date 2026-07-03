@@ -474,21 +474,25 @@ function Document:_tree_sitter_token(y, x)
             out.preceded_by = prev:source()
          else
             parent_node = parent_node:prev_sibling()
-            if parent_node:child_count() > 0 then
+            if parent_node then
+               if parent_node:child_count() > 0 then
 
-               out.preceded_by = parent_node:child(parent_node:child_count() - 1):source()
-            else
-               out.preceded_by = parent_node:source()
+                  out.preceded_by = parent_node:child(parent_node:child_count() - 1):source()
+               else
+                  out.preceded_by = parent_node:source()
+               end
             end
          end
 
 
       elseif node:type() == "(" then
          if parent_node:type() == "arguments" then
-            self._tree_cursor:goto_parent()
-            local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
-            if function_call then
-               out.preceded_by = function_call:source()
+            moved = self._tree_cursor:goto_parent()
+            if moved == true then
+               local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
+               if function_call then
+                  out.preceded_by = function_call:source()
+               end
             end
 
          elseif parent_node:type() == "ERROR" then
@@ -506,7 +510,9 @@ function Document:_tree_sitter_token(y, x)
          out.parent_source:find("self[%.%:]") then
 
          while parent_node:type() ~= "program" do
-            self._tree_cursor:goto_parent()
+            moved = self._tree_cursor:goto_parent()
+            if moved == false then break end
+
             parent_node = self._tree_cursor:current_node()
             if parent_node:type() == "function_statement" then
                local function_name = parent_node:child_by_field_name("name")

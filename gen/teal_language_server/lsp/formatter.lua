@@ -84,48 +84,56 @@ function lsp_formatter.show_type(node_info, type_info, doc)
    local sb = { strings = {} }
    table.insert(sb.strings, "```teal")
 
+
+
+   local safe_str = type_info.str or node_info.source
+
    if type_info.t == tl.typecodes.FUNCTION then
       local args = doc:get_function_args_string(type_info)
       if args ~= nil then
-         table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(type_info.str, args, node_info.source))
+         table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(safe_str, args, node_info.source))
       else
-         table.insert(sb.strings, node_info.source .. ": " .. type_info.str)
+         table.insert(sb.strings, node_info.source .. ": " .. safe_str)
       end
 
    elseif type_info.t == tl.typecodes.POLY then
       for i, type_ref in ipairs(type_info.types) do
          local func_info = doc:resolve_type_ref(type_ref)
-         local args = doc:get_function_args_string(func_info)
-         if args ~= nil then
-            table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
-         else
-            local replaced_function = func_info.str:gsub("^function", node_info.source)
-            table.insert(sb.strings, replaced_function)
-         end
-         if i < #type_info.types then
-            table.insert(sb.strings, "```")
-            table.insert(sb.strings, "or")
-            table.insert(sb.strings, "```teal")
+         if func_info and func_info.str then
+            local args = doc:get_function_args_string(func_info)
+            if args ~= nil then
+               table.insert(sb.strings, "function " .. lsp_formatter.create_function_string(func_info.str, args, node_info.source))
+            else
+               local replaced_function = func_info.str:gsub("^function", node_info.source)
+               table.insert(sb.strings, replaced_function)
+            end
+            if i < #type_info.types then
+               table.insert(sb.strings, "```")
+               table.insert(sb.strings, "or")
+               table.insert(sb.strings, "```teal")
+            end
          end
       end
 
    elseif type_info.t == tl.typecodes.ENUM then
-      table.insert(sb.strings, "enum " .. type_info.str)
+      table.insert(sb.strings, "enum " .. safe_str)
       for _, _enum in ipairs(type_info.enums) do
          table.insert(sb.strings, '   "' .. _enum .. '"')
       end
       table.insert(sb.strings, "end")
 
    elseif type_info.t == tl.typecodes.RECORD then
-      table.insert(sb.strings, "record " .. type_info.str)
+      table.insert(sb.strings, "record " .. safe_str)
       for key, type_ref in pairs(type_info.fields) do
          local type_ref_info = doc:resolve_type_ref(type_ref)
-         table.insert(sb.strings, '   ' .. key .. ': ' .. type_ref_info.str)
+         if type_ref_info and type_ref_info.str then
+            table.insert(sb.strings, '   ' .. key .. ': ' .. type_ref_info.str)
+         end
       end
       table.insert(sb.strings, "end")
 
    else
-      table.insert(sb.strings, node_info.source .. ": " .. type_info.str)
+      table.insert(sb.strings, node_info.source .. ": " .. safe_str)
    end
    table.insert(sb.strings, "```")
    output.value = table.concat(sb.strings, "\n")

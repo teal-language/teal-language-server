@@ -73,12 +73,22 @@ function LspEventsManager:initialize()
       self:_receive_initialize_request()
 
       while true do
-         local data = self._lsp_reader_writer:receive_rpc()
-         asserts.is_not_nil(data)
-         asserts.is_not_nil(data.method)
 
-         self:_trigger(
-         data.method, data.params, data.id)
+
+
+
+
+         local ok, data = xpcall(
+         function() return self._lsp_reader_writer:receive_rpc() end,
+         debug.traceback)
+         if not ok and lusc.is_cancelled_error(data) then
+
+
+            error(data, 0)
+         end
+         if ok and data and data.method then
+            self:_trigger(data.method, data.params, data.id)
+         end
       end
    end)
 end
