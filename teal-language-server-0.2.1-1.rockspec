@@ -25,11 +25,10 @@ dependencies = {
    "ltreesitter == 0.3.0",
 }
 
-test_dependencies = { "tested >= 0.2.2", "luacov", "inspect" }
+test_dependencies = { "tested >= 0.3.0", "luacov", "inspect" }
 
 test = {
    type = "tested",
-   flags = { "-n", "0", "-x", "tests/helpers/preload_uv.lua" },
 }
 
 build = {
