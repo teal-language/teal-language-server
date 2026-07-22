@@ -35,6 +35,16 @@ local record Document
       parent_source: string
       preceded_by: string
       self_type: string
+      -- the (1-indexed) position to look this request's type up in by_pos:
+      -- for completion the preceding expression's result, for signature help the
+      -- called object, for hover the identifier under the cursor
+      bypos_y: integer
+      bypos_x: integer
+      -- when the preceding expression is a function call, bypos_(y,x) points at
+      -- the *called object* (whose function type stock tl does record) rather than
+      -- the call result (a tuple stock tl skips); this flags the lookup to follow
+      -- the function's first return value to recover the call's result type
+      bypos_follow_rets: boolean
       metamethod __tostring: function(NodeInfo): string
    end
 
@@ -300,6 +310,26 @@ function Document:process_and_publish_results()
    self:_publish_diagnostics(diags)
 end
 
+-- Split a dotted/colon source string (e.g. "self.foo.bar") into a token chain,
+-- substituting the enclosing record name for "self". Stops after `stop_at` when
+-- given. Pure string parsing over NodeInfo-derived text; feeds
+-- type_information_for_tokens.
+function Document.split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
+   local t = {}
+   if not input then return t end
+   for str in string.gmatch(input, "([^%.%:]+)") do
+      if str == "self" then
+         table.insert(t, self_type)
+      else
+         table.insert(t, str)
+      end
+      if stop_at and stop_at == str then
+         break
+      end
+   end
+   return t
+end
+
 function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
    local type_info = tr.types[type_number]
@@ -310,32 +340,58 @@ function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    end
 end
 
+-- Resolves the type of an expression directly from its source position via the
+-- type report's by_pos map. y/x are 1-indexed (tl convention).
+--
+-- Stock tl records a single-value result at its position (locals, globals, plain
+-- field access), but skips a function call's *result* because it is a tuple. To
+-- still resolve a call, callers point y/x at the *called object* (whose function
+-- type tl does record) and pass follow_rets=true; we then follow the function's
+-- first return value (rets[1]) to recover the call's result type.
+--
+-- One case stays unresolvable from the report alone: a generic function whose
+-- return is a bare, unconstrained type variable (e.g. `first<T>(...): T`). tl
+-- records the declaration-site `T` with no constraint or fields, so following
+-- rets yields an empty typevar and we return nil; callers fall back to
+-- type_information_for_tokens. (See PR #74 for the tl patch that fixed that case
+-- in the checker itself.)
+function Document:type_information_for_position(y: integer, x: integer, follow_rets?: boolean): tl.TypeInfo
+   local tr <const> = self:get_type_report()
+   local file = tr.by_pos[self._uri.path]
+   if file == nil or file[y] == nil then
+      return nil
+   end
+   local type_id = file[y][x]
+   if type_id == nil then
+      return nil
+   end
+   local type_info = self:resolve_type_ref(type_id)
+
+   if follow_rets then
+      -- the by_pos entry is the callable itself; resolve its first return value.
+      -- If it isn't a plain function (e.g. a POLY/overload) or has no returns,
+      -- return nil so the caller falls back to token resolution.
+      if type_info == nil
+         or type_info.t ~= tl.typecodes.FUNCTION
+         or type_info.rets == nil
+         or type_info.rets[1] == nil then
+         return nil
+      end
+      local ret_info = self:resolve_type_ref(type_info.rets[1][1])
+      -- a return that resolves to a bare type variable (e.g. generic `T`) carries
+      -- no constraint or fields in the report, so it is unusable; treat it as a
+      -- miss and let the caller fall back to token resolution
+      if ret_info == nil or ret_info.t == tl.typecodes.TYPE_VARIABLE then
+         return nil
+      end
+      return ret_info
+   end
+
+   return type_info
+end
+
 function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
-
-   -- try the quick get first (works well for self and raw types)
-   -- also seems to be necessary when type changes in the middle
-   -- of scope (eg. when using assert(x is Foo))
-
-   -- (Commented out because this breaks things more often than it helps currently)
-   -- local quick_pos_info = tr.by_pos[self._uri.path]
-
-   -- if quick_pos_info ~= nil then
-   --    local quick_line_info = quick_pos_info[y+1]
-
-   --    if quick_line_info ~= nil then
-   --       local type_ref = quick_line_info[x+1]
-
-   --       if type_ref ~= nil then
-   --          local type_info = self:resolve_type_ref(type_ref)
-
-   --          if type_info ~= nil then
-   --             tracing.info(_module_name, "Found via quick match at {}, {}", {y, x})
-   --             return type_info
-   --          end
-   --       end
-   --    end
-   -- end
 
    local type_info: tl.TypeInfo
    -- try and find it in scope
@@ -404,6 +460,22 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
    return nil
 end
 
+-- Resolve the type of the expression preceding a '.'/':'/'(' trigger. Prefers the
+-- direct by_pos lookup (handles calls, method chains, dotted access); on a miss,
+-- falls back to re-parsing node_info.preceded_by into a token chain.
+function Document:resolve_preceded_type(node_info: Document.NodeInfo, pos: lsp.Position): tl.TypeInfo
+   if node_info.bypos_y then
+      local type_info = self:type_information_for_position(node_info.bypos_y, node_info.bypos_x, node_info.bypos_follow_rets)
+      if type_info ~= nil then
+         logger:debug("Resolved preceded expr via by_pos at %d:%d", node_info.bypos_y, node_info.bypos_x)
+         return type_info
+      end
+   end
+   local tks = Document.split_by_symbols(node_info.preceded_by, node_info.self_type)
+   logger:debug("Falling back to token chain: %s", tks)
+   return self:type_information_for_tokens(tks, pos.line, pos.character)
+end
+
 -- Finds where a symbol named `name` was *declared* (as opposed to where its type
 -- is declared). Mirrors the backward scope walk in tl.symbols_in_scope, but
 -- returns the matched symbol's declaration position instead of its type id.
@@ -450,6 +522,46 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
    return nil
 end
 
+-- Map a tree-sitter expression node to the (1-indexed) position where tl records
+-- its result type in by_pos, plus a flag for whether that position holds the
+-- callable (so the caller must follow rets) rather than the value directly:
+--   function_call      -> the *called object*'s position, follow_rets=true. tl
+--                         skips the call result (a tuple), but records the called
+--                         object's function type, whose rets[1] is the result.
+--   index/method_index -> the "."/":"/"[" operator child; the access result lives there
+--   anything else      -> the node's own start
+local function bypos_key_for(node: ltreesitter.Node): integer, integer, boolean
+   if node == nil then
+      return nil
+   end
+   local node_type = node:type()
+   if node_type == "function_call" then
+      local called = node:child_by_field_name("called_object")
+      if called == nil then
+         return nil
+      end
+      -- resolve the called object's by_pos position (identifier / index / method
+      -- index) and mark it so the lookup follows the function's first return value
+      local y, x = bypos_key_for(called)
+      if y == nil then
+         return nil
+      end
+      return y, x, true
+   elseif node_type == "index" or node_type == "method_index" then
+      -- the access result is recorded at the operator: "." / ":" for field and
+      -- method access, "[" for bracket indexing
+      for child in node:children() do
+         local child_type = child:type()
+         if child_type == "." or child_type == ":" or child_type == "[" then
+            local sp = child:start_point()
+            return sp.row + 1, sp.column + 1
+         end
+      end
+   end
+   local start_point = node:start_point()
+   return start_point.row + 1, start_point.column + 1
+end
+
 function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
    local moved: boolean = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
@@ -472,14 +584,20 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
          local prev = node:prev_sibling()
          if prev then
             out.preceded_by = prev:source()
+            -- record where the preceding expression's result type lives in by_pos
+            -- so completion can resolve it directly (calls, chains, dotted access)
+            out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(prev)
          else
             parent_node = parent_node:prev_sibling()
             if parent_node then
                if parent_node:child_count() > 0 then
                   -- no previous symbol, so get parent's previous sibling's last child
-                  out.preceded_by = parent_node:child(parent_node:child_count()-1):source()
+                  local last = parent_node:child(parent_node:child_count()-1)
+                  out.preceded_by = last:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(last)
                else
                   out.preceded_by = parent_node:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(parent_node)
                end
             end
          end
@@ -492,6 +610,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
                local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
                if function_call then
                   out.preceded_by = function_call:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(function_call)
                end
             end
 
@@ -499,10 +618,21 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
             for child in parent_node:children() do
                if child:name() == "index" then
                   out.preceded_by = child:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(child)
                   break
                end
             end
          end
+
+      -- for hover: a cursor sitting on an identifier resolves via by_pos. A field
+      -- access (preceded by "." / ":") has its result recorded at the operator,
+      -- so look there; a plain variable resolves at its own position.
+      elseif node:type() == "identifier" then
+         local prev = node:prev_sibling()
+         local key_node = (prev and (prev:type() == "." or prev:type() == ":")) and prev or node
+         local sp = key_node:start_point()
+         out.bypos_y = sp.row + 1
+         out.bypos_x = sp.column + 1
       end
 
       if out.preceded_by == "self" or

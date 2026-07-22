@@ -84,4 +84,71 @@ tested.test("hover over a local variable with explicit type annotation returns t
     })
 end)
 
+tested.test("hover over a record field access returns the field's type", function()
+    local uri = "file:///tmp/tls_hover_3.tl"
+    local doc = table.concat({
+        "local record T",
+        "  position: number",
+        "end",
+        "local t: T",
+        "local _ = t.position",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 "local _ = t.position": 'position' starts at col 12; hover does NOT subtract 1
+    local response = client:get_hover(uri, 4, 12)
+
+    tested.assert({
+        given = "hover over field access response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local contents = response.result and response.result.contents
+    local value = type(contents) == "table" and (contents.value or contents[1]) or tostring(contents)
+    tested.assert({
+        given = "hover over field access value",
+        should = "mention 'number'",
+        expected = true,
+        actual = tostring(value):find("number") ~= nil,
+    })
+end)
+
+tested.test("hover over a variable initialized from a call returns the call's return type", function()
+    local uri = "file:///tmp/tls_hover_4.tl"
+    local doc = table.concat({
+        "local record Config",
+        "  name: string",
+        "end",
+        "local function getConfig(): Config",
+        "  return nil",
+        "end",
+        "local c = getConfig()",
+        "local _ = c",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = c": 'c' is at col 10; hover does NOT subtract 1
+    local response = client:get_hover(uri, 7, 10)
+
+    tested.assert({
+        given = "hover over call-initialized variable response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local contents = response.result and response.result.contents
+    local value = type(contents) == "table" and (contents.value or contents[1]) or tostring(contents)
+    tested.assert({
+        given = "hover over call-initialized variable value",
+        should = "mention 'Config'",
+        expected = true,
+        actual = tostring(value):find("Config") ~= nil,
+    })
+end)
+
 return tested

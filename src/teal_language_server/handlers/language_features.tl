@@ -2,6 +2,7 @@ local _module_name = "handlers.language_feature"
 
 local handler_helper <const> = require("teal_language_server.handlers.handler_helper")
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
+local Document <const> = require("teal_language_server.analysis.document")
 local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local lsp <const> = require("teal_language_server.lsp.protocol")
@@ -43,21 +44,21 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
 
    logger:debug("Found node info: %s", node_info)
 
-   local tks: {string}
+   local type_info: tl.TypeInfo
 
    -- literally at the . or : and are trying to autocomplete
    -- preceded_by should have everything we need in it.
    if node_info.type == "." or node_info.type == ":" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      logger:debug("Received request for completion at character: %s", tks)
+      type_info = doc:resolve_preceded_type(node_info, pos)
 
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
    elseif node_info.type == "identifier" then
+      local tks: {string}
       -- the types that we would need to index into to get type info from
       if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type)
+         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
       else
-         tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
+         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
       end
 
       -- takes it back to the just after the first dot, then does completion
@@ -73,13 +74,14 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
+
+      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
    local items:{any} = { }
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       logger:info("Also failed to find type type_info based on token")
@@ -177,17 +179,14 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
    local output: lsp_formatter.SignatureHelp = {}
    logger:debug("Got nodeinfo: %s", node_info)
 
-   local tks: {string}
+   local type_info: tl.TypeInfo
 
    if node_info.type == "(" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      logger:debug("Received request for signature help at character: %s", tks)
+      type_info = doc:resolve_preceded_type(node_info, pos)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
-
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if type_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -243,12 +242,21 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
    end
 
    local tks: {string} = {}
+   local quick_type_info: tl.TypeInfo
    if node_info.type == "identifier" then
-      -- parent types that show up with multiparts
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
-      else
-         tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
+      -- resolve directly from by_pos at the identifier's position (works for
+      -- locals/globals and, via the field-identifier store, for field access)
+      if node_info.bypos_y then
+         quick_type_info = doc:type_information_for_position(node_info.bypos_y, node_info.bypos_x)
+      end
+      -- only build the token-chain fallback when the by_pos lookup missed
+      if quick_type_info == nil then
+         -- parent types that show up with multiparts
+         if handler_helper.indexable_parent_types[node_info.parent_type] then
+            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+         else
+            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
+         end
       end
    else
       logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
@@ -262,7 +270,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = quick_type_info or doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       logger:warning("Also failed to find type info based on token")

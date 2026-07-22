@@ -18,22 +18,6 @@ handler_helper.indexable_parent_types = {
    ["function_name"] = true,
 }
 
-function handler_helper.split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
-   local t = {}
-   if not input then return t end
-   for str in string.gmatch(input, "([^%.%:]+)") do
-      if str == "self" then
-         table.insert(t, self_type)
-      else
-         table.insert(t, str)
-      end
-      if stop_at and stop_at == str then
-         break
-      end
-   end
-   return t
-end
-
 function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 

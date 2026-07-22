@@ -67,6 +67,16 @@ local Document = { NodeInfo = {} }
 
 
 
+
+
+
+
+
+
+
+
+
+
 function Document:__init(uri, content, version, lsp_reader_writer, server_state)
    asserts.is_not_nil(lsp_reader_writer)
    asserts.is_not_nil(server_state)
@@ -300,6 +310,26 @@ function Document:process_and_publish_results()
    self:_publish_diagnostics(diags)
 end
 
+
+
+
+
+function Document.split_by_symbols(input, self_type, stop_at)
+   local t = {}
+   if not input then return t end
+   for str in string.gmatch(input, "([^%.%:]+)") do
+      if str == "self" then
+         table.insert(t, self_type)
+      else
+         table.insert(t, str)
+      end
+      if stop_at and stop_at == str then
+         break
+      end
+   end
+   return t
+end
+
 function Document:resolve_type_ref(type_number)
    local tr = self:get_type_report()
    local type_info = tr.types[type_number]
@@ -310,32 +340,58 @@ function Document:resolve_type_ref(type_number)
    end
 end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function Document:type_information_for_position(y, x, follow_rets)
+   local tr = self:get_type_report()
+   local file = tr.by_pos[self._uri.path]
+   if file == nil or file[y] == nil then
+      return nil
+   end
+   local type_id = file[y][x]
+   if type_id == nil then
+      return nil
+   end
+   local type_info = self:resolve_type_ref(type_id)
+
+   if follow_rets then
+
+
+
+      if type_info == nil or
+         type_info.t ~= tl.typecodes.FUNCTION or
+         type_info.rets == nil or
+         type_info.rets[1] == nil then
+         return nil
+      end
+      local ret_info = self:resolve_type_ref(type_info.rets[1][1])
+
+
+
+      if ret_info == nil or ret_info.t == tl.typecodes.TYPE_VARIABLE then
+         return nil
+      end
+      return ret_info
+   end
+
+   return type_info
+end
+
 function Document:type_information_for_tokens(tokens, y, x)
    local tr = self:get_type_report()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
    local type_info
 
@@ -407,6 +463,22 @@ end
 
 
 
+function Document:resolve_preceded_type(node_info, pos)
+   if node_info.bypos_y then
+      local type_info = self:type_information_for_position(node_info.bypos_y, node_info.bypos_x, node_info.bypos_follow_rets)
+      if type_info ~= nil then
+         logger:debug("Resolved preceded expr via by_pos at %d:%d", node_info.bypos_y, node_info.bypos_x)
+         return type_info
+      end
+   end
+   local tks = Document.split_by_symbols(node_info.preceded_by, node_info.self_type)
+   logger:debug("Falling back to token chain: %s", tks)
+   return self:type_information_for_tokens(tks, pos.line, pos.character)
+end
+
+
+
+
 
 function Document:symbol_declaration_position(name, y, x)
    local tr = self:get_type_report()
@@ -450,6 +522,46 @@ function Document:symbol_declaration_position(name, y, x)
    return nil
 end
 
+
+
+
+
+
+
+
+
+local function bypos_key_for(node)
+   if node == nil then
+      return nil
+   end
+   local node_type = node:type()
+   if node_type == "function_call" then
+      local called = node:child_by_field_name("called_object")
+      if called == nil then
+         return nil
+      end
+
+
+      local y, x = bypos_key_for(called)
+      if y == nil then
+         return nil
+      end
+      return y, x, true
+   elseif node_type == "index" or node_type == "method_index" then
+
+
+      for child in node:children() do
+         local child_type = child:type()
+         if child_type == "." or child_type == ":" or child_type == "[" then
+            local sp = child:start_point()
+            return sp.row + 1, sp.column + 1
+         end
+      end
+   end
+   local start_point = node:start_point()
+   return start_point.row + 1, start_point.column + 1
+end
+
 function Document:_tree_sitter_token(y, x)
    local moved = self._tree_cursor:goto_first_child()
    local node = self._tree_cursor:current_node()
@@ -472,14 +584,20 @@ function Document:_tree_sitter_token(y, x)
          local prev = node:prev_sibling()
          if prev then
             out.preceded_by = prev:source()
+
+
+            out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(prev)
          else
             parent_node = parent_node:prev_sibling()
             if parent_node then
                if parent_node:child_count() > 0 then
 
-                  out.preceded_by = parent_node:child(parent_node:child_count() - 1):source()
+                  local last = parent_node:child(parent_node:child_count() - 1)
+                  out.preceded_by = last:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(last)
                else
                   out.preceded_by = parent_node:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(parent_node)
                end
             end
          end
@@ -492,6 +610,7 @@ function Document:_tree_sitter_token(y, x)
                local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
                if function_call then
                   out.preceded_by = function_call:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(function_call)
                end
             end
 
@@ -499,10 +618,21 @@ function Document:_tree_sitter_token(y, x)
             for child in parent_node:children() do
                if child:name() == "index" then
                   out.preceded_by = child:source()
+                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(child)
                   break
                end
             end
          end
+
+
+
+
+      elseif node:type() == "identifier" then
+         local prev = node:prev_sibling()
+         local key_node = (prev and (prev:type() == "." or prev:type() == ":")) and prev or node
+         local sp = key_node:start_point()
+         out.bypos_y = sp.row + 1
+         out.bypos_x = sp.column + 1
       end
 
       if out.preceded_by == "self" or
