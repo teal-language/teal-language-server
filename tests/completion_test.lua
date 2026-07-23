@@ -590,4 +590,30 @@ tested.test("colon completion after bracket (array) indexing returns the element
     })
 end)
 
+tested.test("colon completion includes overloaded (POLY) methods like FILE:read", function()
+    local uri = "file:///tmp/tls_complete_19.tl"
+    -- io.open returns a FILE whose read/lines methods are overloaded (POLY in the
+    -- type report). The ':' self-method filter must still surface them, not just
+    -- the single-signature functions (write/close/...).
+    local doc = table.concat({
+        'local manual_file = io.open("manual.of", "r")',
+        'local _ = manual_file:read("l")',
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1 'local _ = manual_file:read("l")': ':' at col 21; cursor at col 22 -> col 21
+    local response = client:get_completions_triggered(uri, 1, 22, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "read", "lines", "write", "close" }) do
+        tested.assert({
+            given = "colon completion on a FILE",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
 return tested

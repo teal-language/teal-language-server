@@ -106,27 +106,45 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
       -- what seems to work the most reliably
       local original_str = type_info.str
 
+      -- true if fn is a single-signature function whose first arg is the receiver,
+      -- i.e. it can be called with ':' on this type
+      local function is_self_method(fn: tl.TypeInfo): boolean
+         if fn.t ~= tl.typecodes.FUNCTION or not fn.args or #fn.args < 1 then
+            return false
+         end
+         local first_arg_type = doc:resolve_type_ref(fn.args[1][1])
+         return first_arg_type.t == tl.typecodes.SELF
+            or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str)
+            or (was_string_type and first_arg_type.t == tl.typecodes.STRING)
+      end
+
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
             local was_added:boolean
             -- self based access should only show functions
             if node_info.type == ":" then
-               if type_info.t == tl.typecodes.FUNCTION then
-                  -- local args = doc:get_function_args_string(type_info)
-                  if type_info.args and #type_info.args >= 1 then
-                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF
-                        or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str)
-                        or (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
-                        logger:debug("Adding self method %s", key)
-                        table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
-                        was_added = true
-                     else
-                        logger:debug("Ignoring method %s with arg type 0x%08x, type info str %s, first arg str %s",
-                           key, first_arg_type.t, original_str, first_arg_type.str)
+               -- overloaded methods (e.g. FILE:read) arrive as POLY, so check each
+               -- overload and keep the method if any is a self-callable function
+               local self_method = false
+               if type_info.t == tl.typecodes.POLY then
+                  for _, ref in ipairs(type_info.types) do
+                     if is_self_method(doc:resolve_type_ref(ref)) then
+                        self_method = true
+                        break
                      end
                   end
+               else
+                  self_method = is_self_method(type_info)
+               end
+
+               if self_method then
+                  logger:debug("Adding self method %s", key)
+                  table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                  was_added = true
+               else
+                  logger:debug("Ignoring method %s with type 0x%08x for type info str %s",
+                     key, type_info.t, original_str)
                end
             else
                table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
