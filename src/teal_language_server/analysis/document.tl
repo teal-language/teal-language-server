@@ -677,12 +677,9 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
       start_point = node:start_point()
       end_point = node:end_point()
 
-      if y == start_point.row and y == end_point.row then
-         if x >= start_point.column and x < end_point.column then
-            return self:_tree_sitter_token(y, x)
-         end
-
-      elseif y >= start_point.row and y <= end_point.row then
+      local after_start = y > start_point.row or (y == start_point.row and x >= start_point.column)
+      local before_end = y < end_point.row or (y == end_point.row and x < end_point.column)
+      if after_start and before_end then
          return self:_tree_sitter_token(y, x)
       end
 

@@ -506,6 +506,50 @@ tested.test("colon completion on a three-level method chain resolves each call's
     end
 end)
 
+-- Regression: the sibling-scan in Document:_tree_sitter_token used to match a
+-- multi-row node purely by row containment, ignoring the column. When a chain
+-- spans multiple lines and the next ':' immediately follows the closing ')' on
+-- the row where that multi-row node *ends*, the scan wrongly recursed into the
+-- already-finished node and returned no NodeInfo. Splitting the chain across
+-- lines (as method-chaining style commonly does) was enough to trigger it.
+tested.test("colon completion after a multi-line chained call still resolves the return type's methods", function()
+    local uri = "file:///tmp/tls_complete_19.tl"
+    local doc = table.concat({
+        "local record Builder",
+        "   foo: function(self: Builder): Builder",
+        "   bar: function(self: Builder): Builder",
+        "   baz: function(self: Builder): Builder",
+        "end",
+        "local b: Builder",
+        "local _ = b:foo()",
+        "   :bar():baz()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 8 "   :bar():baz()" is row 7 (0-indexed). The ':' before baz is at
+    -- col 9, right after the ')' that closes ":bar()" -- and ":bar()" itself
+    -- belongs to a function_call node spanning rows 6-7. Cursor at col 10 -> col 9.
+    local response = client:get_completions_triggered(uri, 7, 10, ":")
+
+    tested.assert({
+        given = "multi-line chained colon completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "foo", "bar", "baz" }) do
+        tested.assert({
+            given = "multi-line chained colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
 -- still failing on stock tl: following rets[1] reaches first's declared return
 -- type, a bare unconstrained type variable `T`. tl's report records `T` with no
 -- constraint and no fields, so R is not recoverable from the report alone...
