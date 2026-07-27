@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; local _module_name = "handlers.handler_helper"
+local _module_name = "handlers.handler_helper"
 
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local Document = require("teal_language_server.analysis.document")
@@ -17,22 +17,6 @@ handler_helper.indexable_parent_types = {
    ["method_index"] = true,
    ["function_name"] = true,
 }
-
-function handler_helper.split_by_symbols(input, self_type, stop_at)
-   local t = {}
-   if not input then return t end
-   for str in string.gmatch(input, "([^%.%:]+)") do
-      if str == "self" then
-         table.insert(t, self_type)
-      else
-         table.insert(t, str)
-      end
-      if stop_at and stop_at == str then
-         break
-      end
-   end
-   return t
-end
 
 function handler_helper.get_node_info(document_manager, params, pos)
    local context = params.context

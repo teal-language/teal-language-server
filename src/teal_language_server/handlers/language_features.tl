@@ -2,6 +2,7 @@ local _module_name = "handlers.language_feature"
 
 local handler_helper <const> = require("teal_language_server.handlers.handler_helper")
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
+local Document <const> = require("teal_language_server.analysis.document")
 local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local lsp <const> = require("teal_language_server.lsp.protocol")
@@ -43,21 +44,21 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
 
    logger:debug("Found node info: %s", node_info)
 
-   local tks: {string}
+   local type_info: tl.TypeInfo
 
    -- literally at the . or : and are trying to autocomplete
    -- preceded_by should have everything we need in it.
    if node_info.type == "." or node_info.type == ":" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      logger:debug("Received request for completion at character: %s", tks)
+      type_info = doc:resolve_preceded_type(node_info, pos)
 
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
    elseif node_info.type == "identifier" then
+      local tks: {string}
       -- the types that we would need to index into to get type info from
       if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type)
+         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
       else
-         tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
+         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
       end
 
       -- takes it back to the just after the first dot, then does completion
@@ -73,13 +74,14 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
+
+      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
    local items:{any} = { }
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       logger:info("Also failed to find type type_info based on token")
@@ -104,27 +106,45 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
       -- what seems to work the most reliably
       local original_str = type_info.str
 
+      -- true if fn is a single-signature function whose first arg is the receiver,
+      -- i.e. it can be called with ':' on this type
+      local function is_self_method(fn: tl.TypeInfo): boolean
+         if fn.t ~= tl.typecodes.FUNCTION or not fn.args or #fn.args < 1 then
+            return false
+         end
+         local first_arg_type = doc:resolve_type_ref(fn.args[1][1])
+         return first_arg_type.t == tl.typecodes.SELF
+            or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str)
+            or (was_string_type and first_arg_type.t == tl.typecodes.STRING)
+      end
+
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
             local was_added:boolean
             -- self based access should only show functions
             if node_info.type == ":" then
-               if type_info.t == tl.typecodes.FUNCTION then
-                  -- local args = doc:get_function_args_string(type_info)
-                  if type_info.args and #type_info.args >= 1 then
-                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF
-                        or ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str)
-                        or (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
-                        logger:debug("Adding self method %s", key)
-                        table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
-                        was_added = true
-                     else
-                        logger:debug("Ignoring method %s with arg type 0x%08x, type info str %s, first arg str %s",
-                           key, first_arg_type.t, original_str, first_arg_type.str)
+               -- overloaded methods (e.g. FILE:read) arrive as POLY, so check each
+               -- overload and keep the method if any is a self-callable function
+               local self_method = false
+               if type_info.t == tl.typecodes.POLY then
+                  for _, ref in ipairs(type_info.types) do
+                     if is_self_method(doc:resolve_type_ref(ref)) then
+                        self_method = true
+                        break
                      end
                   end
+               else
+                  self_method = is_self_method(type_info)
+               end
+
+               if self_method then
+                  logger:debug("Adding self method %s", key)
+                  table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                  was_added = true
+               else
+                  logger:debug("Ignoring method %s with type 0x%08x for type info str %s",
+                     key, type_info.t, original_str)
                end
             else
                table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
@@ -177,17 +197,14 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
    local output: lsp_formatter.SignatureHelp = {}
    logger:debug("Got nodeinfo: %s", node_info)
 
-   local tks: {string}
+   local type_info: tl.TypeInfo
 
    if node_info.type == "(" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      logger:debug("Received request for signature help at character: %s", tks)
+      type_info = doc:resolve_preceded_type(node_info, pos)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
-
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if type_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -243,12 +260,21 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
    end
 
    local tks: {string} = {}
+   local quick_type_info: tl.TypeInfo
    if node_info.type == "identifier" then
-      -- parent types that show up with multiparts
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
-      else
-         tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
+      -- resolve directly from by_pos at the identifier's position (works for
+      -- locals/globals and, via the field-identifier store, for field access)
+      if node_info.bypos_y then
+         quick_type_info = doc:type_information_for_position(node_info.bypos_y, node_info.bypos_x)
+      end
+      -- only build the token-chain fallback when the by_pos lookup missed
+      if quick_type_info == nil then
+         -- parent types that show up with multiparts
+         if handler_helper.indexable_parent_types[node_info.parent_type] then
+            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+         else
+            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
+         end
       end
    else
       logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
@@ -262,7 +288,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = quick_type_info or doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       logger:warning("Also failed to find type info based on token")

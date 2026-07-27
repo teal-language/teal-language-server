@@ -21,9 +21,9 @@ local logger = logging.get_logger(_module_name)
 
 local function tokens_for_node(node_info, self_type)
    if handler_helper.indexable_parent_types[node_info.parent_type] then
-      return handler_helper.split_by_symbols(node_info.parent_source, self_type, node_info.source)
+      return Document.split_by_symbols(node_info.parent_source, self_type, node_info.source)
    else
-      return handler_helper.split_by_symbols(node_info.source, self_type)
+      return Document.split_by_symbols(node_info.source, self_type)
    end
 end
 

@@ -243,4 +243,513 @@ tested.test("dot completion on enum-keyed table returns enum values", function()
     end
 end)
 
+-- stock tl skips storing "tuple" typed results in by_pos, so a function call's own
+-- position (b:foo()'s "(") has no entry. Instead we look up the *called object*
+-- (b:foo, whose function type tl does record) and follow rets[1] to reach Builder.
+tested.test("colon completion after a chained method call returns the return type's methods", function()
+    local uri = "file:///tmp/tls_complete_8.tl"
+    -- Builder-pattern record whose methods return the record itself.
+    -- Valid document so tl.check populates by_pos for the chain.
+    local doc = table.concat({
+        "local record Builder",
+        "   foo: function(self: Builder): Builder",
+        "   bar: function(self: Builder): Builder",
+        "end",
+        "local b: Builder",
+        "local _ = b:foo():bar()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 5 "local _ = b:foo():bar()": the second ':' (before bar) is at col 17;
+    -- cursor at col 18 -> server uses col 17. It is preceded by the call b:foo(),
+    -- whose result type (Builder) is resolved via by_pos.
+    local response = client:get_completions_triggered(uri, 5, 18, ":")
+
+    tested.assert({
+        given = "chained colon completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "foo", "bar" }) do
+        tested.assert({
+            given = "chained colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("colon completion on a narrowed variable returns the narrowed type's methods", function()
+    local uri = "file:///tmp/tls_complete_9.tl"
+    -- 'z' is number|string at declaration but narrowed to string inside the branch.
+    -- by_pos reflects the narrowing; the old declared-type walk would not.
+    local doc = table.concat({
+        "local function f(z: number | string)",
+        "   if z is string then",
+        "      local _ = z:sub(1, 1)",
+        "   end",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 2 "      local _ = z:sub(1, 1)": ':' at col 17; cursor at col 18 -> col 17
+    local response = client:get_completions_triggered(uri, 2, 18, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "sub", "rep", "len" }) do
+        tested.assert({
+            given = "narrowed colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+-- same by_pos gap as the chained-call test above: getConfig()'s own "(" position
+-- is never recorded, so we resolve via the called object getConfig and rets[1].
+tested.test("dot completion on a function call result returns the return record's fields", function()
+    local uri = "file:///tmp/tls_complete_10.tl"
+    local doc = table.concat({
+        "local record Config",
+        "  name: string",
+        "  port: number",
+        "end",
+        "local function getConfig(): Config",
+        "  return nil",
+        "end",
+        "local _ = getConfig().name",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = getConfig().name": '.' at col 21; cursor at col 22 -> col 21
+    local response = client:get_completions_triggered(uri, 7, 22, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "name", "port" }) do
+        tested.assert({
+            given = "call-result dot completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("colon completion on a call that returns a string returns string methods", function()
+    local uri = "file:///tmp/tls_complete_14.tl"
+    -- getName() returns a plain string; following rets[1] reaches the string type,
+    -- which the completion handler expands to the string library's methods.
+    local doc = table.concat({
+        "local function getName(): string",
+        '  return "x"',
+        "end",
+        "local _ = getName():sub(1, 1)",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 3 "local _ = getName():sub(1, 1)": ':' at col 19; cursor at col 20 -> col 19
+    local response = client:get_completions_triggered(uri, 3, 20, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "sub", "rep", "len" }) do
+        tested.assert({
+            given = "call-returns-string colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("dot completion on a dot-called function field's result returns the return record's fields", function()
+    local uri = "file:///tmp/tls_complete_15.tl"
+    -- a.make() calls a *field* function via dot access, so the called object is an
+    -- `index` node (not an identifier or method_index); its '.' operator holds
+    -- make's function type, whose rets[1] is Config.
+    local doc = table.concat({
+        "local record Config",
+        "  name: string",
+        "  port: number",
+        "end",
+        "local record Api",
+        "  make: function(): Config",
+        "end",
+        "local a: Api",
+        "local _ = a.make().name",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 8 "local _ = a.make().name": '.' before name at col 18; cursor at col 19 -> col 18
+    local response = client:get_completions_triggered(uri, 8, 19, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "name", "port" }) do
+        tested.assert({
+            given = "dot-called-field result completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("dot completion continues through field access after a call result", function()
+    local uri = "file:///tmp/tls_complete_16.tl"
+    -- getConfig().sub is a field access *after* a call; the '.' before sub records
+    -- Sub directly (no rets-following needed), so completing '.name' resolves as a
+    -- plain by_pos lookup. Guards that chaining past a call keeps working.
+    local doc = table.concat({
+        "local record Sub",
+        "  name: string",
+        "  id: number",
+        "end",
+        "local record Config",
+        "  sub: Sub",
+        "end",
+        "local function getConfig(): Config",
+        "  return nil",
+        "end",
+        "local _ = getConfig().sub.name",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 10 "local _ = getConfig().sub.name": '.' before name at col 25; cursor at col 26 -> col 25
+    local response = client:get_completions_triggered(uri, 10, 26, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "name", "id" }) do
+        tested.assert({
+            given = "field-after-call completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("colon completion on a call result filters to the record's methods", function()
+    local uri = "file:///tmp/tls_complete_17.tl"
+    -- getPoint() returns a record via a plain identifier call; the ':' after it
+    -- should list only self-methods (dist, len) and exclude the data field x.
+    local doc = table.concat({
+        "local record Point",
+        "  x: number",
+        "  dist: function(self: Point): number",
+        "  len: function(self: Point): number",
+        "end",
+        "local function getPoint(): Point",
+        "  return nil",
+        "end",
+        "local _ = getPoint():dist()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 8 "local _ = getPoint():dist()": ':' at col 20; cursor at col 21 -> col 20
+    local response = client:get_completions_triggered(uri, 8, 21, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "dist", "len" }) do
+        tested.assert({
+            given = "colon-on-call-result completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+    tested.assert({
+        given = "colon-on-call-result completion items",
+        should = "exclude the data field 'x'",
+        expected = false,
+        actual = has_label(items, "x"),
+    })
+end)
+
+tested.test("colon completion on a three-level method chain resolves each call's return type", function()
+    local uri = "file:///tmp/tls_complete_18.tl"
+    -- b:foo():bar():baz(): completing the third ':' requires following rets through
+    -- the second call (b:foo():bar()) back to Builder. Guards chain depth > 2.
+    local doc = table.concat({
+        "local record Builder",
+        "   foo: function(self: Builder): Builder",
+        "   bar: function(self: Builder): Builder",
+        "   baz: function(self: Builder): Builder",
+        "end",
+        "local b: Builder",
+        "local _ = b:foo():bar():baz()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "local _ = b:foo():bar():baz()": third ':' at col 23; cursor at col 24 -> col 23
+    local response = client:get_completions_triggered(uri, 6, 24, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "foo", "bar", "baz" }) do
+        tested.assert({
+            given = "three-level chain completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+-- Regression: the sibling-scan in Document:_tree_sitter_token used to match a
+-- multi-row node purely by row containment, ignoring the column. When a chain
+-- spans multiple lines and the next ':' immediately follows the closing ')' on
+-- the row where that multi-row node *ends*, the scan wrongly recursed into the
+-- already-finished node and returned no NodeInfo. Splitting the chain across
+-- lines (as method-chaining style commonly does) was enough to trigger it.
+tested.test("colon completion after a multi-line chained call still resolves the return type's methods", function()
+    local uri = "file:///tmp/tls_complete_19.tl"
+    local doc = table.concat({
+        "local record Builder",
+        "   foo: function(self: Builder): Builder",
+        "   bar: function(self: Builder): Builder",
+        "   baz: function(self: Builder): Builder",
+        "end",
+        "local b: Builder",
+        "local _ = b:foo()",
+        "   :bar():baz()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 8 "   :bar():baz()" is row 7 (0-indexed). The ':' before baz is at
+    -- col 9, right after the ')' that closes ":bar()" -- and ":bar()" itself
+    -- belongs to a function_call node spanning rows 6-7. Cursor at col 10 -> col 9.
+    local response = client:get_completions_triggered(uri, 7, 10, ":")
+
+    tested.assert({
+        given = "multi-line chained colon completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "foo", "bar", "baz" }) do
+        tested.assert({
+            given = "multi-line chained colon completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+-- still failing on stock tl: following rets[1] reaches first's declared return
+-- type, a bare unconstrained type variable `T`. tl's report records `T` with no
+-- constraint and no fields, so R is not recoverable from the report alone...
+tested.test("dot completion on a constrained type parameter returns the constraint's fields", {expected="FAIL"}, function()
+    local uri = "file:///tmp/tls_complete_11.tl"
+    -- inside the generic body, first(items) has type "T is R" (a type argument);
+    -- its result should expose R's fields via the constraint.
+    local doc = table.concat({
+        "local record R",
+        "  val: number",
+        "end",
+        "local function first<T>(items: {T}): T",
+        "  return items[1]",
+        "end",
+        "local function use<T is R>(items: {T})",
+        "  local _ = first(items).val",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "  local _ = first(items).val": '.' at col 24; cursor at col 25 -> col 24
+    local response = client:get_completions_triggered(uri, 7, 25, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "constrained type-parameter dot completion items",
+        should = "include 'val'",
+        expected = true,
+        actual = has_label(items, "val"),
+    })
+end)
+
+tested.test("dot completion after bracket (map) indexing returns the value type's fields", function()
+    local uri = "file:///tmp/tls_complete_12.tl"
+    local doc = table.concat({
+        "local record Foo",
+        "  field: number",
+        "  other: string",
+        "end",
+        "local m: {string: Foo}",
+        'local _ = m["hello"].field',
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 5 'local _ = m["hello"].field': '.' at col 20; cursor at col 21 -> col 20
+    local response = client:get_completions_triggered(uri, 5, 21, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "field", "other" }) do
+        tested.assert({
+            given = "bracket-then-dot completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("colon completion after bracket (array) indexing returns the element's methods", function()
+    local uri = "file:///tmp/tls_complete_13.tl"
+    local doc = table.concat({
+        "local record Foo",
+        "  go: function(self: Foo): number",
+        "end",
+        "local a: {Foo}",
+        "local _ = a[1]:go()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 'local _ = a[1]:go()': ':' at col 14; cursor at col 15 -> col 14
+    local response = client:get_completions_triggered(uri, 4, 15, ":")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "bracket-then-colon completion items",
+        should = "include 'go'",
+        expected = true,
+        actual = has_label(items, "go"),
+    })
+end)
+
+tested.test("colon completion includes overloaded (POLY) methods like FILE:read", function()
+    local uri = "file:///tmp/tls_complete_19.tl"
+    -- io.open returns a FILE whose read/lines methods are overloaded (POLY in the
+    -- type report). The ':' self-method filter must still surface them, not just
+    -- the single-signature functions (write/close/...).
+    local doc = table.concat({
+        'local manual_file = io.open("manual.of", "r")',
+        'local _ = manual_file:read("l")',
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1 'local _ = manual_file:read("l")': ':' at col 21; cursor at col 22 -> col 21
+    local response = client:get_completions_triggered(uri, 1, 22, ":")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "read", "lines", "write", "close" }) do
+        tested.assert({
+            given = "colon completion on a FILE",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("dot completion on a double (curried) call result returns the innermost return type's fields", function()
+    local uri = "file:///tmp/tls_complete_20.tl"
+    -- makeInner() returns a function that returns Inner, so makeInner()() is Inner.
+    -- bypos_key_for recurses through the nested function_call for the called object,
+    -- accumulating a return level per call so the lookup follows rets[1] twice.
+    local doc = table.concat({
+        "local record Inner",
+        "  val: number",
+        "end",
+        "local function makeInner(): function(): Inner",
+        "  return nil",
+        "end",
+        "local _ = makeInner()().val",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "local _ = makeInner()().val": '.' at col 23; cursor at col 24 -> col 23
+    local response = client:get_completions_triggered(uri, 6, 24, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "double-call dot completion items",
+        should = "include 'val'",
+        expected = true,
+        actual = has_label(items, "val"),
+    })
+end)
+
+tested.test("dot completion on an overloaded (POLY) function call result returns the return record's fields", function()
+    local uri = "file:///tmp/tls_complete_21.tl"
+    -- lib.make is overloaded (two signatures -> POLY). follow_rets bails on the
+    -- POLY callee, so this must resolve through the token-chain fallback.
+    local doc = table.concat({
+        "local record Box",
+        "  val: number",
+        "end",
+        "local record lib",
+        "  make: function(x: number): Box",
+        "  make: function(x: string): Box",
+        "end",
+        "local _ = lib.make(1).val",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = lib.make(1).val": '.' at col 21; cursor at col 22 -> col 21
+    local response = client:get_completions_triggered(uri, 7, 22, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "POLY-call-result dot completion items",
+        should = "include 'val'",
+        expected = true,
+        actual = has_label(items, "val"),
+    })
+end)
+
+-- Known limitation (same root cause as the constrained-type-parameter test above
+-- and the note at document.tl:352-357): tl records the generic return as a bare,
+-- unconstrained type variable at the callee's position, so follow_rets hits the
+-- TYPE_VARIABLE guard and bails, and the token-chain fallback can't resolve a call
+-- either. Requires the tl-side fix (PR #74) to resolve.
+tested.test("dot completion on a top-level generic call result returns the inferred type's fields", {expected="FAIL"}, function()
+    local uri = "file:///tmp/tls_complete_22.tl"
+    -- at a top-level call site T is inferred to the concrete element type (Item),
+    -- so following rets[1] should reach a real record; today it stays a type var.
+    local doc = table.concat({
+        "local record Item",
+        "  name: string",
+        "end",
+        "local function first<T>(items: {T}): T",
+        "  return items[1]",
+        "end",
+        "local items: {Item} = {}",
+        "local _ = first(items).name",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = first(items).name": '.' at col 22; cursor at col 23 -> col 22
+    local response = client:get_completions_triggered(uri, 7, 23, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "generic-call-result dot completion items",
+        should = "include 'name'",
+        expected = true,
+        actual = has_label(items, "name"),
+    })
+end)
+
 return tested

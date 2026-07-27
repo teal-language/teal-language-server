@@ -2,6 +2,7 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 local handler_helper = require("teal_language_server.handlers.handler_helper")
 local DocumentManager = require("teal_language_server.analysis.document_manager")
+local Document = require("teal_language_server.analysis.document")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager = require("teal_language_server.lsp.events_manager")
 local lsp = require("teal_language_server.lsp.protocol")
@@ -43,21 +44,21 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
    logger:debug("Found node info: %s", node_info)
 
-   local tks
+   local type_info
 
 
 
    if node_info.type == "." or node_info.type == ":" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      logger:debug("Received request for completion at character: %s", tks)
+      type_info = doc:resolve_preceded_type(node_info, pos)
 
 
    elseif node_info.type == "identifier" then
+      local tks
 
       if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type)
+         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
       else
-         tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
+         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
       end
 
 
@@ -73,13 +74,14 @@ function LanguageFeatureHandlers:_on_completion(params, id)
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
+
+      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
    local items = {}
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       logger:info("Also failed to find type type_info based on token")
@@ -104,27 +106,45 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
       local original_str = type_info.str
 
+
+
+      local function is_self_method(fn)
+         if fn.t ~= tl.typecodes.FUNCTION or not fn.args or #fn.args < 1 then
+            return false
+         end
+         local first_arg_type = doc:resolve_type_ref(fn.args[1][1])
+         return first_arg_type.t == tl.typecodes.SELF or
+         ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) or
+         (was_string_type and first_arg_type.t == tl.typecodes.STRING)
+      end
+
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
             local was_added
 
             if node_info.type == ":" then
-               if type_info.t == tl.typecodes.FUNCTION then
 
-                  if type_info.args and #type_info.args >= 1 then
-                     local first_arg_type = doc:resolve_type_ref(type_info.args[1][1])
-                     if first_arg_type.t == tl.typecodes.SELF or
-                        ((first_arg_type.t == tl.typecodes.NOMINAL or first_arg_type.t == tl.typecodes.RECORD) and first_arg_type.str == original_str) or
-                        (was_string_type and first_arg_type.t == tl.typecodes.STRING) then
-                        logger:debug("Adding self method %s", key)
-                        table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
-                        was_added = true
-                     else
-                        logger:debug("Ignoring method %s with arg type 0x%08x, type info str %s, first arg str %s",
-                        key, first_arg_type.t, original_str, first_arg_type.str)
+
+               local self_method = false
+               if type_info.t == tl.typecodes.POLY then
+                  for _, ref in ipairs(type_info.types) do
+                     if is_self_method(doc:resolve_type_ref(ref)) then
+                        self_method = true
+                        break
                      end
                   end
+               else
+                  self_method = is_self_method(type_info)
+               end
+
+               if self_method then
+                  logger:debug("Adding self method %s", key)
+                  table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
+                  was_added = true
+               else
+                  logger:debug("Ignoring method %s with type 0x%08x for type info str %s",
+                  key, type_info.t, original_str)
                end
             else
                table.insert(items, { label = key, kind = lsp.typecodes_to_kind[type_info.t] })
@@ -177,17 +197,14 @@ function LanguageFeatureHandlers:_on_signature_help(params, id)
    local output = {}
    logger:debug("Got nodeinfo: %s", node_info)
 
-   local tks
+   local type_info
 
    if node_info.type == "(" then
-      tks = handler_helper.split_by_symbols(node_info.preceded_by, node_info.self_type)
-      logger:debug("Received request for signature help at character: %s", tks)
+      type_info = doc:resolve_preceded_type(node_info, pos)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
-
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if type_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -243,12 +260,21 @@ function LanguageFeatureHandlers:_on_hover(params, id)
    end
 
    local tks = {}
+   local quick_type_info
    if node_info.type == "identifier" then
 
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = handler_helper.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
-      else
-         tks = handler_helper.split_by_symbols(node_info.source, node_info.self_type)
+
+      if node_info.bypos_y then
+         quick_type_info = doc:type_information_for_position(node_info.bypos_y, node_info.bypos_x)
+      end
+
+      if quick_type_info == nil then
+
+         if handler_helper.indexable_parent_types[node_info.parent_type] then
+            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
+         else
+            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
+         end
       end
    else
       logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
@@ -262,7 +288,7 @@ function LanguageFeatureHandlers:_on_hover(params, id)
       return
    end
 
-   local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+   local type_info = quick_type_info or doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    if not type_info then
       logger:warning("Also failed to find type info based on token")
