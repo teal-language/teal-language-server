@@ -660,4 +660,96 @@ tested.test("colon completion includes overloaded (POLY) methods like FILE:read"
     end
 end)
 
+tested.test("dot completion on a double (curried) call result returns the innermost return type's fields", function()
+    local uri = "file:///tmp/tls_complete_20.tl"
+    -- makeInner() returns a function that returns Inner, so makeInner()() is Inner.
+    -- bypos_key_for recurses through the nested function_call for the called object,
+    -- accumulating a return level per call so the lookup follows rets[1] twice.
+    local doc = table.concat({
+        "local record Inner",
+        "  val: number",
+        "end",
+        "local function makeInner(): function(): Inner",
+        "  return nil",
+        "end",
+        "local _ = makeInner()().val",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "local _ = makeInner()().val": '.' at col 23; cursor at col 24 -> col 23
+    local response = client:get_completions_triggered(uri, 6, 24, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "double-call dot completion items",
+        should = "include 'val'",
+        expected = true,
+        actual = has_label(items, "val"),
+    })
+end)
+
+tested.test("dot completion on an overloaded (POLY) function call result returns the return record's fields", function()
+    local uri = "file:///tmp/tls_complete_21.tl"
+    -- lib.make is overloaded (two signatures -> POLY). follow_rets bails on the
+    -- POLY callee, so this must resolve through the token-chain fallback.
+    local doc = table.concat({
+        "local record Box",
+        "  val: number",
+        "end",
+        "local record lib",
+        "  make: function(x: number): Box",
+        "  make: function(x: string): Box",
+        "end",
+        "local _ = lib.make(1).val",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = lib.make(1).val": '.' at col 21; cursor at col 22 -> col 21
+    local response = client:get_completions_triggered(uri, 7, 22, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "POLY-call-result dot completion items",
+        should = "include 'val'",
+        expected = true,
+        actual = has_label(items, "val"),
+    })
+end)
+
+-- Known limitation (same root cause as the constrained-type-parameter test above
+-- and the note at document.tl:352-357): tl records the generic return as a bare,
+-- unconstrained type variable at the callee's position, so follow_rets hits the
+-- TYPE_VARIABLE guard and bails, and the token-chain fallback can't resolve a call
+-- either. Requires the tl-side fix (PR #74) to resolve.
+tested.test("dot completion on a top-level generic call result returns the inferred type's fields", {expected="FAIL"}, function()
+    local uri = "file:///tmp/tls_complete_22.tl"
+    -- at a top-level call site T is inferred to the concrete element type (Item),
+    -- so following rets[1] should reach a real record; today it stays a type var.
+    local doc = table.concat({
+        "local record Item",
+        "  name: string",
+        "end",
+        "local function first<T>(items: {T}): T",
+        "  return items[1]",
+        "end",
+        "local items: {Item} = {}",
+        "local _ = first(items).name",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = first(items).name": '.' at col 22; cursor at col 23 -> col 22
+    local response = client:get_completions_triggered(uri, 7, 23, ".")
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "generic-call-result dot completion items",
+        should = "include 'name'",
+        expected = true,
+        actual = has_label(items, "name"),
+    })
+end)
+
 return tested

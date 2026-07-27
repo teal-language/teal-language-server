@@ -116,6 +116,136 @@ tested.test("hover over a record field access returns the field's type", functio
     })
 end)
 
+tested.test("hover over a colon method name returns the method's function type", function()
+    local uri = "file:///tmp/tls_hover_5.tl"
+    -- the method identifier is preceded by ':', so by_pos resolves at the ':'
+    local doc = table.concat({
+        "local record T",
+        "  greet: function(self: T): string",
+        "end",
+        "local t: T",
+        "local _ = t:greet()",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 "local _ = t:greet()": 'greet' starts at col 12; hover does NOT subtract 1
+    local response = client:get_hover(uri, 4, 12)
+
+    tested.assert({
+        given = "hover over colon method response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local contents = response.result and response.result.contents
+    local value = type(contents) == "table" and (contents.value or contents[1]) or tostring(contents)
+    tested.assert({
+        given = "hover over colon method value",
+        should = "mention 'function'",
+        expected = true,
+        actual = tostring(value):find("function") ~= nil,
+    })
+end)
+
+tested.test("hover over a bare global function returns type info", function()
+    local uri = "file:///tmp/tls_hover_6.tl"
+    -- a plain global identifier with no preceding '.'/':' resolves at its own position
+    client:open_document(uri, "local _ = print")
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 0 "local _ = print": 'print' starts at col 10; hover does NOT subtract 1
+    local response = client:get_hover(uri, 0, 10)
+
+    tested.assert({
+        given = "hover over bare global response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local contents = response.result and response.result.contents
+    local value = type(contents) == "table" and (contents.value or contents[1]) or tostring(contents)
+    tested.assert({
+        given = "hover over bare global value",
+        should = "mention 'function'",
+        expected = true,
+        actual = tostring(value):find("function") ~= nil,
+    })
+end)
+
+tested.test("hover over 'self' returns the enclosing record type", function()
+    local uri = "file:///tmp/tls_hover_7.tl"
+    local doc = table.concat({
+        "local record T",
+        "  x: number",
+        "end",
+        "function T:m()",
+        "  local _ = self",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 "  local _ = self": 'self' starts at col 12; hover does NOT subtract 1
+    local response = client:get_hover(uri, 4, 12)
+
+    tested.assert({
+        given = "hover over self response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local contents = response.result and response.result.contents
+    local value = type(contents) == "table" and (contents.value or contents[1]) or tostring(contents)
+    tested.assert({
+        given = "hover over self value",
+        should = "mention 'T'",
+        expected = true,
+        actual = tostring(value):find("T") ~= nil,
+    })
+end)
+
+tested.test("hover over the middle token of a dotted chain returns that token's type", function()
+    local uri = "file:///tmp/tls_hover_8.tl"
+    local doc = table.concat({
+        "local record Inner",
+        "  val: number",
+        "end",
+        "local record Mid",
+        "  inner: Inner",
+        "end",
+        "local record Outer",
+        "  mid: Mid",
+        "end",
+        "local o: Outer",
+        "local _ = o.mid.inner",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 10 "local _ = o.mid.inner": 'mid' starts at col 12; hover does NOT subtract 1
+    local response = client:get_hover(uri, 10, 12)
+
+    tested.assert({
+        given = "hover over chain middle token response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local contents = response.result and response.result.contents
+    local value = type(contents) == "table" and (contents.value or contents[1]) or tostring(contents)
+    tested.assert({
+        given = "hover over chain middle token value",
+        should = "mention 'Mid'",
+        expected = true,
+        actual = tostring(value):find("Mid") ~= nil,
+    })
+end)
+
 tested.test("hover over a variable initialized from a call returns the call's return type", function()
     local uri = "file:///tmp/tls_hover_4.tl"
     local doc = table.concat({

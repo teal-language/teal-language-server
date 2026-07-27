@@ -77,6 +77,7 @@ local Document = { NodeInfo = {} }
 
 
 
+
 function Document:__init(uri, content, version, lsp_reader_writer, server_state)
    asserts.is_not_nil(lsp_reader_writer)
    asserts.is_not_nil(server_state)
@@ -355,7 +356,8 @@ end
 
 
 
-function Document:type_information_for_position(y, x, follow_rets)
+
+function Document:type_information_for_position(y, x, ret_depth)
    local tr = self:get_type_report()
    local file = tr.by_pos[self._uri.path]
    if file == nil or file[y] == nil then
@@ -367,8 +369,9 @@ function Document:type_information_for_position(y, x, follow_rets)
    end
    local type_info = self:resolve_type_ref(type_id)
 
-   if follow_rets then
 
+
+   for _ = 1, ret_depth or 0 do
 
 
       if type_info == nil or
@@ -377,14 +380,13 @@ function Document:type_information_for_position(y, x, follow_rets)
          type_info.rets[1] == nil then
          return nil
       end
-      local ret_info = self:resolve_type_ref(type_info.rets[1][1])
+      type_info = self:resolve_type_ref(type_info.rets[1][1])
 
 
 
-      if ret_info == nil or ret_info.t == tl.typecodes.TYPE_VARIABLE then
+      if type_info == nil or type_info.t == tl.typecodes.TYPE_VARIABLE then
          return nil
       end
-      return ret_info
    end
 
    return type_info
@@ -465,7 +467,7 @@ end
 
 function Document:resolve_preceded_type(node_info, pos)
    if node_info.bypos_y then
-      local type_info = self:type_information_for_position(node_info.bypos_y, node_info.bypos_x, node_info.bypos_follow_rets)
+      local type_info = self:type_information_for_position(node_info.bypos_y, node_info.bypos_x, node_info.bypos_ret_depth)
       if type_info ~= nil then
          logger:debug("Resolved preceded expr via by_pos at %d:%d", node_info.bypos_y, node_info.bypos_x)
          return type_info
@@ -530,6 +532,7 @@ end
 
 
 
+
 local function bypos_key_for(node)
    if node == nil then
       return nil
@@ -542,11 +545,12 @@ local function bypos_key_for(node)
       end
 
 
-      local y, x = bypos_key_for(called)
+
+      local y, x, depth = bypos_key_for(called)
       if y == nil then
          return nil
       end
-      return y, x, true
+      return y, x, (depth or 0) + 1
    elseif node_type == "index" or node_type == "method_index" then
 
 
@@ -586,7 +590,7 @@ function Document:_tree_sitter_token(y, x)
             out.preceded_by = prev:source()
 
 
-            out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(prev)
+            out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(prev)
          else
             parent_node = parent_node:prev_sibling()
             if parent_node then
@@ -594,10 +598,10 @@ function Document:_tree_sitter_token(y, x)
 
                   local last = parent_node:child(parent_node:child_count() - 1)
                   out.preceded_by = last:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(last)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(last)
                else
                   out.preceded_by = parent_node:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(parent_node)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(parent_node)
                end
             end
          end
@@ -610,7 +614,7 @@ function Document:_tree_sitter_token(y, x)
                local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
                if function_call then
                   out.preceded_by = function_call:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(function_call)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(function_call)
                end
             end
 
@@ -618,7 +622,7 @@ function Document:_tree_sitter_token(y, x)
             for child in parent_node:children() do
                if child:name() == "index" then
                   out.preceded_by = child:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(child)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(child)
                   break
                end
             end

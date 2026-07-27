@@ -42,9 +42,10 @@ local record Document
       bypos_x: integer
       -- when the preceding expression is a function call, bypos_(y,x) points at
       -- the *called object* (whose function type stock tl does record) rather than
-      -- the call result (a tuple stock tl skips); this flags the lookup to follow
-      -- the function's first return value to recover the call's result type
-      bypos_follow_rets: boolean
+      -- the call result (a tuple stock tl skips); this holds the number of return
+      -- levels to follow to recover the call's result type. Nested calls (f()())
+      -- accumulate levels, one rets[1] hop per call.
+      bypos_ret_depth: integer
       metamethod __tostring: function(NodeInfo): string
    end
 
@@ -346,8 +347,9 @@ end
 -- Stock tl records a single-value result at its position (locals, globals, plain
 -- field access), but skips a function call's *result* because it is a tuple. To
 -- still resolve a call, callers point y/x at the *called object* (whose function
--- type tl does record) and pass follow_rets=true; we then follow the function's
--- first return value (rets[1]) to recover the call's result type.
+-- type tl does record) and pass ret_depth = the number of return levels to follow;
+-- we then follow the function's first return value (rets[1]) that many times to
+-- recover the call's result type. A double call like f()() passes ret_depth=2.
 --
 -- One case stays unresolvable from the report alone: a generic function whose
 -- return is a bare, unconstrained type variable (e.g. `first<T>(...): T`). tl
@@ -355,7 +357,7 @@ end
 -- rets yields an empty typevar and we return nil; callers fall back to
 -- type_information_for_tokens. (See PR #74 for the tl patch that fixed that case
 -- in the checker itself.)
-function Document:type_information_for_position(y: integer, x: integer, follow_rets?: boolean): tl.TypeInfo
+function Document:type_information_for_position(y: integer, x: integer, ret_depth?: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
    local file = tr.by_pos[self._uri.path]
    if file == nil or file[y] == nil then
@@ -367,24 +369,24 @@ function Document:type_information_for_position(y: integer, x: integer, follow_r
    end
    local type_info = self:resolve_type_ref(type_id)
 
-   if follow_rets then
-      -- the by_pos entry is the callable itself; resolve its first return value.
-      -- If it isn't a plain function (e.g. a POLY/overload) or has no returns,
-      -- return nil so the caller falls back to token resolution.
+   -- the by_pos entry is the callable itself; follow one rets[1] per call level
+   -- (nested calls like f()() need more than one hop).
+   for _ = 1, ret_depth or 0 do
+      -- not a plain function (e.g. a POLY/overload) or no returns: bail so the
+      -- caller falls back to token resolution.
       if type_info == nil
          or type_info.t ~= tl.typecodes.FUNCTION
          or type_info.rets == nil
          or type_info.rets[1] == nil then
          return nil
       end
-      local ret_info = self:resolve_type_ref(type_info.rets[1][1])
+      type_info = self:resolve_type_ref(type_info.rets[1][1])
       -- a return that resolves to a bare type variable (e.g. generic `T`) carries
       -- no constraint or fields in the report, so it is unusable; treat it as a
       -- miss and let the caller fall back to token resolution
-      if ret_info == nil or ret_info.t == tl.typecodes.TYPE_VARIABLE then
+      if type_info == nil or type_info.t == tl.typecodes.TYPE_VARIABLE then
          return nil
       end
-      return ret_info
    end
 
    return type_info
@@ -465,7 +467,7 @@ end
 -- falls back to re-parsing node_info.preceded_by into a token chain.
 function Document:resolve_preceded_type(node_info: Document.NodeInfo, pos: lsp.Position): tl.TypeInfo
    if node_info.bypos_y then
-      local type_info = self:type_information_for_position(node_info.bypos_y, node_info.bypos_x, node_info.bypos_follow_rets)
+      local type_info = self:type_information_for_position(node_info.bypos_y, node_info.bypos_x, node_info.bypos_ret_depth)
       if type_info ~= nil then
          logger:debug("Resolved preceded expr via by_pos at %d:%d", node_info.bypos_y, node_info.bypos_x)
          return type_info
@@ -523,14 +525,15 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
 end
 
 -- Map a tree-sitter expression node to the (1-indexed) position where tl records
--- its result type in by_pos, plus a flag for whether that position holds the
--- callable (so the caller must follow rets) rather than the value directly:
---   function_call      -> the *called object*'s position, follow_rets=true. tl
+-- its result type in by_pos, plus the number of return levels to follow so that
+-- position holds the callable (rather than the value directly):
+--   function_call      -> the *called object*'s position, ret_depth += 1. tl
 --                         skips the call result (a tuple), but records the called
 --                         object's function type, whose rets[1] is the result.
+--                         Nested calls (f()()) accumulate levels.
 --   index/method_index -> the "."/":"/"[" operator child; the access result lives there
 --   anything else      -> the node's own start
-local function bypos_key_for(node: ltreesitter.Node): integer, integer, boolean
+local function bypos_key_for(node: ltreesitter.Node): integer, integer, integer
    if node == nil then
       return nil
    end
@@ -541,12 +544,13 @@ local function bypos_key_for(node: ltreesitter.Node): integer, integer, boolean
          return nil
       end
       -- resolve the called object's by_pos position (identifier / index / method
-      -- index) and mark it so the lookup follows the function's first return value
-      local y, x = bypos_key_for(called)
+      -- index) and add a return level so the lookup follows the function's first
+      -- return value; nested calls accumulate one level per call.
+      local y, x, depth = bypos_key_for(called)
       if y == nil then
          return nil
       end
-      return y, x, true
+      return y, x, (depth or 0) + 1
    elseif node_type == "index" or node_type == "method_index" then
       -- the access result is recorded at the operator: "." / ":" for field and
       -- method access, "[" for bracket indexing
@@ -586,7 +590,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
             out.preceded_by = prev:source()
             -- record where the preceding expression's result type lives in by_pos
             -- so completion can resolve it directly (calls, chains, dotted access)
-            out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(prev)
+            out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(prev)
          else
             parent_node = parent_node:prev_sibling()
             if parent_node then
@@ -594,10 +598,10 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
                   -- no previous symbol, so get parent's previous sibling's last child
                   local last = parent_node:child(parent_node:child_count()-1)
                   out.preceded_by = last:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(last)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(last)
                else
                   out.preceded_by = parent_node:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(parent_node)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(parent_node)
                end
             end
          end
@@ -610,7 +614,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
                local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
                if function_call then
                   out.preceded_by = function_call:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(function_call)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(function_call)
                end
             end
 
@@ -618,7 +622,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
             for child in parent_node:children() do
                if child:name() == "index" then
                   out.preceded_by = child:source()
-                  out.bypos_y, out.bypos_x, out.bypos_follow_rets = bypos_key_for(child)
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(child)
                   break
                end
             end
