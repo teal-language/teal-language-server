@@ -4,7 +4,7 @@ local _module_name = "server_state"
 local asserts <const> = require("teal_language_server.util.asserts")
 local lsp <const> = require("teal_language_server.lsp.protocol")
 local Path <const> = require("teal_language_server.util.path")
-local lfs <const> = require("lfs")
+local uv <const> = require("luv")
 local tl <const> = require("tl")
 local logging <const> = require("teal_language_server.logging")
 local class <const> = require("teal_language_server.util.class")
@@ -254,7 +254,9 @@ function ServerState:initialize(root_dir:Path)
    self._has_initialized = true
 
    self._teal_project_root_dir = root_dir
-   asserts.that(lfs.chdir(root_dir.value), "unable to chdir into {}", root_dir.value)
+   -- uv.chdir returns 0 on success, nil on failure -- compare explicitly rather
+   -- than leaning on Lua treating 0 as truthy
+   asserts.that(uv.chdir(root_dir.value) == 0, "unable to chdir into {}", root_dir.value)
 
    self._config = self:_load_config(root_dir)
 end

@@ -12,7 +12,7 @@ local json = require("cjson")
 local logger = logging.get_logger(_module_name)
 
 local ltreesitter = require("ltreesitter")
-local teal_language = ltreesitter.require("teal", "teal")
+local teal_language = ltreesitter.require("ts-teal", "teal")
 local teal_parser = teal_language:parser()
 
 local tl = require("tl")
@@ -28,6 +28,29 @@ local tl = require("tl")
 
 
 local Document = { NodeInfo = {} }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -315,7 +338,7 @@ end
 
 
 
-function Document.split_by_symbols(input, self_type, stop_at)
+local function split_by_symbols(input, self_type, stop_at)
    local t = {}
    if not input then return t end
    for str in string.gmatch(input, "([^%.%:]+)") do
@@ -473,7 +496,7 @@ function Document:resolve_preceded_type(node_info, pos)
          return type_info
       end
    end
-   local tks = Document.split_by_symbols(node_info.preceded_by, node_info.self_type)
+   local tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
    logger:debug("Falling back to token chain: %s", tks)
    return self:type_information_for_tokens(tks, pos.line, pos.character)
 end
@@ -532,13 +555,190 @@ end
 
 
 
+local declaration_parent_types = {
+   ["attnamelist"] = true,
+   ["attrib"] = true,
+   ["nominal"] = true,
+   ["basetype"] = true,
+
+
+
+}
+
+
+
+
+
+local node_kind = {
+   ["."] = "dot",
+   [":"] = "colon",
+   ["("] = "open_paren",
+   ["identifier"] = "identifier",
+}
+
+local function node_kind_of(node_type)
+   return node_kind[node_type] or "other"
+end
+
+
+local function receiver_of(funcname)
+   local base_name = funcname:child_by_field_name("base")
+   return base_name and base_name:source()
+end
+
+
+
+
+
+local function receiver_name(node)
+   local node_type = node:type()
+   if node_type == "stat" then
+      local function_name = node:child_by_field_name("name")
+      if function_name and function_name:type() == "funcname" then
+         return receiver_of(function_name)
+      end
+   elseif node_type == "ERROR" then
+
+
+
+
+
+
+
+      local declares = false
+      for child in node:children() do
+         if child:type() == "function" then
+            declares = true
+         elseif child:name() == "funcname" then
+            if declares then
+               return receiver_of(child)
+            end
+         elseif child:name() ~= nil then
+            declares = false
+         end
+      end
+   end
+   return nil
+end
+
+
+
+
+
+local function unwrap_prefixexp(node)
+   while node ~= nil and node:type() == "prefixexp" and node:child_count() == 1 do
+      node = node:child(0)
+   end
+   return node
+end
+
+
+local function child_token_position(node, a, b)
+   for child in node:children() do
+      local child_type = child:type()
+      if child_type == a or (b ~= nil and child_type == b) then
+         local sp = child:start_point()
+         return sp.row + 1, sp.column + 1
+      end
+   end
+   return nil
+end
+
+
+
+
+
+
+local function append_chain_segments(node, out)
+   node = unwrap_prefixexp(node)
+   if node == nil then
+      return
+   end
+   local node_type = node:type()
+   if node_type == "var" then
+      local object = node:child_by_field_name("object")
+      if object ~= nil then
+         append_chain_segments(object, out)
+      end
+      local key = node:child_by_field_name("key")
+      if key ~= nil then
+         table.insert(out, key:source())
+      elseif object == nil then
+
+
+         for child in node:children() do
+            if child:type() == "identifier" then
+               table.insert(out, child:source())
+               break
+            end
+         end
+      end
+   elseif node_type == "functioncall" then
+      append_chain_segments(node:child_by_field_name("called_object"), out)
+      local method = node:child_by_field_name("method")
+      if method ~= nil then
+         table.insert(out, method:source())
+      end
+   elseif node_type == "identifier" then
+      table.insert(out, node:source())
+   end
+end
+
+
+
+
+
+local function token_chain_for(leaf, parent)
+   local out = {}
+   local parent_type = parent:type()
+   if parent_type == "var" or parent_type == "functioncall" then
+      append_chain_segments(parent, out)
+   elseif parent_type == "funcname" then
+
+      local leaf_start = leaf:start_point()
+      for _, field in ipairs({ "base", "entry", "method" }) do
+         local part = parent:child_by_field_name(field)
+         if part ~= nil then
+            table.insert(out, part:source())
+            local part_start = part:start_point()
+            if part_start.row == leaf_start.row and part_start.column == leaf_start.column then
+               break
+            end
+         end
+      end
+   else
+      table.insert(out, leaf:source())
+   end
+   return out
+end
+
+
+
+
+
+
+
+
+
+
+
 
 local function bypos_key_for(node)
+   node = unwrap_prefixexp(node)
    if node == nil then
       return nil
    end
    local node_type = node:type()
-   if node_type == "function_call" then
+   if node_type == "functioncall" then
+
+
+      if node:child_by_field_name("method") ~= nil then
+         local y, x = child_token_position(node, ":")
+         if y ~= nil then
+            return y, x, 1
+         end
+      end
+
       local called = node:child_by_field_name("called_object")
       if called == nil then
          return nil
@@ -551,19 +751,34 @@ local function bypos_key_for(node)
          return nil
       end
       return y, x, (depth or 0) + 1
-   elseif node_type == "index" or node_type == "method_index" then
+   elseif node_type == "var" then
 
 
-      for child in node:children() do
-         local child_type = child:type()
-         if child_type == "." or child_type == ":" or child_type == "[" then
-            local sp = child:start_point()
-            return sp.row + 1, sp.column + 1
-         end
+      local y, x = child_token_position(node, ".", "[")
+      if y ~= nil then
+         return y, x
       end
    end
    local start_point = node:start_point()
    return start_point.row + 1, start_point.column + 1
+end
+
+
+
+
+
+local function callee_info(call)
+   local called = call:child_by_field_name("called_object")
+   if called == nil then
+      return nil
+   end
+   local method = call:child_by_field_name("method")
+   if method ~= nil then
+      local y, x = child_token_position(call, ":")
+      return called:source() .. ":" .. method:source(), y, x
+   end
+   local y, x, depth = bypos_key_for(called)
+   return called:source(), y, x, depth
 end
 
 function Document:_tree_sitter_token(y, x)
@@ -575,55 +790,79 @@ function Document:_tree_sitter_token(y, x)
 
       local parent_node = self._tree_cursor:current_node()
 
+      local parent_type = parent_node:type()
+
       local out = {
+         kind = node_kind_of(node:type()),
          type = node:type(),
          source = node:source(),
-         parent_type = parent_node:type(),
+         parent_type = parent_type,
          parent_source = parent_node:source(),
+         in_declaration_position = declaration_parent_types[parent_type] == true,
       }
 
 
-      if node:type() == "." or node:type() == ":" then
+
+      out.token_chain_raw = token_chain_for(node, parent_node)
+
+
+      if out.kind == "dot" or out.kind == "colon" then
 
          local prev = node:prev_sibling()
-         if prev then
+         if prev == nil then
+
+
+
+            local sibling = parent_node:prev_sibling()
+            if sibling ~= nil then
+               prev = sibling:child_count() > 0 and
+               sibling:child(sibling:child_count() - 1) or
+               sibling
+            end
+         end
+         if prev ~= nil then
             out.preceded_by = prev:source()
 
 
             out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(prev)
-         else
-            parent_node = parent_node:prev_sibling()
-            if parent_node then
-               if parent_node:child_count() > 0 then
-
-                  local last = parent_node:child(parent_node:child_count() - 1)
-                  out.preceded_by = last:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(last)
-               else
-                  out.preceded_by = parent_node:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(parent_node)
-               end
-            end
          end
 
 
-      elseif node:type() == "(" then
-         if parent_node:type() == "arguments" then
+      elseif out.kind == "open_paren" then
+         if parent_type == "args" then
             moved = self._tree_cursor:goto_parent()
             if moved == true then
-               local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
-               if function_call then
-                  out.preceded_by = function_call:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(function_call)
-               end
+               out.preceded_by, out.bypos_y, out.bypos_x, out.bypos_ret_depth =
+               callee_info(self._tree_cursor:current_node())
             end
 
-         elseif parent_node:type() == "ERROR" then
+         elseif parent_type == "ERROR" then
+
+
+
+
+            local callee
+            local method_name
             for child in parent_node:children() do
-               if child:name() == "index" then
-                  out.preceded_by = child:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(child)
+               local child_type = child:type()
+               if child_type == "(" then
                   break
+               elseif child_type == "prefixexp" or child_type == "var" or child_type == "identifier" then
+                  if method_name == nil and callee ~= nil and child_type == "identifier" then
+
+                     method_name = child:source()
+                  else
+                     callee, method_name = child, nil
+                  end
+               end
+            end
+            if callee ~= nil then
+               if method_name ~= nil then
+                  out.preceded_by = callee:source() .. ":" .. method_name
+                  out.bypos_y, out.bypos_x = child_token_position(parent_node, ":")
+               else
+                  out.preceded_by = callee:source()
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(callee)
                end
             end
          end
@@ -631,7 +870,7 @@ function Document:_tree_sitter_token(y, x)
 
 
 
-      elseif node:type() == "identifier" then
+      elseif out.kind == "identifier" then
          local prev = node:prev_sibling()
          local key_node = (prev and (prev:type() == "." or prev:type() == ":")) and prev or node
          local sp = key_node:start_point()
@@ -639,35 +878,41 @@ function Document:_tree_sitter_token(y, x)
          out.bypos_x = sp.column + 1
       end
 
+
+
+
+
       if out.preceded_by == "self" or
+         out.source == "self" or
          out.source:find("self[%.%:]") or
          out.parent_source:find("self[%.%:]") then
 
-         while parent_node:type() ~= "program" do
+
+
+
+
+         while parent_node:type() ~= "chunk" do
+            local found = receiver_name(parent_node)
+            if found ~= nil then
+               out.self_type = found
+               break
+            end
+
             moved = self._tree_cursor:goto_parent()
             if moved == false then break end
-
             parent_node = self._tree_cursor:current_node()
-            if parent_node:type() == "function_statement" then
-               local function_name = parent_node:child_by_field_name("name")
-               if function_name then
-                  local base_name = function_name:child_by_field_name("base")
-                  if base_name then
-                     out.self_type = base_name:source()
-                     break
-                  end
-               end
-            elseif parent_node:type() == "ERROR" then
-
-               for child in parent_node:children() do
-                  if child:name() == "function_name" then
-                     out.self_type = child:child_by_field_name("base"):source()
-                     break
-                  end
-               end
-            end
          end
 
+      end
+
+
+
+      out.token_chain = out.token_chain_raw
+      if out.self_type ~= nil and out.token_chain_raw[1] == "self" then
+         out.token_chain = {}
+         for i, segment in ipairs(out.token_chain_raw) do
+            out.token_chain[i] = i == 1 and out.self_type or segment
+         end
       end
 
       return out

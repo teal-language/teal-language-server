@@ -1,5 +1,6 @@
 local luv <const> = require("luv")
 local logging <const> = require("teal_language_server.logging")
+local util <const> = require("teal_language_server.util.util")
 
 local record LogFileHandler
    interface LogFile
@@ -19,11 +20,31 @@ local function _open_file(path: string, mode: io.OpenMode): FILE
    return f
 end
 
-function LogFileHandler.open_log_file(loggering: logging): LogFileHandler.LogFile
+-- Base directory for cached data, by platform convention. Everywhere except
+-- Windows that is ~/.cache (honouring XDG_CACHE_HOME): developer tooling puts
+-- things there on macOS too, so ~/Library/Caches is not worth a separate branch.
+local function cache_root(): string
    local homedir = assert(luv.os_homedir(), "Could not determine home directory")
-   local log_dir = homedir .. "/.cache/teal-language-server"
 
-   luv.fs_mkdir(log_dir, 493) -- 0755, ignore error if already exists
+   if util.get_platform() == "windows" then
+      -- ~/.cache does not exist on Windows, and a dotfolder in the user profile
+      -- is not the convention there
+      return os.getenv("LOCALAPPDATA") or (homedir .. "/AppData/Local")
+   end
+
+   return os.getenv("XDG_CACHE_HOME") or (homedir .. "/.cache")
+end
+
+function LogFileHandler.open_log_file(loggering: logging): LogFileHandler.LogFile
+   local root = cache_root()
+   local log_dir = root .. "/teal-language-server"
+
+   -- fs_mkdir is mkdir(2), so it will not create intermediate directories, and
+   -- the root is not guaranteed to exist (a fresh machine may have no ~/.cache).
+   -- Create it first; both calls ignore failure because EEXIST is the normal
+   -- case, and a real failure surfaces with a better message from _open_file.
+   luv.fs_mkdir(root, 493)
+   luv.fs_mkdir(log_dir, 493) -- 0755
 
    -- Delete log files older than 24 hours
    local scanner = luv.fs_scandir(log_dir)

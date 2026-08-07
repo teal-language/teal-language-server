@@ -58,7 +58,11 @@ function EnvUpdater:_init_env_from_config(cfg)
    end
 
    local path_separator = package.config:sub(1, 1)
-   local shared_lib_ext = package.cpath:match("(%.%w+)%s*$") or ".so"
+
+
+
+
+   local shared_lib_ext = package.cpath:match("%?(%.%w+)") or ".so"
 
    local function prepend_to_lua_path(path_str)
       if path_str:sub(-1) == path_separator then

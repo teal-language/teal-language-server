@@ -14,19 +14,6 @@ local class = require("teal_language_server.util.class")
 
 local logger = logging.get_logger(_module_name)
 
-
-
-
-
-
-local function tokens_for_node(node_info, self_type)
-   if handler_helper.indexable_parent_types[node_info.parent_type] then
-      return Document.split_by_symbols(node_info.parent_source, self_type, node_info.source)
-   else
-      return Document.split_by_symbols(node_info.source, self_type)
-   end
-end
-
 local DefinitionHandlers = {}
 
 
@@ -92,13 +79,16 @@ function DefinitionHandlers:_on_definition(params, id)
 
    logger:trace("Received request for on_definition at position: %s", pos)
 
-   if node_info.type ~= "identifier" then
+   if node_info.kind ~= "identifier" then
       logger:warning("Can't go to definition of anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local tks = tokens_for_node(node_info, "self")
+
+
+
+   local tks = node_info.token_chain_raw
 
 
    if #tks == 1 then
@@ -146,13 +136,13 @@ function DefinitionHandlers:_on_type_definition(params, id)
 
    logger:trace("Received request for on_type_definition at position: %s", pos)
 
-   if node_info.type ~= "identifier" then
+   if node_info.kind ~= "identifier" then
       logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local tks = tokens_for_node(node_info, "self")
+   local tks = node_info.token_chain_raw
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    logger:trace("[on_type_definition] Found type type_info: %s", type_info)

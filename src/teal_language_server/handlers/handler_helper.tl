@@ -9,14 +9,7 @@ local logging <const> = require("teal_language_server.logging")
 local logger = logging.get_logger(_module_name)
 
 local record handler_helper
-   indexable_parent_types: {string:boolean}
 end
-
-handler_helper.indexable_parent_types = {
-   ["index"] = true,
-   ["method_index"] = true,
-   ["function_name"] = true,
-}
 
 function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
    local context = params.context as lsp.CompletionContext

@@ -2,7 +2,6 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 local handler_helper = require("teal_language_server.handlers.handler_helper")
 local DocumentManager = require("teal_language_server.analysis.document_manager")
-local Document = require("teal_language_server.analysis.document")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager = require("teal_language_server.lsp.events_manager")
 local lsp = require("teal_language_server.lsp.protocol")
@@ -48,18 +47,13 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
 
 
-   if node_info.type == "." or node_info.type == ":" then
+   if node_info.kind == "dot" or node_info.kind == "colon" then
       type_info = doc:resolve_preceded_type(node_info, pos)
 
 
-   elseif node_info.type == "identifier" then
-      local tks
+   elseif node_info.kind == "identifier" then
 
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
-      else
-         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
-      end
+      local tks = node_info.token_chain
 
 
 
@@ -68,9 +62,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
 
 
-      if node_info.parent_type == "var" or
-         node_info.parent_type == "simple_type" or
-         node_info.parent_type == "table_type" then
+      if node_info.in_declaration_position then
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
@@ -123,7 +115,7 @@ function LanguageFeatureHandlers:_on_completion(params, id)
             type_info = doc:resolve_type_ref(v)
             local was_added
 
-            if node_info.type == ":" then
+            if node_info.kind == "colon" then
 
 
                local self_method = false
@@ -199,7 +191,7 @@ function LanguageFeatureHandlers:_on_signature_help(params, id)
 
    local type_info
 
-   if node_info.type == "(" then
+   if node_info.kind == "open_paren" then
       type_info = doc:resolve_preceded_type(node_info, pos)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -261,7 +253,7 @@ function LanguageFeatureHandlers:_on_hover(params, id)
 
    local tks = {}
    local quick_type_info
-   if node_info.type == "identifier" then
+   if node_info.kind == "identifier" then
 
 
       if node_info.bypos_y then
@@ -269,17 +261,12 @@ function LanguageFeatureHandlers:_on_hover(params, id)
       end
 
       if quick_type_info == nil then
-
-         if handler_helper.indexable_parent_types[node_info.parent_type] then
-            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
-         else
-            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
-         end
+         tks = node_info.token_chain
       end
    else
       logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, {
-         contents = { node_info.parent_type, ":", node_info.type },
+         contents = { "Unknown Token:", " Unable to resolve the token under the cursor " },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character + #node_info.source),

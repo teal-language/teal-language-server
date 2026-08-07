@@ -4,7 +4,7 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 local asserts = require("teal_language_server.util.asserts")
 local lsp = require("teal_language_server.lsp.protocol")
 local Path = require("teal_language_server.util.path")
-local lfs = require("lfs")
+local uv = require("luv")
 local tl = require("tl")
 local logging = require("teal_language_server.logging")
 local class = require("teal_language_server.util.class")
@@ -254,7 +254,9 @@ function ServerState:initialize(root_dir)
    self._has_initialized = true
 
    self._teal_project_root_dir = root_dir
-   asserts.that(lfs.chdir(root_dir.value), "unable to chdir into {}", root_dir.value)
+
+
+   asserts.that(uv.chdir(root_dir.value) == 0, "unable to chdir into {}", root_dir.value)
 
    self._config = self:_load_config(root_dir)
 end

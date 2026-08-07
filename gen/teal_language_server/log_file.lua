@@ -1,5 +1,6 @@
 local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local io = _tl_compat and _tl_compat.io or io; local os = _tl_compat and _tl_compat.os or os; local string = _tl_compat and _tl_compat.string or string; local luv = require("luv")
 local logging = require("teal_language_server.logging")
+local util = require("teal_language_server.util.util")
 
 local LogFileHandler = {}
 
@@ -19,10 +20,30 @@ local function _open_file(path, mode)
    return f
 end
 
-function LogFileHandler.open_log_file(loggering)
-   local homedir = assert(luv.os_homedir(), "Could not determine home directory")
-   local log_dir = homedir .. "/.cache/teal-language-server"
 
+
+
+local function cache_root()
+   local homedir = assert(luv.os_homedir(), "Could not determine home directory")
+
+   if util.get_platform() == "windows" then
+
+
+      return os.getenv("LOCALAPPDATA") or (homedir .. "/AppData/Local")
+   end
+
+   return os.getenv("XDG_CACHE_HOME") or (homedir .. "/.cache")
+end
+
+function LogFileHandler.open_log_file(loggering)
+   local root = cache_root()
+   local log_dir = root .. "/teal-language-server"
+
+
+
+
+
+   luv.fs_mkdir(root, 493)
    luv.fs_mkdir(log_dir, 493)
 
 

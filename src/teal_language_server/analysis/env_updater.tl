@@ -58,7 +58,11 @@ function EnvUpdater:_init_env_from_config(cfg: ServerState.TealProjectConfig): t
    end
 
    local path_separator = package.config:sub(1, 1)
-   local shared_lib_ext = package.cpath:match("(%.%w+)%s*$") or ".so"
+   -- Read the extension off a "?" template rather than the end of the string:
+   -- cpath commonly ends in ";" or ";;" (the standard "append the defaults"
+   -- idiom, which luarocks and hererocks both emit), and anchoring at the end
+   -- silently fell back to ".so" on Windows whenever it did.
+   local shared_lib_ext = package.cpath:match("%?(%.%w+)") or ".so"
 
    local function prepend_to_lua_path(path_str: string)
       if path_str:sub(-1) == path_separator then

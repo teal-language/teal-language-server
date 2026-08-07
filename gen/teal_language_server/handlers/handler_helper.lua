@@ -11,13 +11,6 @@ local logger = logging.get_logger(_module_name)
 local handler_helper = {}
 
 
-
-handler_helper.indexable_parent_types = {
-   ["index"] = true,
-   ["method_index"] = true,
-   ["function_name"] = true,
-}
-
 function handler_helper.get_node_info(document_manager, params, pos)
    local context = params.context
 

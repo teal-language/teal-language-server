@@ -12,7 +12,7 @@ local json <const> = require("cjson")
 local logger = logging.get_logger(_module_name)
 
 local ltreesitter <const> = require("ltreesitter")
-local teal_language = ltreesitter.require("teal", "teal")
+local teal_language = ltreesitter.require("ts-teal", "teal")
 local teal_parser = teal_language:parser()
 
 local tl <const> = require("tl")
@@ -29,10 +29,33 @@ end
 
 local record Document
    record NodeInfo
+      -- What the cursor is sitting on, normalized. This is the ONLY thing
+      -- handlers should branch on: it is defined here, inside the region that
+      -- knows the grammar, so a grammar swap cannot silently change its meaning.
+      enum Kind
+         "dot"          -- "." -- field access, completion trigger
+         "colon"        -- ":" -- method access, completion trigger
+         "open_paren"   -- "(" -- signature help trigger
+         "identifier"   -- a name: hover, goto-definition, mid-word completion
+         "other"        -- anything else; handlers bail
+      end
+      kind: Kind
+      -- `type` and `parent_type` are raw tree-sitter node type names. They change
+      -- wholesale if the grammar is swapped, so they are debug/logging detail
+      -- only -- never branch on them. Branch on `kind` above.
       type: string
       source: string
       parent_type: string
       parent_source: string
+      -- The chain of names ending at the cursor, e.g. {"self", "test_value"} for
+      -- a cursor on `test_value` in `self.test_value.other`. Built by walking the
+      -- tree, so it stays correct where a node's source text spans more than the
+      -- chain does -- feed this to type_information_for_tokens.
+      token_chain: {string}      -- a leading `self` resolved to the record name
+      token_chain_raw: {string}  -- `self` kept literal, for symbol lookups
+      -- the cursor sits in a declaration or type-annotation position, where
+      -- offering in-scope completions would be noise
+      in_declaration_position: boolean
       preceded_by: string
       self_type: string
       -- the (1-indexed) position to look this request's type up in by_pos:
@@ -315,7 +338,7 @@ end
 -- substituting the enclosing record name for "self". Stops after `stop_at` when
 -- given. Pure string parsing over NodeInfo-derived text; feeds
 -- type_information_for_tokens.
-function Document.split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
+local function split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
    local t = {}
    if not input then return t end
    for str in string.gmatch(input, "([^%.%:]+)") do
@@ -473,7 +496,7 @@ function Document:resolve_preceded_type(node_info: Document.NodeInfo, pos: lsp.P
          return type_info
       end
    end
-   local tks = Document.split_by_symbols(node_info.preceded_by, node_info.self_type)
+   local tks = split_by_symbols(node_info.preceded_by, node_info.self_type)
    logger:debug("Falling back to token chain: %s", tks)
    return self:type_information_for_tokens(tks, pos.line, pos.character)
 end
@@ -524,46 +547,238 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
    return nil
 end
 
+-- ---------------------------------------------------------------------------
+-- Everything from here to the end of `_tree_sitter_token` is coupled to the
+-- tree-sitter grammar's node type names. Nothing outside this file should
+-- compare against a grammar node type; handlers read the normalized flags on
+-- NodeInfo instead. Keeping that boundary means swapping the grammar is a
+-- change to this file rather than to every handler.
+-- ---------------------------------------------------------------------------
+
+local declaration_parent_types <const>: {string:boolean} = {
+   ["attnamelist"] = true,  -- `local abc = ...` declarator
+   ["attrib"] = true,       -- the `<const>` / `<close>` attribute
+   ["nominal"] = true,      -- `local abc: MyType`
+   ["basetype"] = true,     -- `local abc: string` / `{string:number}`
+   -- deliberately NOT recordkey/parname: tree-sitter-teal did not suppress
+   -- completion at a record field name or a parameter name, and widening that
+   -- here would be a behaviour change smuggled in under a grammar swap
+}
+
+-- Collapse a raw tree-sitter node type into the handler-facing `Kind`. These four
+-- tokens happen to be spelled the same in tree-sitter-teal and ts-teal, but that
+-- is exactly the assumption worth pinning in one place rather than scattering
+-- across the handlers.
+local node_kind <const>: {string:Document.NodeInfo.Kind} = {
+   ["."] = "dot",
+   [":"] = "colon",
+   ["("] = "open_paren",
+   ["identifier"] = "identifier",
+}
+
+local function node_kind_of(node_type: string): Document.NodeInfo.Kind
+   return node_kind[node_type] or "other"
+end
+
+-- Receiver type named by a `funcname` (the `R` in `function R:m()`).
+local function receiver_of(funcname: ltreesitter.Node): string
+   local base_name = funcname:child_by_field_name("base")
+   return base_name and base_name:source()
+end
+
+-- Name of the record `node` declares a method on, if it declares one at all.
+-- ts-teal uses a single `stat` node for every kind of statement, so the enclosing
+-- function is the one whose `name` field is a `funcname`; statements without one
+-- (the `local a = self.` we started from) return nil and the walk continues up.
+local function receiver_name(node: ltreesitter.Node): string
+   local node_type = node:type()
+   if node_type == "stat" then
+      local function_name = node:child_by_field_name("name")
+      if function_name and function_name:type() == "funcname" then
+         return receiver_of(function_name)
+      end
+   elseif node_type == "ERROR" then
+      -- for some reason you can't get the node by name in an error state, but you can still iterate over to it
+      --
+      -- In a broken parse the children are flattened, so a `funcname` here is not
+      -- necessarily a declaration -- a half-typed method *call* (`self:handler(`)
+      -- recovers as one too. Only a funcname introduced by the `function` keyword
+      -- declares anything; accepting the rest lets call debris shadow the real
+      -- enclosing method.
+      local declares = false
+      for child in node:children() do
+         if child:type() == "function" then
+            declares = true
+         elseif child:name() == "funcname" then
+            if declares then
+               return receiver_of(child)
+            end
+         elseif child:name() ~= nil then
+            declares = false
+         end
+      end
+   end
+   return nil
+end
+
+-- ts-teal wraps every expression link in a `prefixexp`, so a node reached via
+-- prev_sibling or a field is usually one or more wrappers away from the thing we
+-- actually want to dispatch on. Failing to unwrap does not error -- it silently
+-- falls through to "the node's own start" and returns a wrong by_pos key.
+local function unwrap_prefixexp(node: ltreesitter.Node): ltreesitter.Node
+   while node ~= nil and node:type() == "prefixexp" and node:child_count() == 1 do
+      node = node:child(0)
+   end
+   return node
+end
+
+-- Position of a child token (1-indexed), or nil if this node has no such child.
+local function child_token_position(node: ltreesitter.Node, a: string, b?: string): integer, integer
+   for child in node:children() do
+      local child_type = child:type()
+      if child_type == a or (b ~= nil and child_type == b) then
+         local sp = child:start_point()
+         return sp.row + 1, sp.column + 1
+      end
+   end
+   return nil
+end
+
+-- Append the dotted/method segments of an expression to `out`, left to right.
+-- This walks the tree instead of re-lexing source text, which matters because a
+-- node's `source` is not always the chain: ts-teal's `functioncall` spans its
+-- arguments too, so splitting `self:m(a, b)` on "." and ":" yields a garbage
+-- final segment. The spine always yields exactly the names.
+local function append_chain_segments(node: ltreesitter.Node, out: {string})
+   node = unwrap_prefixexp(node)
+   if node == nil then
+      return
+   end
+   local node_type = node:type()
+   if node_type == "var" then
+      local object = node:child_by_field_name("object")
+      if object ~= nil then
+         append_chain_segments(object, out)
+      end
+      local key = node:child_by_field_name("key")
+      if key ~= nil then
+         table.insert(out, key:source())
+      elseif object == nil then
+         -- a bare `t`: ts-teal still wraps it in a var, with the name as its
+         -- only child rather than as a `key`
+         for child in node:children() do
+            if child:type() == "identifier" then
+               table.insert(out, child:source())
+               break
+            end
+         end
+      end
+   elseif node_type == "functioncall" then
+      append_chain_segments(node:child_by_field_name("called_object"), out)
+      local method = node:child_by_field_name("method")
+      if method ~= nil then
+         table.insert(out, method:source())
+      end
+   elseif node_type == "identifier" then
+      table.insert(out, node:source())
+   end
+end
+
+-- The token chain ending at the cursor, e.g. {"self", "test_value"} for a cursor
+-- on `test_value` in `self.test_value.other`. Anchoring on the leaf's *parent*
+-- is what makes it stop at the cursor: the enclosing `var` whose `key` is the
+-- leaf spans exactly the prefix, so no truncation pass is needed.
+local function token_chain_for(leaf: ltreesitter.Node, parent: ltreesitter.Node): {string}
+   local out: {string} = {}
+   local parent_type = parent:type()
+   if parent_type == "var" or parent_type == "functioncall" then
+      append_chain_segments(parent, out)
+   elseif parent_type == "funcname" then
+      -- flat base/entry/method; take them up to and including the cursor's own
+      local leaf_start = leaf:start_point()
+      for _, field in ipairs({ "base", "entry", "method" }) do
+         local part = parent:child_by_field_name(field)
+         if part ~= nil then
+            table.insert(out, part:source())
+            local part_start = part:start_point()
+            if part_start.row == leaf_start.row and part_start.column == leaf_start.column then
+               break
+            end
+         end
+      end
+   else
+      table.insert(out, leaf:source())
+   end
+   return out
+end
+
+
 -- Map a tree-sitter expression node to the (1-indexed) position where tl records
 -- its result type in by_pos, plus the number of return levels to follow so that
 -- position holds the callable (rather than the value directly):
---   function_call      -> the *called object*'s position, ret_depth += 1. tl
---                         skips the call result (a tuple), but records the called
---                         object's function type, whose rets[1] is the result.
---                         Nested calls (f()()) accumulate levels.
---   index/method_index -> the "."/":"/"[" operator child; the access result lives there
---   anything else      -> the node's own start
+--   functioncall  -> the *called object*'s position, ret_depth += 1. tl skips the
+--                    call result (a tuple), but records the called object's
+--                    function type, whose rets[1] is the result. Nested calls
+--                    (f()()) accumulate levels. A method call (`a:b()`) has no
+--                    node of its own here, so its ":" is read off the call.
+--   var           -> the "."/"[" operator child; the access result lives there
+--   anything else -> the node's own start
 local function bypos_key_for(node: ltreesitter.Node): integer, integer, integer
+   node = unwrap_prefixexp(node)
    if node == nil then
       return nil
    end
    local node_type = node:type()
-   if node_type == "function_call" then
+   if node_type == "functioncall" then
+      -- `a:b()` -- ts-teal has no method_index node, the ":" hangs off the call
+      -- itself, and that is where tl records the access result.
+      if node:child_by_field_name("method") ~= nil then
+         local y, x = child_token_position(node, ":")
+         if y ~= nil then
+            return y, x, 1
+         end
+      end
+
       local called = node:child_by_field_name("called_object")
       if called == nil then
          return nil
       end
-      -- resolve the called object's by_pos position (identifier / index / method
-      -- index) and add a return level so the lookup follows the function's first
-      -- return value; nested calls accumulate one level per call.
+      -- resolve the called object's by_pos position and add a return level so
+      -- the lookup follows the function's first return value; nested calls
+      -- accumulate one level per call.
       local y, x, depth = bypos_key_for(called)
       if y == nil then
          return nil
       end
       return y, x, (depth or 0) + 1
-   elseif node_type == "index" or node_type == "method_index" then
-      -- the access result is recorded at the operator: "." / ":" for field and
-      -- method access, "[" for bracket indexing
-      for child in node:children() do
-         local child_type = child:type()
-         if child_type == "." or child_type == ":" or child_type == "[" then
-            local sp = child:start_point()
-            return sp.row + 1, sp.column + 1
-         end
+   elseif node_type == "var" then
+      -- the access result is recorded at the operator: "." for field access,
+      -- "[" for bracket indexing
+      local y, x = child_token_position(node, ".", "[")
+      if y ~= nil then
+         return y, x
       end
    end
    local start_point = node:start_point()
    return start_point.row + 1, start_point.column + 1
+end
+
+-- Text and by_pos key of the thing being called, for signature help. Under
+-- ts-teal `called_object` on a method call holds only the receiver (`s` in
+-- `s:rep(`), so the method name has to be stitched back on -- otherwise
+-- preceded_by silently degrades from "s:rep" to "s".
+local function callee_info(call: ltreesitter.Node): string, integer, integer, integer
+   local called = call:child_by_field_name("called_object")
+   if called == nil then
+      return nil
+   end
+   local method = call:child_by_field_name("method")
+   if method ~= nil then
+      local y, x = child_token_position(call, ":")
+      return called:source() .. ":" .. method:source(), y, x
+   end
+   local y, x, depth = bypos_key_for(called)
+   return called:source(), y, x, depth
 end
 
 function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
@@ -575,55 +790,79 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
 
       local parent_node = self._tree_cursor:current_node()
 
+      local parent_type <const> = parent_node:type()
+
       local out: Document.NodeInfo = {
+         kind = node_kind_of(node:type()),
          type = node:type(),
          source = node:source(),
-         parent_type = parent_node:type(),
-         parent_source = parent_node:source()
+         parent_type = parent_type,
+         parent_source = parent_node:source(),
+         in_declaration_position = declaration_parent_types[parent_type] == true,
       }
 
+      -- computed before the self_type walk below, which advances the cursor and
+      -- reassigns parent_node
+      out.token_chain_raw = token_chain_for(node, parent_node)
+
       -- for completion
-      if node:type() == "." or node:type() == ":" then
+      if out.kind == "dot" or out.kind == "colon" then
          -- considered an error and need to get the previous symbol
          local prev = node:prev_sibling()
-         if prev then
+         if prev == nil then
+            -- ERROR recovery can reparent the trigger character, leaving it with
+            -- no previous sibling; the symbol is then the last thing under the
+            -- parent's previous sibling.
+            local sibling = parent_node:prev_sibling()
+            if sibling ~= nil then
+               prev = sibling:child_count() > 0
+                  and sibling:child(sibling:child_count() - 1)
+                  or sibling
+            end
+         end
+         if prev ~= nil then
             out.preceded_by = prev:source()
             -- record where the preceding expression's result type lives in by_pos
             -- so completion can resolve it directly (calls, chains, dotted access)
             out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(prev)
-         else
-            parent_node = parent_node:prev_sibling()
-            if parent_node then
-               if parent_node:child_count() > 0 then
-                  -- no previous symbol, so get parent's previous sibling's last child
-                  local last = parent_node:child(parent_node:child_count()-1)
-                  out.preceded_by = last:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(last)
-               else
-                  out.preceded_by = parent_node:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(parent_node)
-               end
-            end
          end
 
       -- for function signature
-      elseif node:type() == "(" then
-         if parent_node:type() == "arguments" then
+      elseif out.kind == "open_paren" then
+         if parent_type == "args" then
             moved = self._tree_cursor:goto_parent()
             if moved == true then
-               local function_call = self._tree_cursor:current_node():child_by_field_name("called_object")
-               if function_call then
-                  out.preceded_by = function_call:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(function_call)
-               end
+               out.preceded_by, out.bypos_y, out.bypos_x, out.bypos_ret_depth =
+                  callee_info(self._tree_cursor:current_node())
             end
 
-         elseif parent_node:type() == "ERROR" then
+         elseif parent_type == "ERROR" then
+            -- An unclosed call (`f(`, `s:rep(`) never becomes a functioncall, so
+            -- the callee has to be recovered from the ERROR node's flattened
+            -- children. Walk them in order and keep the last callee-shaped run
+            -- seen before the "(" -- either `expr` or `expr : name`.
+            local callee: ltreesitter.Node
+            local method_name: string
             for child in parent_node:children() do
-               if child:name() == "index" then
-                  out.preceded_by = child:source()
-                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(child)
+               local child_type = child:type()
+               if child_type == "(" then
                   break
+               elseif child_type == "prefixexp" or child_type == "var" or child_type == "identifier" then
+                  if method_name == nil and callee ~= nil and child_type == "identifier" then
+                     -- the name half of `receiver : name`
+                     method_name = child:source()
+                  else
+                     callee, method_name = child, nil
+                  end
+               end
+            end
+            if callee ~= nil then
+               if method_name ~= nil then
+                  out.preceded_by = callee:source() .. ":" .. method_name
+                  out.bypos_y, out.bypos_x = child_token_position(parent_node, ":")
+               else
+                  out.preceded_by = callee:source()
+                  out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key_for(callee)
                end
             end
          end
@@ -631,7 +870,7 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
       -- for hover: a cursor sitting on an identifier resolves via by_pos. A field
       -- access (preceded by "." / ":") has its result recorded at the operator,
       -- so look there; a plain variable resolves at its own position.
-      elseif node:type() == "identifier" then
+      elseif out.kind == "identifier" then
          local prev = node:prev_sibling()
          local key_node = (prev and (prev:type() == "." or prev:type() == ":")) and prev or node
          local sp = key_node:start_point()
@@ -639,35 +878,41 @@ function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo
          out.bypos_x = sp.column + 1
       end
 
+      -- `out.source == "self"` matters under ts-teal: in `self.v` the leaf `self`
+      -- sits in its own nested `var`, so parent_source is just "self" and the
+      -- `self[%.%:]` patterns below never match. Without this the self_type walk
+      -- silently stops running for field access on self.
       if out.preceded_by == "self" or
+         out.source == "self" or
          out.source:find("self[%.%:]") or
          out.parent_source:find("self[%.%:]") then
 
-         while parent_node:type() ~= "program" do
+         -- The node the cursor sits directly under has to be checked before
+         -- ascending: under ts-teal a broken method body (`self:` mid-typing)
+         -- puts the funcname in the leaf's *immediate* parent, so a walk that
+         -- moves up first would step straight over it.
+         while parent_node:type() ~= "chunk" do
+            local found = receiver_name(parent_node)
+            if found ~= nil then
+               out.self_type = found
+               break
+            end
+
             moved = self._tree_cursor:goto_parent()
             if moved == false then break end
-
             parent_node = self._tree_cursor:current_node()
-            if parent_node:type() == "function_statement" then
-               local function_name = parent_node:child_by_field_name("name")
-               if function_name then
-                  local base_name = function_name:child_by_field_name("base")
-                  if base_name then
-                     out.self_type = base_name:source()
-                     break
-                  end
-               end
-            elseif parent_node:type() == "ERROR" then
-               -- for some reason you can't get the node by name in an error state, but you can still iterate over to it
-               for child in parent_node:children() do
-                  if child:name() == "function_name" then
-                     out.self_type = child:child_by_field_name("base"):source()
-                     break
-                  end
-               end
-            end
          end
 
+      end
+
+      -- `self` only becomes a usable type name once the enclosing method is
+      -- known, so the resolved chain is derived here rather than at build time.
+      out.token_chain = out.token_chain_raw
+      if out.self_type ~= nil and out.token_chain_raw[1] == "self" then
+         out.token_chain = {}
+         for i, segment in ipairs(out.token_chain_raw) do
+            out.token_chain[i] = i == 1 and out.self_type or segment
+         end
       end
 
       return out

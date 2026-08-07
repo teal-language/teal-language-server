@@ -2,7 +2,6 @@ local _module_name = "handlers.language_feature"
 
 local handler_helper <const> = require("teal_language_server.handlers.handler_helper")
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
-local Document <const> = require("teal_language_server.analysis.document")
 local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local lsp <const> = require("teal_language_server.lsp.protocol")
@@ -48,18 +47,13 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
 
    -- literally at the . or : and are trying to autocomplete
    -- preceded_by should have everything we need in it.
-   if node_info.type == "." or node_info.type == ":" then
+   if node_info.kind == "dot" or node_info.kind == "colon" then
       type_info = doc:resolve_preceded_type(node_info, pos)
 
    -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
-   elseif node_info.type == "identifier" then
-      local tks: {string}
+   elseif node_info.kind == "identifier" then
       -- the types that we would need to index into to get type info from
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
-      else
-         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
-      end
+      local tks = node_info.token_chain
 
       -- takes it back to the just after the first dot, then does completion
       -- if there's only one symbol, will return an empty list and type_information_for_tokens will just
@@ -68,9 +62,7 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
 
       -- trying to define something new, probably don't want the in-scope thing to popup
       -- we could probably help complete simple types
-      if node_info.parent_type == "var" or
-         node_info.parent_type == "simple_type" or
-         node_info.parent_type == "table_type" then
+      if node_info.in_declaration_position then
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
@@ -123,7 +115,7 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
             type_info = doc:resolve_type_ref(v)
             local was_added:boolean
             -- self based access should only show functions
-            if node_info.type == ":" then
+            if node_info.kind == "colon" then
                -- overloaded methods (e.g. FILE:read) arrive as POLY, so check each
                -- overload and keep the method if any is a self-callable function
                local self_method = false
@@ -199,7 +191,7 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
 
    local type_info: tl.TypeInfo
 
-   if node_info.type == "(" then
+   if node_info.kind == "open_paren" then
       type_info = doc:resolve_preceded_type(node_info, pos)
    else
       self._lsp_reader_writer:send_rpc(id, nil)
@@ -261,7 +253,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
 
    local tks: {string} = {}
    local quick_type_info: tl.TypeInfo
-   if node_info.type == "identifier" then
+   if node_info.kind == "identifier" then
       -- resolve directly from by_pos at the identifier's position (works for
       -- locals/globals and, via the field-identifier store, for field access)
       if node_info.bypos_y then
@@ -269,17 +261,12 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
       end
       -- only build the token-chain fallback when the by_pos lookup missed
       if quick_type_info == nil then
-         -- parent types that show up with multiparts
-         if handler_helper.indexable_parent_types[node_info.parent_type] then
-            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type, node_info.source)
-         else
-            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
-         end
+         tks = node_info.token_chain
       end
    else
       logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, {
-         contents = { node_info.parent_type, ":", node_info.type },
+         contents = { "Unknown Token:", " Unable to resolve the token under the cursor " },
          range = {
             start = lsp.position(pos.line, pos.character),
             ["end"] = lsp.position(pos.line, pos.character + #node_info.source),

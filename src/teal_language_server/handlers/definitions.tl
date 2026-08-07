@@ -14,19 +14,6 @@ local class <const> = require("teal_language_server.util.class")
 
 local logger = logging.get_logger(_module_name)
 
--- Builds the token chain for a node under the cursor. For definition lookups we
--- keep `self` literal (passing "self" as the self_type makes the substitution in
--- split_by_symbols a no-op) so it resolves as a real in-scope parameter symbol
--- rather than relying on the tree-sitter self_type detection, which is only set
--- for named methods and not for function literals.
-local function tokens_for_node(node_info: Document.NodeInfo, self_type: string): {string}
-   if handler_helper.indexable_parent_types[node_info.parent_type] then
-      return Document.split_by_symbols(node_info.parent_source, self_type, node_info.source)
-   else
-      return Document.split_by_symbols(node_info.source, self_type)
-   end
-end
-
 local record DefinitionHandlers
    _document_manager: DocumentManager
    _server_state: ServerState
@@ -92,13 +79,16 @@ function DefinitionHandlers:_on_definition(params: lsp.Method.Params, id: intege
 
    logger:trace("Received request for on_definition at position: %s", pos)
 
-   if node_info.type ~= "identifier" then
+   if node_info.kind ~= "identifier" then
       logger:warning("Can't go to definition of anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local tks = tokens_for_node(node_info, "self")
+   -- token_chain_raw keeps `self` literal so it resolves as a real in-scope
+   -- parameter symbol, rather than depending on self_type detection, which is
+   -- only set for named methods and not for function literals.
+   local tks = node_info.token_chain_raw
 
    -- Base symbol (e.g. `apple`, `self`, `TestType_mt`): go to its declaration.
    if #tks == 1 then
@@ -146,13 +136,13 @@ function DefinitionHandlers:_on_type_definition(params: lsp.Method.Params, id: i
 
    logger:trace("Received request for on_type_definition at position: %s", pos)
 
-   if node_info.type ~= "identifier" then
+   if node_info.kind ~= "identifier" then
       logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s", node_info.type)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   local tks = tokens_for_node(node_info, "self")
+   local tks = node_info.token_chain_raw
    local type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
 
    logger:trace("[on_type_definition] Found type type_info: %s", type_info)
