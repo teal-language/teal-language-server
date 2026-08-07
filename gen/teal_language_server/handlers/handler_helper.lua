@@ -2,6 +2,7 @@ local _module_name = "handlers.handler_helper"
 
 local DocumentManager = require("teal_language_server.analysis.document_manager")
 local Document = require("teal_language_server.analysis.document")
+local NodeInfo = require("teal_language_server.analysis.node_info")
 local Uri = require("teal_language_server.util.uri")
 local lsp = require("teal_language_server.lsp.protocol")
 local logging = require("teal_language_server.logging")

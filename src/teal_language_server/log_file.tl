@@ -20,15 +20,10 @@ local function _open_file(path: string, mode: io.OpenMode): FILE
    return f
 end
 
--- Base directory for cached data, by platform convention. Everywhere except
--- Windows that is ~/.cache (honouring XDG_CACHE_HOME): developer tooling puts
--- things there on macOS too, so ~/Library/Caches is not worth a separate branch.
-local function cache_root(): string
+local function get_cache_root_by_os(): string
    local homedir = assert(luv.os_homedir(), "Could not determine home directory")
 
    if util.get_platform() == "windows" then
-      -- ~/.cache does not exist on Windows, and a dotfolder in the user profile
-      -- is not the convention there
       return os.getenv("LOCALAPPDATA") or (homedir .. "/AppData/Local")
    end
 
@@ -36,15 +31,11 @@ local function cache_root(): string
 end
 
 function LogFileHandler.open_log_file(loggering: logging): LogFileHandler.LogFile
-   local root = cache_root()
+   local root = get_cache_root_by_os()
    local log_dir = root .. "/teal-language-server"
 
-   -- fs_mkdir is mkdir(2), so it will not create intermediate directories, and
-   -- the root is not guaranteed to exist (a fresh machine may have no ~/.cache).
-   -- Create it first; both calls ignore failure because EEXIST is the normal
-   -- case, and a real failure surfaces with a better message from _open_file.
-   luv.fs_mkdir(root, 493)
-   luv.fs_mkdir(log_dir, 493) -- 0755
+   luv.fs_mkdir(root, 493) -- 0755
+   luv.fs_mkdir(log_dir, 493)
 
    -- Delete log files older than 24 hours
    local scanner = luv.fs_scandir(log_dir)

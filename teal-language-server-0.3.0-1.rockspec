@@ -1,11 +1,11 @@
 rockspec_format = "3.0"
 
 package = "teal-language-server"
-version = "0.2.1-1"
+version = "0.3.0-1"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   tag = "0.2.1"
+   tag = "0.3.0"
 }
 
 description = {
@@ -16,13 +16,15 @@ description = {
 }
 
 dependencies = {
-   "luafilesystem",
    "tl == 0.24.8",
    "lua-cjson",
    "argparse",
    "luv == 1.52.1",
    "lusc_luv >= 4.0",
    "ltreesitter == 0.3.0",
+   -- the Teal tree-sitter grammar; was vendored under tree-sitter-teal/ and
+   -- built here, now a pinned dependency so its version is actually recorded
+   "ts-teal == 0.1.0",
 }
 
 test_dependencies = { "tested >= 0.3.0", "luacov", "inspect" }
@@ -34,9 +36,6 @@ test = {
 build = {
    type = "builtin",
    modules = {
-      -- tree-sitter-teal (removes need for tree-sitter-cli and a build dep)
-      ["teal"] = {"tree-sitter-teal/src/parser.c", "tree-sitter-teal/src/scanner.c", "tree-sitter-teal/src/lua_stub.c", incdirs = {"tree-sitter-teal/src"},},
-
       -- core
       ["teal_language_server.args_parser"] = "gen/teal_language_server/args_parser.lua",
       ["teal_language_server.main"] = "gen/teal_language_server/main.lua",
@@ -49,6 +48,7 @@ build = {
       ["teal_language_server.analysis.document_manager"] = "gen/teal_language_server/analysis/document_manager.lua",
       ["teal_language_server.analysis.env_updater"] = "gen/teal_language_server/analysis/env_updater.lua",
       ["teal_language_server.analysis.lua_env"] = "gen/teal_language_server/analysis/lua_env.lua",
+      ["teal_language_server.analysis.node_info"] = "gen/teal_language_server/analysis/node_info.lua",
 
       -- handler
       ["teal_language_server.handlers.definitions"] = "gen/teal_language_server/handlers/definitions.lua",

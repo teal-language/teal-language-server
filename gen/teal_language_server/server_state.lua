@@ -254,8 +254,6 @@ function ServerState:initialize(root_dir)
    self._has_initialized = true
 
    self._teal_project_root_dir = root_dir
-
-
    asserts.that(uv.chdir(root_dir.value) == 0, "unable to chdir into {}", root_dir.value)
 
    self._config = self:_load_config(root_dir)

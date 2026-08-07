@@ -20,15 +20,10 @@ local function _open_file(path, mode)
    return f
 end
 
-
-
-
-local function cache_root()
+local function get_cache_root_by_os()
    local homedir = assert(luv.os_homedir(), "Could not determine home directory")
 
    if util.get_platform() == "windows" then
-
-
       return os.getenv("LOCALAPPDATA") or (homedir .. "/AppData/Local")
    end
 
@@ -36,12 +31,8 @@ local function cache_root()
 end
 
 function LogFileHandler.open_log_file(loggering)
-   local root = cache_root()
+   local root = get_cache_root_by_os()
    local log_dir = root .. "/teal-language-server"
-
-
-
-
 
    luv.fs_mkdir(root, 493)
    luv.fs_mkdir(log_dir, 493)

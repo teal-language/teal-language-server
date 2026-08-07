@@ -254,8 +254,6 @@ function ServerState:initialize(root_dir:Path)
    self._has_initialized = true
 
    self._teal_project_root_dir = root_dir
-   -- uv.chdir returns 0 on success, nil on failure -- compare explicitly rather
-   -- than leaning on Lua treating 0 as truthy
    asserts.that(uv.chdir(root_dir.value) == 0, "unable to chdir into {}", root_dir.value)
 
    self._config = self:_load_config(root_dir)

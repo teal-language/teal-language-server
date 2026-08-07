@@ -2,6 +2,7 @@ local _module_name = "handlers.handler_helper"
 
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
 local Document <const> = require("teal_language_server.analysis.document")
+local NodeInfo <const> = require("teal_language_server.analysis.node_info")
 local Uri <const> = require("teal_language_server.util.uri")
 local lsp <const> = require("teal_language_server.lsp.protocol")
 local logging <const> = require("teal_language_server.logging")
@@ -11,7 +12,7 @@ local logger = logging.get_logger(_module_name)
 local record handler_helper
 end
 
-function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
+function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then

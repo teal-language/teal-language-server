@@ -344,4 +344,287 @@ end]])
    tested.assert({ expected = "indexable_parent_types", actual = node_info.parent_source })
 end)
 
+--
+-- Regression tests for the tree-sitter-teal -> ts-teal migration.
+--
+-- Every case in this section corresponds to a defect that migration actually
+-- introduced, all of which were silent -- nothing crashed, results were just
+-- quietly wrong. They assert the NORMALIZED fields (kind, token_chain,
+-- self_type, bypos_*) rather than raw grammar node type names, so they survive a
+-- future grammar change and keep testing what the handlers consume.
+--
+-- If you change one of these expectations, check you are not re-introducing the
+-- bug named in the test.
+--
+
+-- token_chain is built by walking the tree, not by splitting source text. It has
+-- to be, because ts-teal's `functioncall` node spans its arguments: splitting
+-- `self:handler(p, q)` on "." and ":" yields {"R", "handler(p, q)"}, and that
+-- second segment matches nothing in the type report.
+tested.test("token chain of a method call excludes its arguments", function()
+   local d = doc([[
+local record R
+   v: number
+   handler: function(R, number, number): number
+end
+function R:m(p: number, q: number)
+   local a = self:handler(p, q)
+end]])
+
+   local node_info = d:tree_sitter_token(5, 20)
+   tested.assert({ expected = "identifier", actual = node_info.kind })
+   tested.assert({
+      given = "the cursor on the method name of self:handler(p, q)",
+      should = "chain to the receiver and method only, without the argument list",
+      expected = "R.handler",
+      actual = table.concat(node_info.token_chain, "."),
+   })
+   tested.assert({ expected = "self.handler", actual = table.concat(node_info.token_chain_raw, ".") })
+end)
+
+-- ts-teal wraps every expression link in a `prefixexp`. If bypos_key_for fails to
+-- unwrap it, dispatch falls through to "the node's own start" and silently
+-- returns the wrong by_pos key -- preceded_by still looks right, so only the
+-- column reveals it. Here the trigger "." is at column 14, but the type of the
+-- preceding `a.b` is recorded at ITS operator, column 12. A fallthrough reports
+-- column 11 (the start of `a`) instead.
+tested.test("by_pos key of a chained access points at the preceding operator", function()
+   local d = doc([[
+local a = {b = {c = 1}}
+local x = a.b.]])
+
+   local node_info = d:tree_sitter_token(1, 13)
+   tested.assert({ expected = "dot",  actual = node_info.kind })
+   tested.assert({ expected = "a.b",  actual = node_info.preceded_by })
+   tested.assert({ expected = 2,      actual = node_info.bypos_y })
+   tested.assert({
+      given = "a completion trigger after a chained access",
+      should = "resolve at the preceding expression's operator, not its start",
+      expected = 12,
+      actual = node_info.bypos_x,
+   })
+end)
+
+-- An unclosed call never becomes a `functioncall`, so the callee is recovered
+-- from the flattened ERROR node. ts-teal's `called_object` holds only the
+-- receiver, so the method name has to be stitched back on or preceded_by
+-- degrades from "s:rep" to "s".
+tested.test("unclosed method call keeps the method name", function()
+   local d = doc([[
+local s = "a"
+s:rep(]])
+
+   local node_info = d:tree_sitter_token(1, 5)
+   tested.assert({ expected = "open_paren", actual = node_info.kind })
+   tested.assert({
+      given = "signature help on a half-typed method call",
+      should = "report the full receiver:method callee",
+      expected = "s:rep",
+      actual = node_info.preceded_by,
+   })
+end)
+
+-- Under ts-teal the leaf `self` in `self.v` sits in its own nested `var`, so
+-- parent_source is just "self" and the `self[%.%:]` text patterns never fire.
+-- Without an explicit `source == "self"` check the receiver walk stops running.
+tested.test("self field access resolves the enclosing record", function()
+   local d = doc([[
+local record R
+   v: number
+end
+function R:m()
+   local a = self.v
+end]])
+
+   local node_info = d:tree_sitter_token(4, 14)
+   tested.assert({ expected = "self", actual = node_info.source })
+   tested.assert({
+      given = "the cursor on `self` in a method body",
+      should = "resolve self_type to the enclosing record",
+      expected = "R",
+      actual = node_info.self_type,
+   })
+   tested.assert({ expected = "R",    actual = table.concat(node_info.token_chain, ".") })
+   tested.assert({ expected = "self", actual = table.concat(node_info.token_chain_raw, ".") })
+end)
+
+-- In a broken parse the children of an ERROR node are flattened, so a method
+-- call on self recovers as a funcname-shaped node sitting between the cursor and
+-- the real enclosing declaration. The upward walk must not accept it: only a
+-- funcname introduced by the `function` keyword declares anything. Accepting the
+-- debris yields the callee's receiver (`self`, or `t` for `t:handler(`) instead
+-- of the enclosing record.
+--
+-- The nesting matters -- a well-formed method body resolves through a different
+-- branch entirely and would not exercise this at all.
+tested.test("a self method call does not shadow the enclosing record", function()
+   local d = doc([[
+function Document:initialize()
+function inner()
+self._handlers:add
+end
+end]])
+
+   local node_info = d:tree_sitter_token(2, 5)
+   tested.assert({ expected = "_handlers", actual = node_info.source })
+   tested.assert({
+      given = "a self:method() call recovered as funcname debris inside a method",
+      should = "resolve self_type to the enclosing record, not the callee's receiver",
+      expected = "Document",
+      actual = node_info.self_type,
+   })
+end)
+
+-- With a half-typed `self:`, ts-teal puts the funcname in the leaf's IMMEDIATE
+-- parent, so a walk that ascends before checking steps straight over it.
+tested.test("receiver is found in the leaf's immediate parent", function()
+   local d = doc([[
+local record R
+   v: number
+end
+function R:m()
+   local a = self:
+end]])
+
+   local node_info = d:tree_sitter_token(4, 17)
+   tested.assert({ expected = "colon", actual = node_info.kind })
+   tested.assert({ expected = "self",  actual = node_info.preceded_by })
+   tested.assert({
+      given = "a half-typed `self:` in a method body",
+      should = "still resolve the enclosing record",
+      expected = "R",
+      actual = node_info.self_type,
+   })
+end)
+
+-- Callee recovery in a broken parse has to anchor on the "(" the cursor is
+-- actually on. A forward scan from the start of the ERROR node stops at the
+-- FIRST paren, so every paren in `f(g(` resolves against `f`.
+tested.test("nested unclosed calls resolve the innermost callee", function()
+   local d = doc([[
+local function f(a: number) end
+local function g(b: number) end
+f(g(]])
+
+   local outer = d:tree_sitter_token(2, 1)
+   tested.assert({ expected = "f", actual = outer.preceded_by })
+
+   local inner = d:tree_sitter_token(2, 3)
+   tested.assert({
+      given = "the cursor on the inner `(` of f(g(",
+      should = "resolve the inner callee, not the outer one",
+      expected = "g",
+      actual = inner.preceded_by,
+   })
+end)
+
+tested.test("nested unclosed method calls resolve the innermost callee", function()
+   local d = doc([[
+local a = {} local b = {}
+a:m(b:n(]])
+
+   local inner = d:tree_sitter_token(1, 7)
+   tested.assert({
+      given = "the cursor on the inner `(` of a:m(b:n(",
+      should = "resolve the inner receiver:method",
+      expected = "b:n",
+      actual = inner.preceded_by,
+   })
+end)
+
+-- self_type is "the receiver of the enclosing method" -- a property of where the
+-- cursor is in the tree, not of what the expression's text happens to spell. A
+-- substring test on parent_source makes it fire on `myself.field`, so the answer
+-- changes depending on which token of one expression the cursor sits on.
+tested.test("self_type does not depend on cursor position within an expression", function()
+   local d = doc([[
+local record R
+  v: number
+end
+function R:m()
+  local myself = {field = 1}
+  local z = myself.field
+end]])
+
+   local on_receiver = d:tree_sitter_token(5, 12)  -- on `myself`
+   local on_field    = d:tree_sitter_token(5, 19)  -- on `field`
+
+   tested.assert({ expected = "myself", actual = on_receiver.source })
+   tested.assert({ expected = "field",  actual = on_field.source })
+   tested.assert({
+      given = "two cursor positions in the same non-self expression",
+      should = "agree about self_type",
+      expected = tostring(on_receiver.self_type),
+      actual = tostring(on_field.self_type),
+   })
+end)
+
+--
+-- Normalized-field coverage. `kind` is the only thing handlers branch on, and
+-- nothing tested it before.
+--
+
+tested.test("kind normalizes the tokens handlers branch on", function()
+   local cases = {
+      { kind = "dot",        content = "local a={b=1}\nlocal x = a.b",     y = 1, x = 11 },
+      { kind = "colon",      content = "local s=\"a\"\nlocal x = s:rep(2)", y = 1, x = 11 },
+      { kind = "open_paren", content = "local function f(a:number) end\nf(1)", y = 1, x = 1 },
+      { kind = "identifier", content = "local abc = 1\nprint(abc)",         y = 1, x = 6 },
+      { kind = "other",      content = "local abc = 1",                     y = 0, x = 1 },
+   }
+   for _, case in ipairs(cases) do
+      local node_info = doc(case.content):tree_sitter_token(case.y, case.x)
+      tested.assert({
+         given = "the token at " .. case.y .. "," .. case.x .. " of " .. string.format("%q", case.content),
+         should = "have kind " .. case.kind,
+         expected = case.kind,
+         actual = node_info.kind,
+      })
+   end
+end)
+
+tested.test("in_declaration_position distinguishes naming from referring", function()
+   local declaring = doc([[local abc = 1]]):tree_sitter_token(0, 6)
+   tested.assert({
+      given = "the cursor on the name being declared",
+      should = "suppress completion",
+      expected = true,
+      actual = declaring.in_declaration_position,
+   })
+
+   local referring = doc("local a={b=1}\nlocal x = a.b"):tree_sitter_token(1, 12)
+   tested.assert({
+      given = "the cursor on a field being accessed",
+      should = "allow completion",
+      expected = false,
+      actual = referring.in_declaration_position,
+   })
+end)
+
+--
+-- Deliberate ts-teal behaviour changes. These differ from tree-sitter-teal and
+-- are pinned so a future change to them is a decision rather than drift.
+--
+
+-- ts-teal makes builtin type names anonymous tokens, so `string` in a type
+-- annotation is no longer an identifier and hover no longer resolves it.
+tested.test("a builtin type name is not an identifier", function()
+   local node_info = doc([[local a: string = "x"]]):tree_sitter_token(0, 9)
+   tested.assert({ expected = "string", actual = node_info.source })
+   tested.assert({ expected = "other",  actual = node_info.kind })
+   tested.assert({ expected = true,     actual = node_info.in_declaration_position })
+end)
+
+-- `chunk` is required to match at least one statement (tree-sitter forbids a rule
+-- matching the empty string), so an empty document has no chunk node to return.
+-- tree-sitter-teal returned an empty `program` here.
+--
+-- CANARY: this asserts a raw grammar node type on purpose. If the grammar changes
+-- again, this fails loudly rather than silently.
+tested.test("an empty document yields an ERROR root", function()
+   local node_info = doc(""):tree_sitter_token(0, 0)
+   tested.assert({ expected = "other", actual = node_info.kind })
+   tested.assert({ expected = "ERROR", actual = node_info.parent_type })
+end)
+
 return tested

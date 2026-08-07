@@ -1,6 +1,7 @@
 local tl <const> = require("tl")
 
 local Document <const> = require("teal_language_server.analysis.document")
+local NodeInfo <const> = require("teal_language_server.analysis.node_info")
 
 local record lsp_formatter
    record Documentation
@@ -79,7 +80,7 @@ local record StringBuilder
    end
 end
 
-function lsp_formatter.show_type(node_info: Document.NodeInfo, type_info: tl.TypeInfo, doc: Document): lsp_formatter.Documentation
+function lsp_formatter.show_type(node_info: NodeInfo, type_info: tl.TypeInfo, doc: Document): lsp_formatter.Documentation
    local output: lsp_formatter.Documentation = {kind="markdown"}
    local sb: StringBuilder = {strings = {}}
    sb:add("```teal")
