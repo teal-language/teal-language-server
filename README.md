@@ -72,10 +72,10 @@ Note:
 
 * All args are optional
 * By default, logging is 'none' which disables logging completely
-* When logging is set to `by_proj_path` or `by_date`, the log is output to `[User Home Directory]/.cache/teal-language-server`
+* When logging is set to `by_proj_path` or `by_date`, the log is output to a `teal-language-server` directory under the platform's cache location:
+  * Linux/macOS: `$XDG_CACHE_HOME` if set, otherwise `[User Home Directory]/.cache`
+  * Windows: `%LOCALAPPDATA%`
 
 ## Licences
-Alongside packages defined in the rockspec, teal-language-server includes the source of the following:
-
-- [tree-sitter-teal](https://github.com/euclidianAce/tree-sitter-teal) - MIT
-  - Bundling directly makes install more reliable, as tree-sitter-cli does not need to be setup for the install to work
+Apart from dependencies listed in the rockspec and their respective licences, teal-language-server includes the following:
+- Modified logger to save to files and print to stderroriginally based on [tested](https://github.com/FourierTransformer/tested)'s logger - MIT

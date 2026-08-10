@@ -22,9 +22,7 @@ dependencies = {
    "luv == 1.52.1",
    "lusc_luv >= 4.0",
    "ltreesitter == 0.3.0",
-   -- the Teal tree-sitter grammar; was vendored under tree-sitter-teal/ and
-   -- built here, now a pinned dependency so its version is actually recorded
-   "ts-teal == 0.1.0",
+   "ts-teal == 0.2.0",
 }
 
 test_dependencies = { "tested >= 0.3.0", "luacov", "inspect" }
