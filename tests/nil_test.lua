@@ -125,6 +125,63 @@ tested.test("DocumentManager:get does not crash on a malformed textDocument.uri"
    })
 end)
 
+-- Runs `fn` with util.get_platform() pinned to "windows", restoring it before
+-- returning so a failure cannot leak the fake platform into later tests.
+local function on_windows(fn)
+   local util = require("teal_language_server.util.util")
+   local real_get_platform = util.get_platform
+   util.get_platform = function() return "windows" end
+   local ok, result = pcall(fn)
+   util.get_platform = real_get_platform
+   return ok, result
+end
+
+-- Uri.parse's drive-letter branch is the only code that touches parsed.path
+-- before the required-field check rejects a uri that has no path at all. Off
+-- Windows the `get_platform() == "windows"` test short-circuits before the
+-- deref, so a nil there is invisible on mac and linux and shows up only as the
+-- two DocumentManager tests above failing on the Windows CI leg. Pinning the
+-- platform reproduces it on every platform instead.
+tested.test("Uri.parse does not crash on a malformed uri when the platform is Windows", function()
+   local ok, parsed = on_windows(function() return Uri.parse("not-a-uri") end)
+
+   tested.assert({
+      given = "a uri with no scheme or path, parsed on Windows",
+      should = "not crash Uri.parse",
+      expected = true,
+      actual = ok,
+   })
+   tested.assert({
+      given = "a uri with no scheme or path, parsed on Windows",
+      should = "be rejected rather than returned half-built",
+      expected = true,
+      actual = parsed == nil,
+   })
+end)
+
+-- Guards the other direction: deleting the drive-letter branch would also stop
+-- the crash above, and silently break every path on Windows.
+tested.test("Uri.parse still strips the leading slash from a Windows drive path", function()
+   local ok, parsed = on_windows(function() return Uri.parse("file:///C:/foo/bar.tl") end)
+
+   tested.assert({ expected = true, actual = ok })
+   tested.assert({
+      given = "a file uri naming a Windows drive path",
+      should = "drop the leading slash the drive letter does not need",
+      expected = "C:/foo/bar.tl",
+      actual = parsed and parsed.path,
+   })
+
+   local unix_ok, unix_parsed = on_windows(function() return Uri.parse("file:///tmp/foo.tl") end)
+   tested.assert({ expected = true, actual = unix_ok })
+   tested.assert({
+      given = "a file uri with a non-drive path, parsed on Windows",
+      should = "keep the leading slash so it round-trips",
+      expected = "/tmp/foo.tl",
+      actual = unix_parsed and unix_parsed.path,
+   })
+end)
+
 tested.test("didChange with an empty contentChanges array does not crash the handler", function()
    local dm = new_document_manager()
    local uri = "file:///tmp/tls_nil_test_didchange.tl"

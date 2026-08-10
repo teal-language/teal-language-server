@@ -80,7 +80,7 @@ function Uri.parse(text: string): Uri
    -- (e.g. "/C:/foo" -> "C:/foo"). Paths like "/tmp/foo" are kept as-is so
    -- that they round-trip correctly through Uri.tostring.
    if util.get_platform() == "windows"
-      and util.string_starts_with(parsed.path, "/")
+      and parsed.path ~= nil
       and parsed.path:match("^/[A-Za-z]:[/\\]") then
       parsed.path = parsed.path:sub(2)
    end
