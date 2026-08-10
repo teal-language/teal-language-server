@@ -11,20 +11,20 @@ local record NodeInfo
    -- What the cursor is sitting on, normalized. This is the ONLY thing
    -- handlers should branch on: it is defined here, inside the region that
    -- knows the grammar, so a grammar swap cannot silently change its meaning.
-   enum Kind
+   enum NodeKind
       "dot"          -- "." -- field access, completion trigger
       "colon"        -- ":" -- method access, completion trigger
       "open_paren"   -- "(" -- signature help trigger
       "identifier"   -- a name: hover, goto-definition, mid-word completion
       "other"        -- anything else; handlers bail
    end
-   kind: Kind
+   kind: NodeKind
    -- `type` and `parent_type` are raw tree-sitter node type names. They change
    -- wholesale if the grammar is swapped, so they are debug/logging detail
    -- only -- never branch on them. Branch on `kind` above.
-   type: string
+   _type: string
    source: string
-   parent_type: string
+   _parent_type: string
    parent_source: string
    -- The chain of names ending at the cursor, e.g. {"self", "test_value"} for
    -- a cursor on `test_value` in `self.test_value.other`. Built by walking the
@@ -67,14 +67,14 @@ local declaration_parent_types <const>: {string:boolean} = {
 -- tokens happen to be spelled the same in tree-sitter-teal and ts-teal, but that
 -- is exactly the assumption worth pinning in one place rather than scattering
 -- across the handlers.
-local node_kind <const>: {string:NodeInfo.Kind} = {
+local node_kind <const>: {string:NodeInfo.NodeKind} = {
    ["."] = "dot",
    [":"] = "colon",
    ["("] = "open_paren",
    ["identifier"] = "identifier",
 }
 
-local function node_kind_of(node_type: string): NodeInfo.Kind
+local function node_kind_of(node_type: string): NodeInfo.NodeKind
    return node_kind[node_type] or "other"
 end
 
@@ -192,14 +192,18 @@ local function token_chain_for(leaf: ltreesitter.Node, parent: ltreesitter.Node)
    if parent_type == "var" or parent_type == "functioncall" then
       append_chain_segments(parent, out)
    elseif parent_type == "funcname" then
-      -- flat base/entry/method; take them up to and including the cursor's own
+      -- A funcname is flat -- `a.b.c:d` is seven children, not a nested spine --
+      -- so the names are taken by walking it, stopping at the cursor's own.
+      --
+      -- Not by its `base`/`entry`/`method` fields: ts-teal only labels `entry`
+      -- when there is exactly one dotted segment, so `a.b.c:d` yields base=a,
+      -- entry=nil, method=d and the middle of the chain silently disappears.
       local leaf_start = leaf:start_point()
-      for _, field in ipairs({ "base", "entry", "method" }) do
-         local part = parent:child_by_field_name(field)
-         if part ~= nil then
-            table.insert(out, part:source())
-            local part_start = part:start_point()
-            if part_start.row == leaf_start.row and part_start.column == leaf_start.column then
+      for child in parent:children() do
+         if child:type() == "identifier" then
+            table.insert(out, child:source())
+            local child_start = child:start_point()
+            if child_start.row == leaf_start.row and child_start.column == leaf_start.column then
                break
             end
          end
@@ -466,26 +470,23 @@ local function token_at(cursor: ltreesitter.Cursor, y: integer, x: integer): Nod
 
    local out: NodeInfo = {
       kind = node_kind_of(leaf:type()),
-      type = leaf:type(),
+      _type = leaf:type(),
       source = leaf:source(),
-      parent_type = parent_type,
+      _parent_type = parent_type,
       parent_source = parent:source(),
       in_declaration_position = declaration_parent_types[parent_type] == true,
    }
-
-   -- Only a name has a token chain. Building one for a "(" or a keyword yields
-   -- junk like {"("} -- harmless today because only the identifier path reads it,
-   -- but it is a trap for the next reader. Computed before the self_type walk,
-   -- which advances the cursor.
-   if out.kind == "identifier" then
-      out.token_chain_raw = token_chain_for(leaf, parent)
-   end
 
    if out.kind == "dot" or out.kind == "colon" then
       fill_completion_trigger(out, leaf, parent)
    elseif out.kind == "open_paren" then
       fill_signature_trigger(out, leaf, parent, cursor)
    elseif out.kind == "identifier" then
+      -- Only a name has a token chain. Building one for a "(" or a keyword yields
+      -- junk like {"("} -- harmless today because only the identifier path reads it,
+      -- but it is a trap for the next reader. Computed before the self_type walk,
+      -- which advances the cursor.
+      out.token_chain_raw = token_chain_for(leaf, parent)
       fill_hover_position(out, leaf)
    end
 

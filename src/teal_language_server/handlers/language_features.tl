@@ -264,7 +264,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
          tks = node_info.token_chain
       end
    else
-      logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.type)
+      logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.kind)
       self._lsp_reader_writer:send_rpc(id, {
          contents = { "Unknown Token:", " Unable to resolve the token under the cursor " },
          range = {

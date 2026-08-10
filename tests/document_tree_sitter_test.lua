@@ -33,15 +33,30 @@ local function doc(content)
    return Document("test-uri", content, 1, {}, ServerState())
 end
 
-tested.test("should analyze basic function definitions", function()
+--
+-- Behaviour of the normalized NodeInfo fields.
+--
+-- These assert what the handlers actually consume -- kind, source,
+-- parent_source, token_chain, preceded_by, self_type, in_declaration_position --
+-- rather than raw grammar node type names. A ts-teal regeneration that renames
+-- or reshapes nodes without changing meaning leaves them green; one that changes
+-- meaning breaks them with a message that says what broke.
+--
+-- Raw `_type` / `_parent_type` are deliberately NOT asserted here. See the
+-- canary at the bottom of this file for the one place that pins a raw name, and
+-- the comment there for why exactly one is enough.
+--
+
+tested.test("a keyword is not something handlers act on", function()
    local d = doc([[local function a() end]])
 
    local node_info = d:tree_sitter_token(0, 2)
-   tested.assert({ expected = "local",              actual = node_info.type })
-   tested.assert({ expected = "stat", actual = node_info.parent_type })
+   tested.assert({ expected = "local", actual = node_info.source })
+   tested.assert({ expected = "other", actual = node_info.kind })
 
    node_info = d:tree_sitter_token(0, 8)
-   tested.assert({ expected = "function", actual = node_info.type })
+   tested.assert({ expected = "function", actual = node_info.source })
+   tested.assert({ expected = "other",    actual = node_info.kind })
 end)
 
 tested.test("returns nil on empty char", function()
@@ -51,27 +66,34 @@ tested.test("returns nil on empty char", function()
    tested.assert({ given = "node_info at empty char", should = "be nil", expected = true, actual = node_info == nil })
 end)
 
-tested.test("returns program node on empty content", function()
+tested.test("an empty document yields a token at any position", function()
    local d = doc([[]])
 
    local node_info = d:tree_sitter_token(0, 0)
-   tested.assert({ expected = "ERROR", actual = node_info.type })
+   tested.assert({ given = "the start of an empty document", should = "not be nil", expected = true, actual = node_info ~= nil })
+   tested.assert({ expected = "other", actual = node_info.kind })
 
    node_info = d:tree_sitter_token(0, 6)
-   tested.assert({ expected = "ERROR", actual = node_info.type })
+   tested.assert({ given = "a column past the end of an empty document", should = "not be nil", expected = true, actual = node_info ~= nil })
+   tested.assert({ expected = "other", actual = node_info.kind })
 end)
 
-tested.test("identifies function calls and vars", function()
+tested.test("distinguishes a name being declared from a name being called", function()
    local d = doc([[local dir = require("pl.dir")]])
 
    local node_info = d:tree_sitter_token(0, 16)
-   tested.assert({ expected = "var",    actual = node_info.parent_type })
+   tested.assert({ expected = "identifier", actual = node_info.kind })
+   tested.assert({ expected = "require",    actual = node_info.source })
+   tested.assert({ expected = false,        actual = node_info.in_declaration_position })
 
    node_info = d:tree_sitter_token(0, 8)
-   tested.assert({ expected = "attnamelist",              actual = node_info.parent_type })
+   tested.assert({ expected = "identifier", actual = node_info.kind })
+   tested.assert({ expected = "dir",        actual = node_info.source })
+   tested.assert({ expected = true,         actual = node_info.in_declaration_position })
 
    node_info = d:tree_sitter_token(0, 3)
-   tested.assert({ expected = "stat",  actual = node_info.parent_type })
+   tested.assert({ expected = "other", actual = node_info.kind })
+   tested.assert({ expected = "local", actual = node_info.source })
 end)
 
 tested.test("should recognize when at a .", function()
@@ -81,9 +103,8 @@ dir.
    ]])
 
    local node_info = d:tree_sitter_token(1, 3)
-   tested.assert({ expected = ".",     actual = node_info.type })
-   tested.assert({ expected = "ERROR", actual = node_info.parent_type })
-   tested.assert({ expected = "dir",   actual = node_info.preceded_by })
+   tested.assert({ expected = "dot", actual = node_info.kind })
+   tested.assert({ expected = "dir", actual = node_info.preceded_by })
 end)
 
 tested.test("should recognize when at a :", function()
@@ -93,8 +114,7 @@ t:
    ]])
 
    local node_info = d:tree_sitter_token(1, 1)
-   tested.assert({ expected = ":",     actual = node_info.type })
-   tested.assert({ expected = "ERROR", actual = node_info.parent_type })
+   tested.assert({ expected = "colon", actual = node_info.kind })
    tested.assert({ expected = "t",     actual = node_info.preceded_by })
 end)
 
@@ -102,13 +122,11 @@ tested.test("should recognize a nested .", function()
    local d = doc([[string.byte(t.,]])
 
    local node_info = d:tree_sitter_token(0, 13)
-   tested.assert({ expected = ".",     actual = node_info.type })
-   tested.assert({ expected = "ERROR", actual = node_info.parent_type })
-   tested.assert({ expected = "t",     actual = node_info.preceded_by })
+   tested.assert({ expected = "dot", actual = node_info.kind })
+   tested.assert({ expected = "t",   actual = node_info.preceded_by })
 
    node_info = d:tree_sitter_token(0, 6)
-   tested.assert({ expected = ".",      actual = node_info.type })
-   tested.assert({ expected = "var",  actual = node_info.parent_type })
+   tested.assert({ expected = "dot",    actual = node_info.kind })
    tested.assert({ expected = "string", actual = node_info.preceded_by })
 end)
 
@@ -116,36 +134,36 @@ tested.test("should handle chained .", function()
    local d = doc([[lsp.completion_context.]])
 
    local node_info = d:tree_sitter_token(0, 22)
-   tested.assert({ expected = ".",                      actual = node_info.type })
-   tested.assert({ expected = "ERROR",                  actual = node_info.parent_type })
+   tested.assert({ expected = "dot",                    actual = node_info.kind })
    tested.assert({ expected = "lsp.completion_context", actual = node_info.preceded_by })
 
    node_info = d:tree_sitter_token(0, 19)
-   tested.assert({ expected = "identifier",             actual = node_info.type })
-   tested.assert({ expected = "var",                  actual = node_info.parent_type })
+   tested.assert({ expected = "identifier",             actual = node_info.kind })
+   tested.assert({ expected = "completion_context",     actual = node_info.source })
    tested.assert({ expected = "lsp.completion_context", actual = node_info.parent_source })
+   tested.assert({ expected = "lsp.completion_context", actual = table.concat(node_info.token_chain, ".") })
    tested.assert({ given = "preceded_by at col 19", should = "be nil", expected = true, actual = node_info.preceded_by == nil })
 
    node_info = d:tree_sitter_token(0, 3)
-   tested.assert({ expected = ".",     actual = node_info.type })
-   tested.assert({ expected = "var", actual = node_info.parent_type })
-   tested.assert({ expected = "lsp",   actual = node_info.preceded_by })
+   tested.assert({ expected = "dot", actual = node_info.kind })
+   tested.assert({ expected = "lsp", actual = node_info.preceded_by })
 end)
 
 tested.test("should handle a variable definition", function()
    local d = doc([[local fruit: string = "thing"]])
 
    local node_info = d:tree_sitter_token(0, 9)
-   tested.assert({ expected = "attnamelist",   actual = node_info.parent_type })
    tested.assert({ expected = "fruit", actual = node_info.source })
+   tested.assert({ expected = true,    actual = node_info.in_declaration_position })
 
    node_info = d:tree_sitter_token(0, 16)
-   tested.assert({ expected = "basetype", actual = node_info.parent_type })
-   tested.assert({ expected = "string",      actual = node_info.source })
+   tested.assert({ expected = "string", actual = node_info.source })
+   tested.assert({ expected = true,     actual = node_info.in_declaration_position })
 
    node_info = d:tree_sitter_token(0, 26)
-   tested.assert({ expected = "string", actual = node_info.parent_type })
-   tested.assert({ expected = "thing",  actual = node_info.source })
+   tested.assert({ expected = "thing", actual = node_info.source })
+   tested.assert({ expected = "other", actual = node_info.kind })
+   tested.assert({ given = "the cursor inside a string literal", should = "not be a declaration", expected = false, actual = node_info.in_declaration_position })
 end)
 
 tested.test("should handle a basic self function", function()
@@ -157,19 +175,24 @@ end
    ]])
 
    local node_info = d:tree_sitter_token(0, 13)
-   tested.assert({ expected = "funcname", actual = node_info.parent_type })
-   tested.assert({ expected = "Point",         actual = node_info.source })
+   tested.assert({ expected = "identifier", actual = node_info.kind })
+   tested.assert({ expected = "Point",      actual = node_info.source })
+   tested.assert({ expected = "Point:move", actual = node_info.parent_source })
 
    node_info = d:tree_sitter_token(0, 18)
-   tested.assert({ expected = "funcname", actual = node_info.parent_type })
-   tested.assert({ expected = "move",          actual = node_info.source })
+   tested.assert({ expected = "move",       actual = node_info.source })
+   tested.assert({ expected = "Point:move", actual = node_info.parent_source })
+   tested.assert({ expected = "Point.move", actual = table.concat(node_info.token_chain, ".") })
 
+   -- pins the deliberate choice in declaration_parent_types: a parameter name is
+   -- NOT treated as a declaration position, matching tree-sitter-teal. Widening
+   -- that set would be a behaviour change, so it should not happen by accident.
    node_info = d:tree_sitter_token(0, 33)
-   tested.assert({ expected = "parname", actual = node_info.parent_type })
    tested.assert({ expected = "dy",  actual = node_info.source })
+   tested.assert({ given = "the cursor on a parameter name", should = "not suppress completion", expected = false, actual = node_info.in_declaration_position })
 
    node_info = d:tree_sitter_token(2, 6)
-   tested.assert({ expected = "var", actual = node_info.parent_type })
+   tested.assert({ expected = "self",  actual = node_info.source })
    tested.assert({ expected = "Point", actual = node_info.self_type })
 end)
 
@@ -183,60 +206,61 @@ end
    ]])
 
    local node_info = d:tree_sitter_token(2, 9)
-   tested.assert({ expected = "identifier",              actual = node_info.type })
-   tested.assert({ expected = "_something",              actual = node_info.source })
-   tested.assert({ expected = "funcname",           actual = node_info.parent_type })
-   tested.assert({ expected = "self._something:fruit",   actual = node_info.parent_source })
-   tested.assert({ expected = "Document",                actual = node_info.self_type })
+   tested.assert({ expected = "identifier",            actual = node_info.kind })
+   tested.assert({ expected = "_something",            actual = node_info.source })
+   tested.assert({ expected = "self._something:fruit", actual = node_info.parent_source })
+   tested.assert({ expected = "Document",              actual = node_info.self_type })
+   tested.assert({ expected = "Document._something",   actual = table.concat(node_info.token_chain, ".") })
+   tested.assert({ expected = "self._something",       actual = table.concat(node_info.token_chain_raw, ".") })
 
    node_info = d:tree_sitter_token(2, 20)
-   tested.assert({ expected = "identifier",              actual = node_info.type })
-   tested.assert({ expected = "fruit",                   actual = node_info.source })
-   tested.assert({ expected = "funcname",           actual = node_info.parent_type })
-   tested.assert({ expected = "self._something:fruit",   actual = node_info.parent_source })
-   tested.assert({ expected = "Document",                actual = node_info.self_type })
+   tested.assert({ expected = "identifier",                 actual = node_info.kind })
+   tested.assert({ expected = "fruit",                      actual = node_info.source })
+   tested.assert({ expected = "self._something:fruit",      actual = node_info.parent_source })
+   tested.assert({ expected = "Document",                   actual = node_info.self_type })
+   tested.assert({ expected = "Document._something.fruit",  actual = table.concat(node_info.token_chain, ".") })
 
    node_info = d:tree_sitter_token(2, 15)
-   tested.assert({ expected = ":",                       actual = node_info.type })
-   tested.assert({ expected = ":",                       actual = node_info.source })
-   tested.assert({ expected = "funcname",           actual = node_info.parent_type })
-   tested.assert({ expected = "self._something:fruit",   actual = node_info.parent_source })
-   tested.assert({ expected = "_something",              actual = node_info.preceded_by })
-   tested.assert({ expected = "Document",                actual = node_info.self_type })
+   tested.assert({ expected = "colon",                 actual = node_info.kind })
+   tested.assert({ expected = ":",                     actual = node_info.source })
+   tested.assert({ expected = "self._something:fruit", actual = node_info.parent_source })
+   tested.assert({ expected = "_something",            actual = node_info.preceded_by })
+   tested.assert({ expected = "Document",              actual = node_info.self_type })
 end)
 
 tested.test("should handle even more nested .'s", function()
    local d = doc([[lsp.orange.depot.box]])
 
    local node_info = d:tree_sitter_token(0, 6)
-   tested.assert({ expected = "identifier",  actual = node_info.type })
-   tested.assert({ expected = "orange",      actual = node_info.source })
-   tested.assert({ expected = "var",       actual = node_info.parent_type })
-   tested.assert({ expected = "lsp.orange",  actual = node_info.parent_source })
+   tested.assert({ expected = "identifier", actual = node_info.kind })
+   tested.assert({ expected = "orange",     actual = node_info.source })
+   tested.assert({ expected = "lsp.orange", actual = node_info.parent_source })
+   tested.assert({ expected = "lsp.orange", actual = table.concat(node_info.token_chain, ".") })
 
    node_info = d:tree_sitter_token(0, 13)
-   tested.assert({ expected = "identifier",       actual = node_info.type })
+   tested.assert({ expected = "identifier",       actual = node_info.kind })
    tested.assert({ expected = "depot",            actual = node_info.source })
-   tested.assert({ expected = "var",            actual = node_info.parent_type })
    tested.assert({ expected = "lsp.orange.depot", actual = node_info.parent_source })
+   tested.assert({ expected = "lsp.orange.depot", actual = table.concat(node_info.token_chain, ".") })
 
    node_info = d:tree_sitter_token(0, 16)
-   tested.assert({ expected = ".",                    actual = node_info.type })
-   tested.assert({ expected = ".",                    actual = node_info.source })
-   tested.assert({ expected = "var",                actual = node_info.parent_type })
-   tested.assert({ expected = "lsp.orange.depot.box", actual = node_info.parent_source })
-   tested.assert({ expected = "lsp.orange.depot",     actual = node_info.preceded_by })
+   tested.assert({ expected = "dot",                   actual = node_info.kind })
+   tested.assert({ expected = "lsp.orange.depot.box",  actual = node_info.parent_source })
+   tested.assert({ expected = "lsp.orange.depot",      actual = node_info.preceded_by })
 end)
 
 tested.test("should handle partial method chains", function()
    local d = doc([[string.byte(t:fruit():,]])
 
    local node_info = d:tree_sitter_token(0, 21)
-   tested.assert({ expected = ":",                        actual = node_info.type })
-   tested.assert({ expected = ":",                        actual = node_info.source })
-   tested.assert({ expected = "ERROR",                    actual = node_info.parent_type })
-   tested.assert({ expected = "string.byte(t:fruit():,",  actual = node_info.parent_source })
-   tested.assert({ expected = "t:fruit()",                actual = node_info.preceded_by })
+   tested.assert({ expected = "colon",       actual = node_info.kind })
+   tested.assert({ expected = "t:fruit()",   actual = node_info.preceded_by })
+   tested.assert({
+      given = "a completion trigger after a call",
+      should = "follow one return level to reach the call's result",
+      expected = 1,
+      actual = node_info.bypos_ret_depth,
+   })
 end)
 
 tested.test("should handle real code pulling out self", function()
@@ -257,11 +281,10 @@ end
    ]])
 
    local node_info = d:tree_sitter_token(8, 7)
-   tested.assert({ expected = ":",              actual = node_info.type })
-   tested.assert({ expected = ":",              actual = node_info.source })
-   tested.assert({ expected = "ERROR",   actual = node_info.parent_type })
-   tested.assert({ expected = "self",           actual = node_info.preceded_by })
-   tested.assert({ expected = "MiscHandlers",   actual = node_info.self_type })
+   tested.assert({ expected = "colon",        actual = node_info.kind })
+   tested.assert({ expected = ":",            actual = node_info.source })
+   tested.assert({ expected = "self",         actual = node_info.preceded_by })
+   tested.assert({ expected = "MiscHandlers", actual = node_info.self_type })
 end)
 
 tested.test("should work with more real use cases", function()
@@ -282,51 +305,47 @@ function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
 end]])
 
    local node_info = d:tree_sitter_token(0, 35)
-   tested.assert({ expected = "identifier",               actual = node_info.type })
+   tested.assert({ expected = "identifier",               actual = node_info.kind })
    tested.assert({ expected = "params",                   actual = node_info.source })
-   tested.assert({ expected = "parname",                      actual = node_info.parent_type })
    tested.assert({ expected = "params:lsp.Method.Params", actual = node_info.parent_source })
 
    node_info = d:tree_sitter_token(1, 35)
-   tested.assert({ expected = "identifier",      actual = node_info.type })
+   tested.assert({ expected = "identifier",      actual = node_info.kind })
    tested.assert({ expected = "position",        actual = node_info.source })
-   tested.assert({ expected = "var",           actual = node_info.parent_type })
    tested.assert({ expected = "params.position", actual = node_info.parent_source })
+   tested.assert({ expected = "params.position", actual = table.concat(node_info.token_chain, ".") })
 
    node_info = d:tree_sitter_token(2, 35)
-   tested.assert({ expected = "identifier",         actual = node_info.type })
-   tested.assert({ expected = "_get_node_info",     actual = node_info.source })
-   tested.assert({ expected = "functioncall",       actual = node_info.parent_type })
-   tested.assert({ expected = "self:_get_node_info(params, pos)",actual = node_info.parent_source })
-   tested.assert({ expected = "MiscHandlers",       actual = node_info.self_type })
+   tested.assert({ expected = "identifier",                       actual = node_info.kind })
+   tested.assert({ expected = "_get_node_info",                   actual = node_info.source })
+   tested.assert({ expected = "self:_get_node_info(params, pos)", actual = node_info.parent_source })
+   tested.assert({ expected = "MiscHandlers",                     actual = node_info.self_type })
+   tested.assert({ expected = "MiscHandlers._get_node_info",      actual = table.concat(node_info.token_chain, ".") })
+   tested.assert({ expected = "self._get_node_info",              actual = table.concat(node_info.token_chain_raw, ".") })
 
    node_info = d:tree_sitter_token(8, 52)
-   tested.assert({ expected = "identifier",    actual = node_info.type })
+   tested.assert({ expected = "identifier",    actual = node_info.kind })
    tested.assert({ expected = "character",     actual = node_info.source })
-   tested.assert({ expected = "var",         actual = node_info.parent_type })
    tested.assert({ expected = "pos.character", actual = node_info.parent_source })
+   tested.assert({ expected = "pos.character", actual = table.concat(node_info.token_chain, ".") })
 end)
 
 tested.test("should handle getting function signatures with valid syntax", function()
    local d = doc([[tracing.warning()]])
 
    local node_info = d:tree_sitter_token(0, 15)
-   tested.assert({ expected = "(",                actual = node_info.type })
-   tested.assert({ expected = "(",                actual = node_info.source })
-   tested.assert({ expected = "args",        actual = node_info.parent_type })
-   tested.assert({ expected = "()",               actual = node_info.parent_source })
-   tested.assert({ expected = "tracing.warning",  actual = node_info.preceded_by })
+   tested.assert({ expected = "open_paren",      actual = node_info.kind })
+   tested.assert({ expected = "(",               actual = node_info.source })
+   tested.assert({ expected = "tracing.warning", actual = node_info.preceded_by })
 end)
 
 tested.test("should handle getting function signatures with invalid syntax", function()
    local d = doc([[tracing.warning(]])
 
    local node_info = d:tree_sitter_token(0, 15)
-   tested.assert({ expected = "(",                    actual = node_info.type })
-   tested.assert({ expected = "(",                    actual = node_info.source })
-   tested.assert({ expected = "ERROR",                actual = node_info.parent_type })
-   tested.assert({ expected = "tracing.warning(",     actual = node_info.parent_source })
-   tested.assert({ expected = "tracing.warning",      actual = node_info.preceded_by })
+   tested.assert({ expected = "open_paren",      actual = node_info.kind })
+   tested.assert({ expected = "(",               actual = node_info.source })
+   tested.assert({ expected = "tracing.warning", actual = node_info.preceded_by })
 end)
 
 tested.test("should handle table index access with bracket notation", function()
@@ -338,11 +357,12 @@ else
 end]])
 
    local node_info = d:tree_sitter_token(0, 16)
-   tested.assert({ expected = "identifier",                                    actual = node_info.type })
-   tested.assert({ expected = "indexable_parent_types",                        actual = node_info.source })
-   tested.assert({ expected = "var",                                         actual = node_info.parent_type })
+   tested.assert({ expected = "identifier",             actual = node_info.kind })
+   tested.assert({ expected = "indexable_parent_types", actual = node_info.source })
    tested.assert({ expected = "indexable_parent_types", actual = node_info.parent_source })
+   tested.assert({ expected = "indexable_parent_types", actual = table.concat(node_info.token_chain, ".") })
 end)
+
 
 --
 -- Regression tests for the tree-sitter-teal -> ts-teal migration.
@@ -380,6 +400,28 @@ end]])
       actual = table.concat(node_info.token_chain, "."),
    })
    tested.assert({ expected = "self.handler", actual = table.concat(node_info.token_chain_raw, ".") })
+end)
+
+-- A `funcname` is flat, and ts-teal only labels its `entry` field when there is
+-- exactly one dotted segment: `a.b.c:d` reports base=a, entry=nil, method=d. A
+-- chain built from those three fields therefore drops every middle segment, and
+-- the "stop at the cursor" truncation stops working with it -- every position in
+-- the name resolves to the same wrong chain rather than to its own prefix.
+tested.test("token chain of a dotted function name keeps every segment", function()
+   local d = doc([[
+function a.b.c:d()
+end]])
+
+   local expected = { "a", "a.b", "a.b.c", "a.b.c.d" }
+   for i, column in ipairs({ 9, 11, 13, 15 }) do
+      local node_info = d:tree_sitter_token(0, column)
+      tested.assert({
+         given = "the cursor on segment " .. i .. " of the declared name a.b.c:d",
+         should = "chain exactly the segments up to and including it",
+         expected = expected[i],
+         actual = table.concat(node_info.token_chain, "."),
+      })
+   end
 end)
 
 -- ts-teal wraps every expression link in a `prefixexp`. If bypos_key_for fails to
@@ -599,6 +641,28 @@ tested.test("in_declaration_position distinguishes naming from referring", funct
       expected = false,
       actual = referring.in_declaration_position,
    })
+
+   -- the remaining two entries of declaration_parent_types. Covering them here
+   -- rather than by asserting the node type names means the flag stays tested
+   -- even if `attrib` / `nominal` are renamed, and stops being tested only if
+   -- they stop meaning "the cursor is naming something".
+   local attribute = doc([[local x <const> = 1]]):tree_sitter_token(0, 9)
+   tested.assert({ expected = "const", actual = attribute.source })
+   tested.assert({
+      given = "the cursor on a <const> attribute",
+      should = "suppress completion",
+      expected = true,
+      actual = attribute.in_declaration_position,
+   })
+
+   local annotation = doc("local record MyType\nend\nlocal a: MyType"):tree_sitter_token(2, 9)
+   tested.assert({ expected = "MyType", actual = annotation.source })
+   tested.assert({
+      given = "the cursor on a named type in an annotation",
+      should = "suppress completion",
+      expected = true,
+      actual = annotation.in_declaration_position,
+   })
 end)
 
 --
@@ -619,12 +683,24 @@ end)
 -- matching the empty string), so an empty document has no chunk node to return.
 -- tree-sitter-teal returned an empty `program` here.
 --
--- CANARY: this asserts a raw grammar node type on purpose. If the grammar changes
--- again, this fails loudly rather than silently.
+-- CANARY: the only test in this file that reaches past the `_` and asserts a raw
+-- grammar node type. It is the only one that earns it: every other name
+-- node_info.tl dispatches on already has a behavioural test above that fails with
+-- a useful message when the grammar shifts under it -- `.`/`:`/`(`/`identifier`
+-- via kind, `var`/`object`/`key` and `functioncall`/`called_object`/`method` via
+-- token_chain, `stat`/`name`/`funcname`/`base` and `ERROR`/`function` via
+-- self_type, `args` via preceded_by, `prefixexp` via bypos_x,
+-- `attnamelist`/`attrib`/`nominal`/`basetype` via in_declaration_position.
+-- Duplicating those as raw-name assertions would mean a regenerated grammar
+-- reports dozens of failures with no way to tell a rename from a real
+-- regression. The empty-document shape has no behavioural consequence to hang a
+-- test on -- an empty buffer produces no normalized field worth asserting -- so
+-- pinning the raw type is the only way to notice it changing.
 tested.test("an empty document yields an ERROR root", function()
    local node_info = doc(""):tree_sitter_token(0, 0)
    tested.assert({ expected = "other", actual = node_info.kind })
-   tested.assert({ expected = "ERROR", actual = node_info.parent_type })
+   tested.assert({ expected = "ERROR", actual = node_info._type })
+   tested.assert({ expected = "ERROR", actual = node_info._parent_type })
 end)
 
 return tested

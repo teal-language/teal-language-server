@@ -80,7 +80,7 @@ function DefinitionHandlers:_on_definition(params, id)
    logger:trace("Received request for on_definition at position: %s", pos)
 
    if node_info.kind ~= "identifier" then
-      logger:warning("Can't go to definition of anything that isn't an identifier atm: %s", node_info.type)
+      logger:warning("Can't go to definition of anything that isn't an identifier atm: %s", node_info.kind)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
@@ -137,7 +137,7 @@ function DefinitionHandlers:_on_type_definition(params, id)
    logger:trace("Received request for on_type_definition at position: %s", pos)
 
    if node_info.kind ~= "identifier" then
-      logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s", node_info.type)
+      logger:warning("Can't go to type definition of anything that isn't an identifier atm: %s", node_info.kind)
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end

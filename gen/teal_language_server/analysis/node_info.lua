@@ -193,13 +193,17 @@ local function token_chain_for(leaf, parent)
       append_chain_segments(parent, out)
    elseif parent_type == "funcname" then
 
+
+
+
+
+
       local leaf_start = leaf:start_point()
-      for _, field in ipairs({ "base", "entry", "method" }) do
-         local part = parent:child_by_field_name(field)
-         if part ~= nil then
-            table.insert(out, part:source())
-            local part_start = part:start_point()
-            if part_start.row == leaf_start.row and part_start.column == leaf_start.column then
+      for child in parent:children() do
+         if child:type() == "identifier" then
+            table.insert(out, child:source())
+            local child_start = child:start_point()
+            if child_start.row == leaf_start.row and child_start.column == leaf_start.column then
                break
             end
          end
@@ -466,26 +470,23 @@ local function token_at(cursor, y, x)
 
    local out = {
       kind = node_kind_of(leaf:type()),
-      type = leaf:type(),
+      _type = leaf:type(),
       source = leaf:source(),
-      parent_type = parent_type,
+      _parent_type = parent_type,
       parent_source = parent:source(),
       in_declaration_position = declaration_parent_types[parent_type] == true,
    }
-
-
-
-
-
-   if out.kind == "identifier" then
-      out.token_chain_raw = token_chain_for(leaf, parent)
-   end
 
    if out.kind == "dot" or out.kind == "colon" then
       fill_completion_trigger(out, leaf, parent)
    elseif out.kind == "open_paren" then
       fill_signature_trigger(out, leaf, parent, cursor)
    elseif out.kind == "identifier" then
+
+
+
+
+      out.token_chain_raw = token_chain_for(leaf, parent)
       fill_hover_position(out, leaf)
    end
 
