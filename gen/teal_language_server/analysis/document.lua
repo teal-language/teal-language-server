@@ -312,6 +312,60 @@ local function split_by_symbols(input, self_type, stop_at)
    return t
 end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function scope_walk_start(symbols, y, x)
+   local n = 0
+   for i = 1, #symbols do
+      local s = symbols[i]
+      if s[1] < y or (s[1] == y and s[2] <= x) then
+         n = i
+      else
+         break
+      end
+   end
+   if n == #symbols and symbols[n] ~= nil and symbols[n][3] == "@}" then
+      n = n - 1
+   end
+   return n
+end
+
+
+
+
+
+
+local function visible_symbols(symbols, y, x)
+   local visible = {}
+   local n = scope_walk_start(symbols, y, x)
+   while n >= 1 do
+      local s = symbols[n]
+      local symbol_name = s[3]
+      if symbol_name == "@{" then
+         n = n - 1
+      elseif symbol_name == "@}" then
+         n = s[4]
+      else
+         if visible[symbol_name] == nil then
+            visible[symbol_name] = n
+         end
+         n = n - 1
+      end
+   end
+   return visible
+end
+
 function Document:resolve_type_ref(type_number)
    local tr = self:get_type_report()
    local type_info = tr.types[type_number]
@@ -377,7 +431,11 @@ function Document:type_information_for_tokens(tokens, y, x)
 
    local type_info
 
-   local scope_symbols = tl.symbols_in_scope(tr, y + 1, x + 1, self._uri.path)
+   local symbols = tr.symbols_by_file[self._uri.path] or {}
+   local scope_symbols = {}
+   for name, index in pairs(visible_symbols(symbols, y + 1, x + 1)) do
+      scope_symbols[name] = symbols[index][4]
+   end
    logger:trace("Looked up symbols at %d, %d for file %s with result: %s", y + 1, x + 1, self._uri.path, scope_symbols)
    if #tokens == 0 then
       local out = {}
@@ -469,39 +527,11 @@ function Document:symbol_declaration_position(name, y, x)
       return nil
    end
 
-
-
-
-   local target_y = y + 1
-   local target_x = x + 1
-   local n = 0
-   for i = 1, #symbols do
-      local s = symbols[i]
-      if s[1] < target_y or (s[1] == target_y and s[2] <= target_x) then
-         n = i
-      else
-         break
-      end
+   local index = visible_symbols(symbols, y + 1, x + 1)[name]
+   if index == nil then
+      return nil
    end
-
-
-
-   while n >= 1 do
-      local s = symbols[n]
-      local symbol_name = s[3]
-      if symbol_name == "@{" then
-         n = n - 1
-      elseif symbol_name == "@}" then
-         n = s[4]
-      else
-         if symbol_name == name then
-            return s[1], s[2]
-         end
-         n = n - 1
-      end
-   end
-
-   return nil
+   return symbols[index][1], symbols[index][2]
 end
 
 function Document:tree_sitter_token(y, x)

@@ -312,6 +312,60 @@ local function split_by_symbols(input: string, self_type: string, stop_at?: stri
    return t
 end
 
+-- Index into `symbols` to begin a backward scope walk from, for a 1-indexed
+-- cursor at (y, x). Symbols are in source order, so it is the last entry at or
+-- before the cursor -- except for the clamp, which is the whole point of this
+-- function.
+--
+-- The final entry is the chunk's closing "@}", and it sits at the end of the
+-- last source tl successfully *checked*, which while the user is mid-edit is
+-- older than the buffer. Typing anything on a new final line makes the file
+-- unparseable, so the report still ends at the previous line and the cursor is
+-- past that "@}". Starting there follows its back-pointer over the entire file
+-- scope, and every local silently disappears -- completion offers globals only.
+-- Backing up one entry gives the top-level scope at end of file, which is the
+-- scope a cursor appended to the file is actually in.
+local function scope_walk_start(symbols: {tl.TypeReport.Symbol}, y: integer, x: integer): integer
+   local n = 0
+   for i = 1, #symbols do
+      local s = symbols[i]
+      if s[1] < y or (s[1] == y and s[2] <= x) then
+         n = i
+      else
+         break
+      end
+   end
+   if n == #symbols and symbols[n] ~= nil and symbols[n][3] == "@}" then
+      n = n - 1
+   end
+   return n
+end
+
+-- Innermost visible declaration of every name in scope at a 1-indexed (y, x),
+-- as an index into `symbols`. This is tl.symbols_in_scope's walk, kept here so
+-- it can start from the clamped index above; one walk serves both callers,
+-- since the indexed symbol carries the type id at [4] and its declaration
+-- position at [1]/[2].
+local function visible_symbols(symbols: {tl.TypeReport.Symbol}, y: integer, x: integer): {string:integer}
+   local visible: {string:integer} = {}
+   local n = scope_walk_start(symbols, y, x)
+   while n >= 1 do
+      local s = symbols[n]
+      local symbol_name = s[3]
+      if symbol_name == "@{" then
+         n = n - 1
+      elseif symbol_name == "@}" then
+         n = s[4]
+      else
+         if visible[symbol_name] == nil then
+            visible[symbol_name] = n
+         end
+         n = n - 1
+      end
+   end
+   return visible
+end
+
 function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
    local type_info = tr.types[type_number]
@@ -377,7 +431,11 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
 
    local type_info: tl.TypeInfo
    -- try and find it in scope
-   local scope_symbols <const> = tl.symbols_in_scope(tr, y+1, x+1, self._uri.path)
+   local symbols <const> = tr.symbols_by_file[self._uri.path] or {}
+   local scope_symbols <const>: {string:integer} = {}
+   for name, index in pairs(visible_symbols(symbols, y+1, x+1)) do
+      scope_symbols[name] = symbols[index][4]
+   end
    logger:trace("Looked up symbols at %d, %d for file %s with result: %s", y+1, x+1, self._uri.path, scope_symbols)
    if #tokens == 0 then
       local out = {}
@@ -459,8 +517,8 @@ function Document:resolve_preceded_type(node_info: NodeInfo, pos: lsp.Position):
 end
 
 -- Finds where a symbol named `name` was *declared* (as opposed to where its type
--- is declared). Mirrors the backward scope walk in tl.symbols_in_scope, but
--- returns the matched symbol's declaration position instead of its type id.
+-- is declared): the position of its nearest in-scope declaration, rather than
+-- the type id tl.symbols_in_scope would give.
 -- `y`/`x` are 0-indexed (LSP); the returned y/x are 1-indexed (tl convention).
 function Document:symbol_declaration_position(name: string, y: integer, x: integer): integer, integer
    local tr <const> = self:get_type_report()
@@ -469,39 +527,11 @@ function Document:symbol_declaration_position(name: string, y: integer, x: integ
       return nil
    end
 
-   -- Symbols are stored in source order, so the last one whose position is at or
-   -- before the cursor is our starting point. (tl uses a binary search here, but
-   -- that helper is private to tl, so we scan linearly.)
-   local target_y <const> = y + 1
-   local target_x <const> = x + 1
-   local n = 0
-   for i = 1, #symbols do
-      local s = symbols[i]
-      if s[1] < target_y or (s[1] == target_y and s[2] <= target_x) then
-         n = i
-      else
-         break
-      end
+   local index <const> = visible_symbols(symbols, y+1, x+1)[name]
+   if index == nil then
+      return nil
    end
-
-   -- Walk backwards, honoring the @{ / @} scope markers, and return the position
-   -- of the nearest in-scope declaration matching `name`.
-   while n >= 1 do
-      local s = symbols[n]
-      local symbol_name = s[3]
-      if symbol_name == "@{" then
-         n = n - 1
-      elseif symbol_name == "@}" then
-         n = s[4]
-      else
-         if symbol_name == name then
-            return s[1], s[2]
-         end
-         n = n - 1
-      end
-   end
-
-   return nil
+   return symbols[index][1], symbols[index][2]
 end
 
 function Document:tree_sitter_token(y: integer, x: integer): NodeInfo

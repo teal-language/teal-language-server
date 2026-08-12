@@ -752,4 +752,75 @@ tested.test("dot completion on a top-level generic call result returns the infer
     })
 end)
 
+-- Typing a trailing '.' on a new last line makes the file unparseable, so the
+-- type report still ends at the previous line and the cursor sits past the
+-- chunk's closing "@}" marker. The scope walk used to follow that marker's
+-- back-pointer over the whole file scope and report nothing in scope, so a local
+-- record completed to "(none)" at the one place people reach for completion most.
+tested.test("dot completion on a local typed at the end of the file lists its fields", function()
+    local uri = "file:///tmp/tls_complete_23.tl"
+    local doc_v1 = table.concat({
+        "local record tadd",
+        "  buffer: {string}",
+        "  clear: function()",
+        "end",
+        "tadd.buffer = {}",
+        'print("done")',
+    }, "\n")
+    client:open_document(uri, doc_v1)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- append "tadd." on a new final line, as an editor would send it mid-typing
+    client:change_document(uri, doc_v1 .. "\ntadd.", 2)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "tadd.": '.' at col 4; cursor at col 5 -> col 4
+    local response = client:get_completions_triggered(uri, 6, 5, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "buffer", "clear" }) do
+        tested.assert({
+            given = "completion items for a trailing 'tadd.' at end of file",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+-- Same clamp, via the in-scope path rather than the field path. This one failed
+-- quietly: globals are merged in separately, so the list still looked populated
+-- while every local was missing from it.
+tested.test("partial identifier completion at the end of the file still sees locals", function()
+    local uri = "file:///tmp/tls_complete_24.tl"
+    local doc_v1 = table.concat({
+        "local record tadd",
+        "  buffer: {string}",
+        "end",
+        'print("done")',
+    }, "\n")
+    client:open_document(uri, doc_v1)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    client:change_document(uri, doc_v1 .. "\ntad", 2)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 "tad": cursor at col 3 -> col 2, inside the identifier
+    local response = client:get_completions(uri, 4, 3)
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "in-scope completion items on a new last line",
+        should = "include the local 'tadd'",
+        expected = true,
+        actual = has_label(items, "tadd"),
+    })
+    tested.assert({
+        given = "in-scope completion items on a new last line",
+        should = "still include globals like 'math'",
+        expected = true,
+        actual = has_label(items, "math"),
+    })
+end)
+
 return tested
