@@ -32,8 +32,19 @@ function LspEventsManager:set_handler(method:lsp.Method.Name, handler:function(l
    self._handlers[method] = handler
 end
 
+function LspEventsManager:_send_error(id: integer, name: lsp.ErrorName, msg: string, data: {string:any})
+   local ok <const>, err <const> = pcall(function()
+      self._lsp_reader_writer:send_rpc_error(id, name, msg, data)
+   end) as (boolean, string)
+   if not ok then
+      logger:warning("Could not send error response for id %s: %s", tostring(id), tostring(err))
+   end
+end
+
 function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Params, id:integer)
    logger:info("Received request from client for method %s", method)
+
+   local is_request <const> = id ~= nil
 
    if self._handlers[method] then
       local ok: boolean
@@ -46,10 +57,26 @@ function LspEventsManager:_trigger(method:lsp.Method.Name, params:lsp.Method.Par
       if ok then
          logger:debug("Successfully handled request with method %s", method)
       else
+         -- Cancellation is shutdown unwinding this task, not a handler fault:
+         -- let it propagate, and do not answer a client that is going away.
+         if lusc.is_cancelled_error(err) then
+            error(err, 0)
+         end
+
          logger:error("Error in handler for request with method %s: %s", method, err)
+
+         -- always ensure that a client gets a response and does not need to wait forever
+         if is_request then
+            self:_send_error(id, "InternalError",
+               "Internal error handling " .. tostring(method), { traceback = err })
+         end
       end
    else
       logger:warning("No handler found for event with method %s", method)
+      if is_request then
+         self:_send_error(id, "MethodNotFound",
+            "No handler for method " .. tostring(method), nil)
+      end
    end
 end
 

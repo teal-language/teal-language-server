@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp.events_manager"
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local debug = _tl_compat and _tl_compat.debug or debug; local pcall = _tl_compat and _tl_compat.pcall or pcall; local xpcall = _tl_compat and _tl_compat.xpcall or xpcall; local _module_name = "lsp.events_manager"
 
 local lsp = require("teal_language_server.lsp.protocol")
 local LspReaderWriter = require("teal_language_server.lsp.reader_writer")
@@ -32,8 +32,19 @@ function LspEventsManager:set_handler(method, handler)
    self._handlers[method] = handler
 end
 
+function LspEventsManager:_send_error(id, name, msg, data)
+   local ok, err = pcall(function()
+      self._lsp_reader_writer:send_rpc_error(id, name, msg, data)
+   end)
+   if not ok then
+      logger:warning("Could not send error response for id %s: %s", tostring(id), tostring(err))
+   end
+end
+
 function LspEventsManager:_trigger(method, params, id)
    logger:info("Received request from client for method %s", method)
+
+   local is_request = id ~= nil
 
    if self._handlers[method] then
       local ok
@@ -46,10 +57,26 @@ function LspEventsManager:_trigger(method, params, id)
       if ok then
          logger:debug("Successfully handled request with method %s", method)
       else
+
+
+         if lusc.is_cancelled_error(err) then
+            error(err, 0)
+         end
+
          logger:error("Error in handler for request with method %s: %s", method, err)
+
+
+         if is_request then
+            self:_send_error(id, "InternalError",
+            "Internal error handling " .. tostring(method), { traceback = err })
+         end
       end
    else
       logger:warning("No handler found for event with method %s", method)
+      if is_request then
+         self:_send_error(id, "MethodNotFound",
+         "No handler for method " .. tostring(method), nil)
+      end
    end
 end
 

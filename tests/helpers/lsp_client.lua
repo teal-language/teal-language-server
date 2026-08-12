@@ -23,7 +23,14 @@ local function get_root_uri()
     return "file:///tmp"
 end
 
-function LspClient.new(server_binary)
+-- opts.coverage (default true) spawns the server under luacov. Callers that time
+-- requests must pass false: luacov's per-line debug hook slows tl.check by ~100x
+-- (a check that takes 0.4s takes 42s under it), which reads as a hang from the
+-- outside. The test suite leaves it on because it does not time anything.
+function LspClient.new(server_binary, opts)
+    opts = opts or {}
+    local coverage = opts.coverage ~= false
+
     local self = setmetatable({}, LspClient)
     self._buffer = ""
     self._pending = {}
@@ -40,7 +47,7 @@ function LspClient.new(server_binary)
     self._exit_info = nil
 
     local spawn_path = server_binary
-    local spawn_args = { "--coverage" }
+    local spawn_args = coverage and { "--coverage" } or {}
     local spawn_env = nil
     if IS_WINDOWS then
         -- Bypass the luarocks-generated .bat wrapper. libuv spawns .bat files
@@ -50,10 +57,10 @@ function LspClient.new(server_binary)
         -- propagate LUA_PATH/LUA_CPATH so the child resolves modules without
         -- the wrapper.
         spawn_path = uv.exepath()
-        spawn_args = {
-            uv.cwd() .. "\\bin\\teal-language-server",
-            "--coverage",
-        }
+        spawn_args = { uv.cwd() .. "\\bin\\teal-language-server" }
+        if coverage then
+            table.insert(spawn_args, "--coverage")
+        end
 
         -- Derive a clean LUA_PATH/LUA_CPATH from the venv structure instead
         -- of using package.path/cpath directly. When running under
@@ -123,6 +130,22 @@ function LspClient.new(server_binary)
     end)
 
     return self
+end
+
+-- Accessors for out-of-band tooling (scripts/fuzz_snippets.lua,
+-- scripts/replay_crasher.lua), whose oracles are "did it die" and "what did it
+-- say on the way out" rather than a request/response pair.
+function LspClient:get_pid()
+    return self._pid
+end
+
+-- nil while the server is alive; {code, signal} once it has exited.
+function LspClient:exit_info()
+    return self._exit_info
+end
+
+function LspClient:get_stderr()
+    return self._stderr_buffer
 end
 
 function LspClient:_diagnostics()
