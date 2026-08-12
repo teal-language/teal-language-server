@@ -51,6 +51,7 @@ local record NodeInfo
    metamethod __tostring: function(NodeInfo): string
 
    from_cursor: function(ltreesitter.Cursor, integer, integer): NodeInfo
+   enclosing_records: function(ltreesitter.Cursor, integer, integer): {string}
 end
 
 local declaration_parent_types <const>: {string:boolean} = {
@@ -502,6 +503,50 @@ end
 -- caller owns its lifetime. Returns nil when the position falls between tokens.
 function NodeInfo.from_cursor(cursor: ltreesitter.Cursor, y: integer, x: integer): NodeInfo
    return token_at(cursor, y, x)
+end
+
+-- Names of the record and interface declarations enclosing (y, x), outermost
+-- first -- {"ltreesitter", "Cursor"} for a cursor inside `record Cursor` inside
+-- `record ltreesitter`.
+--
+-- This is how a type declared inside a record is named at all. Only the outermost
+-- of these is a scope symbol; everything nested is reachable only as a field of
+-- it, so the list doubles as the prefix that turns a bare `FieldId` into the
+-- resolvable chain {"ltreesitter", "FieldId"}. Deriving the prefix from the tree
+-- is what keeps it exact -- the alternative, searching every record in the file
+-- for a member of that name, cannot distinguish a nested type from a method.
+--
+-- The name of a `recordbody` hangs off its parent: a `stat` for a top-level
+-- `local record R`, a `recordentry` for a nested one, and in both cases it is
+-- that parent's first `identifier` child. Interfaces differ only in the keyword.
+-- Same cursor contract as from_cursor: reset to the root, mutated in place.
+function NodeInfo.enclosing_records(cursor: ltreesitter.Cursor, y: integer, x: integer): {string}
+   local names: {string} = {}
+   if descend_to_leaf(cursor, y, x) == nil then
+      return names
+   end
+
+   while cursor:goto_parent() do
+      if cursor:current_node():type() == "recordbody" then
+         -- step onto the declaration itself to read its name
+         if not cursor:goto_parent() then
+            break
+         end
+         local name: string
+         for child in cursor:current_node():children() do
+            if child:type() == "identifier" then
+               name = child:source()
+               break
+            end
+         end
+         if name == nil then
+            return {}
+         end
+         table.insert(names, 1, name)
+      end
+   end
+
+   return names
 end
 
 return NodeInfo

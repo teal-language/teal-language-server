@@ -53,6 +53,7 @@ local NodeInfo = {}
 
 
 
+
 local declaration_parent_types = {
    ["attnamelist"] = true,
    ["attrib"] = true,
@@ -502,6 +503,50 @@ end
 
 function NodeInfo.from_cursor(cursor, y, x)
    return token_at(cursor, y, x)
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function NodeInfo.enclosing_records(cursor, y, x)
+   local names = {}
+   if descend_to_leaf(cursor, y, x) == nil then
+      return names
+   end
+
+   while cursor:goto_parent() do
+      if cursor:current_node():type() == "recordbody" then
+
+         if not cursor:goto_parent() then
+            break
+         end
+         local name
+         for child in cursor:current_node():children() do
+            if child:type() == "identifier" then
+               name = child:source()
+               break
+            end
+         end
+         if name == nil then
+            return {}
+         end
+         table.insert(names, 1, name)
+      end
+   end
+
+   return names
 end
 
 return NodeInfo

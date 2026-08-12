@@ -452,8 +452,16 @@ end
 
 
 
+
+
+
+
+
+
+
 function Document:find_type_declaration(name)
    local tr = self:get_type_report()
+
    local found
    for _, type_info in pairs(tr.types) do
       if type_info.str == name and
@@ -469,7 +477,7 @@ function Document:find_type_declaration(name)
    return found
 end
 
-function Document:type_information_for_tokens(tokens, y, x)
+function Document:_type_information_for_tokens(tokens, y, x)
    local tr = self:get_type_report()
 
    local type_info
@@ -550,6 +558,49 @@ function Document:type_information_for_tokens(tokens, y, x)
    end
 
    logger:info("Failed to find type info at given position")
+   return nil
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function Document:type_information_for_tokens(tokens, y, x)
+   local type_info = self:_type_information_for_tokens(tokens, y, x)
+   if type_info ~= nil or #tokens == 0 then
+      return type_info
+   end
+
+   self._tree_cursor:reset(self._tree:root())
+   local enclosing = NodeInfo.enclosing_records(self._tree_cursor, y, x)
+
+   for depth = #enclosing, 1, -1 do
+      local qualified = {}
+      for i = 1, depth do
+         table.insert(qualified, enclosing[i])
+      end
+      for _, token in ipairs(tokens) do
+         table.insert(qualified, token)
+      end
+
+      logger:trace("Retrying token chain qualified by enclosing records: %s", qualified)
+      local qualified_info = self:_type_information_for_tokens(qualified, y, x)
+      if qualified_info ~= nil then
+         return qualified_info
+      end
+   end
+
    return nil
 end
 

@@ -448,12 +448,20 @@ end
 --   * A record's own name has no by_pos entry at all; the RECORD is recorded at
 --     the `record` keyword, a few columns to the left.
 --
--- Declarations themselves are in `tr.types` with `str` set to their name, so a
--- same-file scan recovers them. Only an unambiguous match counts: with two
+-- Records, enums and interfaces are in `tr.types` with `str` set to their name,
+-- so a same-file scan recovers those. Only an unambiguous match counts: with two
 -- same-named declarations in one file there is nothing here to say which one
 -- encloses the cursor, and a confidently wrong type is worse than none.
+--
+-- A type alias (`type FieldId = integer`) never matches this scan -- tl collapses
+-- a typedecl into its target, so the entry's `str` reads "integer" and the alias
+-- name survives only as a key in its enclosing record's `fields`. Reaching those
+-- is what the enclosing-record retry below is for; do not be tempted to search
+-- every record's fields for the name instead, which cannot tell a type alias from
+-- an ordinary member and sends goto-definition to a same-named method.
 function Document:find_type_declaration(name: string): tl.TypeInfo
    local tr <const> = self:get_type_report()
+
    local found: tl.TypeInfo
    for _, type_info in pairs(tr.types) do
       if type_info.str == name
@@ -469,7 +477,7 @@ function Document:find_type_declaration(name: string): tl.TypeInfo
    return found
 end
 
-function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
+function Document:_type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
    local tr <const> = self:get_type_report()
 
    local type_info: tl.TypeInfo
@@ -550,6 +558,49 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
    end
 
    logger:info("Failed to find type info at given position")
+   return nil
+end
+
+-- Resolve a token chain, retrying it qualified by the records enclosing the
+-- cursor when the bare chain resolves to nothing.
+--
+-- A type declared inside a record is not a scope symbol and not a global, so a
+-- bare reference to it -- `FieldId` inside `record ltreesitter` -- has no way to
+-- resolve on its own. Prefixing turns it into {"ltreesitter", "FieldId"}, which
+-- the field walk above already handles, because tl does record nested types as
+-- fields of their parent.
+--
+-- Prefixes are tried innermost first and shortened one level at a time: inside
+-- `record Cursor` inside `record ltreesitter`, a reference to `Cursor` fails as
+-- {"ltreesitter", "Cursor", "Cursor"} and then resolves as
+-- {"ltreesitter", "Cursor"}. Positions outside any record produce no prefixes and
+-- so no retries, which is what keeps an unresolvable name in ordinary code from
+-- being matched against record members.
+function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
+   local type_info <const> = self:_type_information_for_tokens(tokens, y, x)
+   if type_info ~= nil or #tokens == 0 then
+      return type_info
+   end
+
+   self._tree_cursor:reset(self._tree:root())
+   local enclosing <const> = NodeInfo.enclosing_records(self._tree_cursor, y, x)
+
+   for depth = #enclosing, 1, -1 do
+      local qualified: {string} = {}
+      for i = 1, depth do
+         table.insert(qualified, enclosing[i])
+      end
+      for _, token in ipairs(tokens) do
+         table.insert(qualified, token)
+      end
+
+      logger:trace("Retrying token chain qualified by enclosing records: %s", qualified)
+      local qualified_info <const> = self:_type_information_for_tokens(qualified, y, x)
+      if qualified_info ~= nil then
+         return qualified_info
+      end
+   end
+
    return nil
 end
 

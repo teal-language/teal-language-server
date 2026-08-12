@@ -290,13 +290,14 @@ local DECL_ONLY_DOC = table.concat({
     "local record ltreesitter",              -- line 0
     "   record Cursor is userdata",          -- line 1
     "      copy: function(Cursor): Cursor",  -- line 2
-    "      reset: function(Cursor, Point)",  -- line 3
+    "      reset: function(Cursor, Point): FieldId", -- line 3
     "   end",                                -- line 4
     "   interface Point",                    -- line 5
     "      row: integer",                    -- line 6
     "   end",                                -- line 7
-    "end",                                   -- line 8
-    "return ltreesitter",                    -- line 9
+    "   type FieldId = integer",             -- line 8
+    "end",                                   -- line 9
+    "return ltreesitter",                    -- line 10
 }, "\n")
 
 local function hover_value(response)
@@ -350,7 +351,7 @@ tested.test("hover on an interface shows 'interface', not 'Point: Point'", funct
     client:open_document(uri, DECL_ONLY_DOC)
     client:wait_for_notification("textDocument/publishDiagnostics")
 
-    -- line 3 "      reset: function(Cursor, Point)": 'Point' at col 30
+    -- line 3 "      reset: function(Cursor, Point): FieldId": 'Point' at col 30
     local value = hover_value(client:get_hover(uri, 3, 30))
 
     tested.assert({
@@ -364,6 +365,39 @@ tested.test("hover on an interface shows 'interface', not 'Point: Point'", funct
         should = "include its fields",
         expected = true,
         actual = value:find("row", 1, true) ~= nil,
+    })
+end)
+
+-- A type alias is the one kind of declaration that never appears in tr.types under
+-- its own name: tl collapses the typedecl into its target, so the entry reads
+-- "integer". The name survives only as a key in the enclosing record's fields.
+tested.test("hover on a type alias reports the type it stands for", function()
+    local uri = "file:///tmp/tls_hover_decl_4.tl"
+    client:open_document(uri, DECL_ONLY_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 3 "      reset: function(Cursor, Point): FieldId": 'FieldId' at col 38
+    local at_use = hover_value(client:get_hover(uri, 3, 38))
+    tested.assert({
+        given = "hover on a use of the alias 'FieldId'",
+        should = "resolve to its target type",
+        expected = true,
+        actual = at_use:find("integer", 1, true) ~= nil,
+    })
+    tested.assert({
+        given = "hover on a use of the alias 'FieldId'",
+        should = "not be the self-referential 'FieldId: FieldId'",
+        expected = true,
+        actual = at_use:find("FieldId: FieldId", 1, true) == nil,
+    })
+
+    -- line 8 "   type FieldId = integer": the alias name itself at col 8
+    local at_decl = hover_value(client:get_hover(uri, 8, 8))
+    tested.assert({
+        given = "hover on the alias declaration name",
+        should = "resolve to its target type",
+        expected = true,
+        actual = at_decl:find("integer", 1, true) ~= nil,
     })
 end)
 
