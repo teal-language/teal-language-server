@@ -423,7 +423,50 @@ function Document:type_information_for_position(y: integer, x: integer, ret_dept
       end
    end
 
+   -- resolve_type_ref already followed `ref`, so a nominal still standing here is
+   -- one tl never resolved: no ref to chase and no fields to show or index into.
+   -- It is a dead end that only renders as `T: T`, so report a miss and
+   -- let the caller fall back to name resolution, which can still find the
+   -- declaration. See find_type_declaration for why these turn up at all.
+   if type_info ~= nil and type_info.t == tl.typecodes.NOMINAL and type_info.fields == nil then
+      return nil
+   end
+
    return type_info
+end
+
+-- The declaration of a type named `name` in this document, or nil.
+--
+-- Needed because tl's report leaves type references dangling in two ways, and
+-- neither is visible to the scope/global lookups:
+--
+--   * A nominal only carries a `ref` when the checker actually resolved that
+--     reference. In a declaration-only file -- every `.d.tl`, including this
+--     project's own `types/` -- annotations are rarely checked against a use, so
+--     most nominals arrive ref-less: `ltreesitter.d.tl` holds 17 references to
+--     `Cursor` and exactly one of them has a ref.
+--   * A record's own name has no by_pos entry at all; the RECORD is recorded at
+--     the `record` keyword, a few columns to the left.
+--
+-- Declarations themselves are in `tr.types` with `str` set to their name, so a
+-- same-file scan recovers them. Only an unambiguous match counts: with two
+-- same-named declarations in one file there is nothing here to say which one
+-- encloses the cursor, and a confidently wrong type is worse than none.
+function Document:find_type_declaration(name: string): tl.TypeInfo
+   local tr <const> = self:get_type_report()
+   local found: tl.TypeInfo
+   for _, type_info in pairs(tr.types) do
+      if type_info.str == name
+         and type_info.file == self._uri.path
+         and type_info.t ~= tl.typecodes.NOMINAL then
+         if found ~= nil then
+            logger:debug("More than one type named %s declared here; not guessing", name)
+            return nil
+         end
+         found = type_info
+      end
+   end
+   return found
 end
 
 function Document:type_information_for_tokens(tokens: {string}, y: integer, x: integer): tl.TypeInfo
@@ -467,6 +510,16 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
 
       if type_info == nil then
          logger:info("Unable to find type info in global table as well..")
+      end
+   end
+
+   -- last resort: a type declared in this file. Record/enum/interface names are
+   -- not scope symbols and not globals, so neither lookup above can ever see
+   -- them, which leaves every reference to a locally declared type unresolvable.
+   if type_info == nil then
+      type_info = self:find_type_declaration(raw_token)
+      if type_info == nil then
+         logger:info("No type declaration named %s in this file either", raw_token)
       end
    end
 

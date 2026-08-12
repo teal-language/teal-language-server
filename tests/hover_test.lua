@@ -281,4 +281,90 @@ tested.test("hover over a variable initialized from a call returns the call's re
     })
 end)
 
+-- Declaration-only bodies (any `.d.tl`, including this project's own types/) are
+-- where tl's report leaves type references dangling: the checker never resolves
+-- an annotation that nothing uses, so the nominal arrives with no `ref` and hover
+-- rendered the useless "Cursor: Cursor". A record's own name is worse -- it has no
+-- by_pos entry at all, since the RECORD is recorded at the `record` keyword.
+local DECL_ONLY_DOC = table.concat({
+    "local record ltreesitter",              -- line 0
+    "   record Cursor is userdata",          -- line 1
+    "      copy: function(Cursor): Cursor",  -- line 2
+    "      reset: function(Cursor, Point)",  -- line 3
+    "   end",                                -- line 4
+    "   interface Point",                    -- line 5
+    "      row: integer",                    -- line 6
+    "   end",                                -- line 7
+    "end",                                   -- line 8
+    "return ltreesitter",                    -- line 9
+}, "\n")
+
+local function hover_value(response)
+    local contents = response and response.result and response.result.contents
+    if contents == nil then return "" end
+    local value = type(contents) == "table" and (contents.value or contents[1]) or contents
+    return tostring(value)
+end
+
+tested.test("hover on a record's own declaration name shows the record", function()
+    local uri = "file:///tmp/tls_hover_decl_1.tl"
+    client:open_document(uri, DECL_ONLY_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1 "   record Cursor is userdata": 'Cursor' starts at col 10
+    local value = hover_value(client:get_hover(uri, 1, 10))
+
+    tested.assert({
+        given = "hover on the name in 'record Cursor'",
+        should = "show the record rather than nothing",
+        expected = true,
+        actual = value:find("record Cursor", 1, true) ~= nil,
+    })
+end)
+
+tested.test("hover on an unresolved nominal shows the record, not 'Cursor: Cursor'", function()
+    local uri = "file:///tmp/tls_hover_decl_2.tl"
+    client:open_document(uri, DECL_ONLY_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 2 "      copy: function(Cursor): Cursor": return-type 'Cursor' at col 30,
+    -- the occurrence tl leaves without a ref
+    local value = hover_value(client:get_hover(uri, 2, 30))
+
+    tested.assert({
+        given = "hover on a return-type annotation",
+        should = "not be the self-referential 'Cursor: Cursor'",
+        expected = true,
+        actual = value:find("Cursor: Cursor", 1, true) == nil,
+    })
+    tested.assert({
+        given = "hover on a return-type annotation",
+        should = "show the record it names",
+        expected = true,
+        actual = value:find("record Cursor", 1, true) ~= nil,
+    })
+end)
+
+tested.test("hover on an interface shows 'interface', not 'Point: Point'", function()
+    local uri = "file:///tmp/tls_hover_decl_3.tl"
+    client:open_document(uri, DECL_ONLY_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 3 "      reset: function(Cursor, Point)": 'Point' at col 30
+    local value = hover_value(client:get_hover(uri, 3, 30))
+
+    tested.assert({
+        given = "hover on an interface-typed annotation",
+        should = "render it as an interface",
+        expected = true,
+        actual = value:find("interface Point", 1, true) ~= nil,
+    })
+    tested.assert({
+        given = "hover on an interface-typed annotation",
+        should = "include its fields",
+        expected = true,
+        actual = value:find("row", 1, true) ~= nil,
+    })
+end)
+
 return tested

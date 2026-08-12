@@ -423,7 +423,50 @@ function Document:type_information_for_position(y, x, ret_depth)
       end
    end
 
+
+
+
+
+
+   if type_info ~= nil and type_info.t == tl.typecodes.NOMINAL and type_info.fields == nil then
+      return nil
+   end
+
    return type_info
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function Document:find_type_declaration(name)
+   local tr = self:get_type_report()
+   local found
+   for _, type_info in pairs(tr.types) do
+      if type_info.str == name and
+         type_info.file == self._uri.path and
+         type_info.t ~= tl.typecodes.NOMINAL then
+         if found ~= nil then
+            logger:debug("More than one type named %s declared here; not guessing", name)
+            return nil
+         end
+         found = type_info
+      end
+   end
+   return found
 end
 
 function Document:type_information_for_tokens(tokens, y, x)
@@ -467,6 +510,16 @@ function Document:type_information_for_tokens(tokens, y, x)
 
       if type_info == nil then
          logger:info("Unable to find type info in global table as well..")
+      end
+   end
+
+
+
+
+   if type_info == nil then
+      type_info = self:find_type_declaration(raw_token)
+      if type_info == nil then
+         logger:info("No type declaration named %s in this file either", raw_token)
       end
    end
 

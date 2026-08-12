@@ -123,8 +123,11 @@ function lsp_formatter.show_type(node_info: NodeInfo, type_info: tl.TypeInfo, do
       end
       sb:add("end")
 
-   elseif type_info.t == tl.typecodes.RECORD then
-      sb:add("record " .. safe_str)
+   -- an interface renders exactly like a record apart from the keyword; without
+   -- this it falls through to the generic branch and shows the uninformative
+   -- "Point: Point"
+   elseif type_info.t == tl.typecodes.RECORD or type_info.t == tl.typecodes.INTERFACE then
+      sb:add((type_info.t == tl.typecodes.RECORD and "record " or "interface ") .. safe_str)
       for key, type_ref in pairs(type_info.fields) do
          local type_ref_info = doc:resolve_type_ref(type_ref)
          if type_ref_info and type_ref_info.str then
