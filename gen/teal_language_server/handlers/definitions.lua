@@ -71,7 +71,7 @@ end
 
 function DefinitionHandlers:_on_definition(params, id)
    local pos = params.position
-   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
+   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos, true)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -128,7 +128,7 @@ end
 
 function DefinitionHandlers:_on_type_definition(params, id)
    local pos = params.position
-   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
+   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos, true)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return

@@ -643,6 +643,13 @@ function Document:tree_sitter_token(y: integer, x: integer): NodeInfo
    return NodeInfo.from_cursor(self._tree_cursor, y, x)
 end
 
+-- As above, but for requests about the name at (y, x) rather than the exact
+-- token there; see NodeInfo.name_at_cursor for why the two differ.
+function Document:tree_sitter_name_token(y: integer, x: integer): NodeInfo
+   self._tree_cursor:reset(self._tree:root())
+   return NodeInfo.name_at_cursor(self._tree_cursor, y, x)
+end
+
 class.setup(Document, "Document", {
    getters =  {
       uri = function(self:Document):Uri

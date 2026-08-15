@@ -12,7 +12,10 @@ local logger = logging.get_logger(_module_name)
 local handler_helper = {}
 
 
-function handler_helper.get_node_info(document_manager, params, pos)
+
+
+
+function handler_helper.get_node_info(document_manager, params, pos, at_name)
    local context = params.context
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
@@ -29,7 +32,9 @@ function handler_helper.get_node_info(document_manager, params, pos)
    end
 
    logger:debug("Looking up node info at position: %s", pos)
-   local node_info = doc:tree_sitter_token(pos.line, pos.character)
+   local node_info = at_name and
+   doc:tree_sitter_name_token(pos.line, pos.character) or
+   doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       logger:info("Unable to retrieve node info from tree-sitter parser")
       return nil

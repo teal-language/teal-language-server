@@ -401,4 +401,167 @@ tested.test("hover on a type alias reports the type it stands for", function()
     })
 end)
 
+-- A parameter name inside a function *type* is not a symbol: tl records a type at
+-- the annotation and nothing at the name, so both the by_pos lookup and the
+-- token-chain fallback have to be redirected at the annotation. The `name`
+-- parameter below is deliberately named after the field that declares it -- the
+-- shape that made the old fallback answer with the field's own function type.
+local PARTYPE_DOC = table.concat({
+    "local record Parser",                                        -- line 0
+    "   name: function(self: Parser, name: string): Parser",      -- line 1
+    "   parse: function(self: Parser, argv?: {string}): boolean", -- line 2
+    "end",                                                        -- line 3
+    "return Parser",                                              -- line 4
+}, "\n")
+
+tested.test("hover on 'self' in a function type shows the record it names", function()
+    local uri = "file:///tmp/tls_hover_partype_1.tl"
+    client:open_document(uri, PARTYPE_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1 "   name: function(self: Parser, name: string): Parser": 'self' at col 18
+    local value = hover_value(client:get_hover(uri, 1, 18))
+
+    tested.assert({
+        given = "hover on the 'self' parameter of a function type",
+        should = "show the record it is annotated with",
+        expected = true,
+        actual = value:find("record Parser", 1, true) ~= nil,
+    })
+end)
+
+tested.test("hover on a parameter name in a function type shows its own type", function()
+    local uri = "file:///tmp/tls_hover_partype_2.tl"
+    client:open_document(uri, PARTYPE_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1: the 'name' *parameter* at col 32, which shares its name with the
+    -- field 'name' at col 3 that declares the function type it sits in
+    local value = hover_value(client:get_hover(uri, 1, 32))
+
+    tested.assert({
+        given = "hover on a parameter whose name matches an enclosing record field",
+        should = "show the parameter's type",
+        expected = true,
+        actual = value:find("name: string", 1, true) ~= nil,
+    })
+    tested.assert({
+        given = "hover on a parameter whose name matches an enclosing record field",
+        should = "not report the same-named field's function type",
+        expected = true,
+        actual = value:find("function", 1, true) == nil,
+    })
+
+    -- the field itself still resolves to the function it declares
+    local at_field = hover_value(client:get_hover(uri, 1, 3))
+    tested.assert({
+        given = "hover on the record field of the same name",
+        should = "still show the function it declares",
+        expected = true,
+        actual = at_field:find("function", 1, true) ~= nil,
+    })
+end)
+
+tested.test("hover on a parameter with a structural type shows that type", function()
+    local uri = "file:///tmp/tls_hover_partype_3.tl"
+    client:open_document(uri, PARTYPE_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 2 "   parse: function(self: Parser, argv?: {string}): boolean":
+    -- the optional 'argv' at col 33, annotated with a type that names nothing
+    local value = hover_value(client:get_hover(uri, 2, 33))
+
+    tested.assert({
+        given = "hover on an optional parameter annotated with a table type",
+        should = "show that table type",
+        expected = true,
+        actual = value:find("argv: {string}", 1, true) ~= nil,
+    })
+end)
+
+-- Editors resolve a mouse position to the nearest character *boundary*, so
+-- pointing at the right half of a letter reports the column after it. On the
+-- last letter of a name that column is already outside the name -- tree-sitter
+-- end points are exclusive -- which made every name dead over its final letter,
+-- and a one-letter parameter (whose halves are its first letter and its last)
+-- dead over the whole thing. Each name below is probed over every one of its own
+-- columns *and* the column just past it.
+local BOUNDARY_DOC = table.concat({
+    "local function fn(a: string, bcd: integer): string", -- line 0
+    "   return a .. tostring(bcd)",                       -- line 1
+    "end",                                                -- line 2
+    "return fn",                                          -- line 3
+}, "\n")
+
+tested.test("hover on a parameter resolves from its first column through the one past its last", function()
+    local uri = "file:///tmp/tls_hover_boundary_1.tl"
+    client:open_document(uri, BOUNDARY_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- "local function fn(a: string, bcd: integer): string"
+    --                   ^18          ^29..31 ^32 = the ":" a boundary hover lands on
+    local probes = {
+        { col = 18, expect = "a: string",    what = "the one-letter parameter 'a'" },
+        { col = 19, expect = "a: string",    what = "the column just past 'a'" },
+        { col = 29, expect = "bcd: integer", what = "the first letter of 'bcd'" },
+        { col = 31, expect = "bcd: integer", what = "the last letter of 'bcd'" },
+        { col = 32, expect = "bcd: integer", what = "the column just past 'bcd'" },
+    }
+    for _, probe in ipairs(probes) do
+        local value = hover_value(client:get_hover(uri, 0, probe.col))
+        tested.assert({
+            given = "hover at " .. probe.what,
+            should = "report " .. probe.expect,
+            expected = true,
+            actual = value:find(probe.expect, 1, true) ~= nil,
+        })
+    end
+end)
+
+tested.test("hover past the last letter of a function type's parameter resolves that parameter", function()
+    local uri = "file:///tmp/tls_hover_boundary_2.tl"
+    client:open_document(uri, PARTYPE_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1 "   name: function(self: Parser, name: string): Parser": the ":" at
+    -- col 22 ends 'self' and the one at col 36 ends the 'name' parameter
+    local at_self = hover_value(client:get_hover(uri, 1, 22))
+    tested.assert({
+        given = "hover just past the 'self' parameter of a function type",
+        should = "show the record it is annotated with",
+        expected = true,
+        actual = at_self:find("record Parser", 1, true) ~= nil,
+    })
+
+    local at_name = hover_value(client:get_hover(uri, 1, 36))
+    tested.assert({
+        given = "hover just past the 'name' parameter of a function type",
+        should = "show the parameter's own type",
+        expected = true,
+        actual = at_name:find("name: string", 1, true) ~= nil,
+    })
+end)
+
+tested.test("hover reports the range of the token, not of the requested position", function()
+    local uri = "file:///tmp/tls_hover_boundary_3.tl"
+    client:open_document(uri, BOUNDARY_DOC)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- 'bcd' spans cols 29..31; every hover that resolves it should say so,
+    -- whether it was asked about the middle of the name or the column past it
+    for _, col in ipairs({ 29, 30, 31, 32 }) do
+        local response = client:get_hover(uri, 0, col)
+        local range = response and response.result and response.result.range
+        tested.assert({
+            given = "the range of a hover requested at col " .. col,
+            should = "span 'bcd' at cols 29..32",
+            expected = "0:29-0:32",
+            actual = range
+                and string.format("%d:%d-%d:%d", range.start.line, range.start.character,
+                                  range["end"].line, range["end"].character)
+                or "nil",
+        })
+    end
+end)
+
 return tested

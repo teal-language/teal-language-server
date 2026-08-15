@@ -71,7 +71,7 @@ end
 -- type has no position (e.g. primitives like boolean).
 function DefinitionHandlers:_on_definition(params: lsp.Method.Params, id: integer): nil
    local pos <const> = params.position as lsp.Position
-   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
+   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos, true)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -128,7 +128,7 @@ end
 -- had.
 function DefinitionHandlers:_on_type_definition(params: lsp.Method.Params, id: integer): nil
    local pos <const> = params.position as lsp.Position
-   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
+   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos, true)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return

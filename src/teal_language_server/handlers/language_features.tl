@@ -2,6 +2,7 @@ local _module_name = "handlers.language_feature"
 
 local handler_helper <const> = require("teal_language_server.handlers.handler_helper")
 local DocumentManager <const> = require("teal_language_server.analysis.document_manager")
+local NodeInfo <const> = require("teal_language_server.analysis.node_info")
 local LspReaderWriter <const> = require("teal_language_server.lsp.reader_writer")
 local LspEventsManager <const> = require("teal_language_server.lsp.events_manager")
 local lsp <const> = require("teal_language_server.lsp.protocol")
@@ -236,10 +237,22 @@ function LanguageFeatureHandlers:_on_signature_help(params: lsp.Method.Params, i
    self._lsp_reader_writer:send_rpc(id, output)
 end
 
+-- The range the answer is about. Anchoring it on the token rather than on the
+-- requested position matters now that the two can differ -- a hover on the last
+-- letter of a name is reported one column past it, and resolves the name that
+-- ends there -- and it was never right anyway: the old range started wherever
+-- inside the name the cursor happened to be and ran a full name's width past it.
+local function token_range(node_info: NodeInfo): lsp.Range
+   return {
+      start = lsp.position(node_info.start_y, node_info.start_x),
+      ["end"] = lsp.position(node_info.end_y, node_info.end_x),
+   }
+end
+
 function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: integer): nil
    local pos <const> = params.position as lsp.Position
    logger:trace("Received request for hover at position: %s", pos)
-   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
+   local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos, true)
    if node_info == nil then
       self._lsp_reader_writer:send_rpc(id, {
          contents = { "Unknown Token:", " Unable to determine what token is under cursor " },
@@ -267,10 +280,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
       logger:warning("Can't hover over anything that isn't an identifier atm: %s", node_info.kind)
       self._lsp_reader_writer:send_rpc(id, {
          contents = { "Unknown Token:", " Unable to resolve the token under the cursor " },
-         range = {
-            start = lsp.position(pos.line, pos.character),
-            ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
-         },
+         range = token_range(node_info),
       })
       return
    end
@@ -281,10 +291,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
       logger:warning("Also failed to find type info based on token")
       self._lsp_reader_writer:send_rpc(id, {
          contents = { node_info.source .. ":", " No type_info found " },
-         range = {
-            start = lsp.position(pos.line, pos.character),
-            ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
-         },
+         range = token_range(node_info),
       })
       return
    end
@@ -294,10 +301,7 @@ function LanguageFeatureHandlers:_on_hover(params: lsp.Method.Params, id: intege
    local type_str <const> = lsp_formatter.show_type(node_info, type_info, doc)
    self._lsp_reader_writer:send_rpc(id, {
       contents = type_str,
-      range = {
-         start = lsp.position(pos.line, pos.character),
-         ["end"] = lsp.position(pos.line, pos.character + #node_info.source),
-      },
+      range = token_range(node_info),
    })
 end
 

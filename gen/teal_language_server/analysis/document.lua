@@ -643,6 +643,13 @@ function Document:tree_sitter_token(y, x)
    return NodeInfo.from_cursor(self._tree_cursor, y, x)
 end
 
+
+
+function Document:tree_sitter_name_token(y, x)
+   self._tree_cursor:reset(self._tree:root())
+   return NodeInfo.name_at_cursor(self._tree_cursor, y, x)
+end
+
 class.setup(Document, "Document", {
    getters = {
       uri = function(self)

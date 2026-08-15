@@ -12,7 +12,10 @@ local logger = logging.get_logger(_module_name)
 local record handler_helper
 end
 
-function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): NodeInfo, Document
+-- `at_name` asks for the name at `pos` rather than the exact token there: hover
+-- and the two goto-definitions want it, a completion or signature-help trigger
+-- does not. See NodeInfo.name_at_cursor.
+function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position, at_name?: boolean): NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 
    if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
@@ -29,7 +32,9 @@ function handler_helper.get_node_info(document_manager: DocumentManager, params:
    end
 
    logger:debug("Looking up node info at position: %s", pos)
-   local node_info = doc:tree_sitter_token(pos.line, pos.character)
+   local node_info = at_name
+      and doc:tree_sitter_name_token(pos.line, pos.character)
+      or doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       logger:info("Unable to retrieve node info from tree-sitter parser")
       return nil
