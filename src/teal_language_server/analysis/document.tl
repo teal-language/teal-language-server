@@ -293,9 +293,7 @@ function Document:process_and_publish_results()
 end
 
 -- Split a dotted/colon source string (e.g. "self.foo.bar") into a token chain,
--- substituting the enclosing record name for "self". Stops after `stop_at` when
--- given. Pure string parsing over NodeInfo-derived text; feeds
--- type_information_for_tokens.
+-- substituting the enclosing record name for "self". Stops after `stop_at` when given.
 local function split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
    local t = {}
    if not input then return t end
@@ -377,7 +375,7 @@ function Document:resolve_type_ref(type_number: integer): tl.TypeInfo
 end
 
 -- Resolves the type of an expression directly from its source position via the
--- type report's by_pos map. y/x are 1-indexed (tl convention).
+-- type report's by_pos map. y/x are 1-indexed
 --
 -- Stock tl records a single-value result at its position (locals, globals, plain
 -- field access), but skips a function call's *result* because it is a tuple. To
@@ -441,10 +439,7 @@ end
 -- neither is visible to the scope/global lookups:
 --
 --   * A nominal only carries a `ref` when the checker actually resolved that
---     reference. In a declaration-only file -- every `.d.tl`, including this
---     project's own `types/` -- annotations are rarely checked against a use, so
---     most nominals arrive ref-less: `ltreesitter.d.tl` holds 17 references to
---     `Cursor` and exactly one of them has a ref.
+--     reference.
 --   * A record's own name has no by_pos entry at all; the RECORD is recorded at
 --     the `record` keyword, a few columns to the left.
 --
@@ -604,8 +599,8 @@ function Document:type_information_for_tokens(tokens: {string}, y: integer, x: i
    return nil
 end
 
--- Resolve the type of the expression preceding a '.'/':'/'(' trigger. Prefers the
--- direct by_pos lookup (handles calls, method chains, dotted access); on a miss,
+-- Resolve the type of the expression preceding a '.'/':'/'(' trigger.
+-- Prefers the by_pos lookup (handles calls, method chains, dotted access)
 -- falls back to re-parsing node_info.preceded_by into a token chain.
 function Document:resolve_preceded_type(node_info: NodeInfo, pos: lsp.Position): tl.TypeInfo
    if node_info.bypos_y then
@@ -620,9 +615,8 @@ function Document:resolve_preceded_type(node_info: NodeInfo, pos: lsp.Position):
    return self:type_information_for_tokens(tks, pos.line, pos.character)
 end
 
--- Finds where a symbol named `name` was *declared* (as opposed to where its type
--- is declared): the position of its nearest in-scope declaration, rather than
--- the type id tl.symbols_in_scope would give.
+-- Finds where a symbol was *declared* as opposed to where its type is declared
+-- the position of its nearest in-scope declaration, rather than the type id tl.symbols_in_scope would give.
 -- `y`/`x` are 0-indexed (LSP); the returned y/x are 1-indexed (tl convention).
 function Document:symbol_declaration_position(name: string, y: integer, x: integer): integer, integer
    local tr <const> = self:get_type_report()

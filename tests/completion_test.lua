@@ -823,4 +823,48 @@ tested.test("partial identifier completion at the end of the file still sees loc
     })
 end)
 
+tested.test("identifier completion on a parameter name being declared returns nothing", function()
+    local uri = "file:///tmp/tls_complete_26.tl"
+    local doc = table.concat({
+        "local existing_var = 1",
+        "local function f(existin: number)",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 1 "local function f(existin: number)": cursor at col 24 (end of "existin") -> col 23
+    local response = client:get_completions(uri, 1, 24)
+
+    -- cjson decodes a JSON null result as the userdata cjson.null, not Lua nil.
+    tested.assert({
+        given = "completion response for a parameter name being declared",
+        should = "have no result",
+        expected = true,
+        actual = response == nil or type(response.result) ~= "table",
+    })
+end)
+
+tested.test("identifier completion on a record field name being declared returns nothing", function()
+    local uri = "file:///tmp/tls_complete_27.tl"
+    local doc = table.concat({
+        "local existing_field = 1",
+        "local record R",
+        "  existin: number",
+        "end",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 2 "  existin: number": cursor at col 9 (end of "existin") -> col 8
+    local response = client:get_completions(uri, 2, 9)
+
+    tested.assert({
+        given = "completion response for a record field name being declared",
+        should = "have no result",
+        expected = true,
+        actual = response == nil or type(response.result) ~= "table",
+    })
+end)
+
 return tested

@@ -184,12 +184,12 @@ end
    tested.assert({ expected = "Point:move", actual = node_info.parent_source })
    tested.assert({ expected = "Point.move", actual = table.concat(node_info.token_chain, ".") })
 
-   -- pins the deliberate choice in declaration_parent_types: a parameter name is
-   -- NOT treated as a declaration position, matching tree-sitter-teal. Widening
-   -- that set would be a behaviour change, so it should not happen by accident.
+   -- a parameter name is a declaration position: naming a new parameter is not
+   -- a reference, so in-scope symbol completion there is noise. (Widened from
+   -- tree-sitter-teal's behaviour deliberately -- see declaration_parent_types.)
    node_info = d:tree_sitter_token(0, 33)
    tested.assert({ expected = "dy",  actual = node_info.source })
-   tested.assert({ given = "the cursor on a parameter name", should = "not suppress completion", expected = false, actual = node_info.in_declaration_position })
+   tested.assert({ given = "the cursor on a parameter name", should = "suppress completion", expected = true, actual = node_info.in_declaration_position })
 
    node_info = d:tree_sitter_token(2, 6)
    tested.assert({ expected = "self",  actual = node_info.source })
@@ -662,6 +662,52 @@ tested.test("in_declaration_position distinguishes naming from referring", funct
       should = "suppress completion",
       expected = true,
       actual = annotation.in_declaration_position,
+   })
+
+   local field_name = doc("local record R\n  foo: number\nend"):tree_sitter_token(1, 4)
+   tested.assert({ expected = "foo", actual = field_name.source })
+   tested.assert({
+      given = "the cursor on a record field name being declared",
+      should = "suppress completion",
+      expected = true,
+      actual = field_name.in_declaration_position,
+   })
+end)
+
+tested.test("in_type_position narrows to type annotations, not names being declared", function()
+   local annotation = doc("local record MyType\nend\nlocal a: MyType"):tree_sitter_token(2, 9)
+   tested.assert({ expected = "MyType", actual = annotation.source })
+   tested.assert({
+      given = "the cursor on a named type in an annotation",
+      should = "offer type-name completion",
+      expected = true,
+      actual = annotation.in_type_position,
+   })
+
+   local param_name = doc([[function Point:move(dx: number, dy: number) end]]):tree_sitter_token(0, 33)
+   tested.assert({ expected = "dy", actual = param_name.source })
+   tested.assert({
+      given = "the cursor on a parameter name",
+      should = "not offer type-name completion (it's a name, not a type)",
+      expected = false,
+      actual = param_name.in_type_position,
+   })
+
+   local field_name = doc("local record R\n  foo: number\nend"):tree_sitter_token(1, 4)
+   tested.assert({ expected = "foo", actual = field_name.source })
+   tested.assert({
+      given = "the cursor on a record field name being declared",
+      should = "not offer type-name completion (it's a name, not a type)",
+      expected = false,
+      actual = field_name.in_type_position,
+   })
+
+   local declaring = doc([[local abc = 1]]):tree_sitter_token(0, 6)
+   tested.assert({
+      given = "the cursor on the name being declared",
+      should = "not offer type-name completion",
+      expected = false,
+      actual = declaring.in_type_position,
    })
 end)
 

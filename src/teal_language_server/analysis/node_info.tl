@@ -1,10 +1,6 @@
 local _module_name = "analysis.node_info"
 
--- The grammar boundary. Everything that knows a tree-sitter node type name lives
--- in this module -- this file and the `node_info/` folder beside it; nothing
--- outside it should compare against one. Handlers read the normalized `kind` and
--- the flags below instead, so swapping the grammar is a change to this module
--- rather than to every handler.
+-- The grammar boundary. Where all the tree-sitter specific things are handled.
 --
 -- This file owns the shape handlers see and the per-kind dispatch that fills it.
 -- The work each branch delegates to lives next door, split by what it is about:
@@ -32,6 +28,7 @@ local record NodeInfo
       "other"        -- anything else; handlers bail
    end
    kind: NodeKind
+
    -- `type` and `parent_type` are raw tree-sitter node type names. They change
    -- wholesale if the grammar is swapped, so they are debug/logging detail
    -- only -- never branch on them. Branch on `kind` above.
@@ -39,29 +36,34 @@ local record NodeInfo
    source: string
    _parent_type: string
    parent_source: string
-   -- Source range of the token itself, in LSP's own coordinates: 0-indexed and
-   -- half-open, [start_x, end_x) on start_y. Handlers report this rather than
-   -- the requested position, which is only ever *somewhere inside* the token.
+
    start_y: integer
    start_x: integer
    end_y: integer
    end_x: integer
-   -- The chain of names ending at the cursor, e.g. {"self", "test_value"} for
-   -- a cursor on `test_value` in `self.test_value.other`. Built by walking the
-   -- tree, so it stays correct where a node's source text spans more than the
-   -- chain does -- feed this to type_information_for_tokens.
+
+   -- The chain of names leading up to the cursor, can be fed into type_information_for_tokens.
    token_chain: {string}      -- a leading `self` resolved to the record name
    token_chain_raw: {string}  -- `self` kept literal, for symbol lookups
+
    -- the cursor sits in a declaration or type-annotation position, where
    -- offering in-scope completions would be noise
    in_declaration_position: boolean
+
+   -- the narrower case of the above: the cursor is specifically inside a type
+   -- annotation (nominal/basetype), where in-scope *symbol* completion is still
+   -- noise but a type name (a declared record/interface/enum, or a primitive
+   -- like "string") is exactly what's wanted
+   in_type_position: boolean
    preceded_by: string
    self_type: string
+
    -- the (1-indexed) position to look this request's type up in by_pos:
    -- for completion the preceding expression's result, for signature help the
    -- called object, for hover the identifier under the cursor
    bypos_y: integer
    bypos_x: integer
+
    -- when the preceding expression is a function call, bypos_(y,x) points at
    -- the *called object* (whose function type stock tl does record) rather than
    -- the call result (a tuple stock tl skips); this holds the number of return
@@ -80,15 +82,20 @@ local declaration_parent_types <const>: {string:boolean} = {
    ["attrib"] = true,       -- the `<const>` / `<close>` attribute
    ["nominal"] = true,      -- `local abc: MyType`
    ["basetype"] = true,     -- `local abc: string` / `{string:number}`
-   -- deliberately NOT recordkey/parname: tree-sitter-teal did not suppress
-   -- completion at a record field name or a parameter name, and widening that
-   -- here would be a behaviour change smuggled in under a grammar swap
+   ["recordkey"] = true,    -- `record R foo: ... end` field name
+   ["parname"] = true,      -- `function(x: ...)` parameter name
 }
 
--- Collapse a raw tree-sitter node type into the handler-facing `Kind`. These four
--- tokens happen to be spelled the same in tree-sitter-teal and ts-teal, but that
--- is exactly the assumption worth pinning in one place rather than scattering
--- across the handlers.
+-- The subset of the above that is a type annotation rather than a name being
+-- introduced -- nominal/basetype cover the type text in every context that
+-- embeds `$.type` (a local's annotation, a parameter's, a record field's),
+-- since that grammar rule is shared rather than duplicated per context.
+local type_position_parent_types <const>: {string:boolean} = {
+   ["nominal"] = true,
+   ["basetype"] = true,
+}
+
+-- Collapse a raw tree-sitter node type into the handler-facing `Kind`.
 local node_kind <const>: {string:NodeInfo.NodeKind} = {
    ["."] = "dot",
    [":"] = "colon",
@@ -100,7 +107,6 @@ local function node_kind_of(node_type: string): NodeInfo.NodeKind
    return node_kind[node_type] or "other"
 end
 
--- Completion: the type to complete against is the expression before the trigger.
 local function fill_completion_trigger(out: NodeInfo, leaf: ltreesitter.Node, parent: ltreesitter.Node)
    local prev = leaf:prev_sibling()
    if prev == nil then
@@ -122,7 +128,6 @@ local function fill_completion_trigger(out: NodeInfo, leaf: ltreesitter.Node, pa
    end
 end
 
--- Signature help: resolve what is being called.
 local function fill_signature_trigger(out: NodeInfo, leaf: ltreesitter.Node, parent: ltreesitter.Node, cursor: ltreesitter.Cursor)
    if parent:type() == "args" then
       if cursor:goto_parent() then
@@ -197,6 +202,7 @@ local function token_at(cursor: ltreesitter.Cursor, y: integer, x: integer): Nod
       _parent_type = parent_type,
       parent_source = parent:source(),
       in_declaration_position = declaration_parent_types[parent_type] == true,
+      in_type_position = type_position_parent_types[parent_type] == true,
       start_y = leaf_start.row,
       start_x = leaf_start.column,
       end_y = leaf_end.row,
@@ -282,9 +288,7 @@ function NodeInfo.name_at_cursor(cursor: ltreesitter.Cursor, y: integer, x: inte
    return out
 end
 
--- Names of the record and interface declarations enclosing (y, x), outermost
--- first -- {"ltreesitter", "Cursor"} for a cursor inside `record Cursor` inside
--- `record ltreesitter`.
+-- Names of the record and interface declarations enclosing (y, x)
 --
 -- This is how a type declared inside a record is named at all. Only the outermost
 -- of these is a scope symbol; everything nested is reachable only as a field of

@@ -294,8 +294,6 @@ end
 
 
 
-
-
 local function split_by_symbols(input, self_type, stop_at)
    local t = {}
    if not input then return t end
@@ -434,9 +432,6 @@ function Document:type_information_for_position(y, x, ret_depth)
 
    return type_info
 end
-
-
-
 
 
 
@@ -619,7 +614,6 @@ function Document:resolve_preceded_type(node_info, pos)
    logger:debug("Falling back to token chain: %s", tks)
    return self:type_information_for_tokens(tks, pos.line, pos.character)
 end
-
 
 
 

@@ -9,10 +9,6 @@ local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 th
 
 
 
-
-
-
-
 local ltreesitter = require("ltreesitter")
 
 local tree_walk = require("teal_language_server.analysis.node_info.tree_walk")
@@ -75,18 +71,29 @@ local NodeInfo = {}
 
 
 
+
+
+
+
+
+
 local declaration_parent_types = {
    ["attnamelist"] = true,
    ["attrib"] = true,
    ["nominal"] = true,
    ["basetype"] = true,
-
-
-
+   ["recordkey"] = true,
+   ["parname"] = true,
 }
 
 
 
+
+
+local type_position_parent_types = {
+   ["nominal"] = true,
+   ["basetype"] = true,
+}
 
 
 local node_kind = {
@@ -99,7 +106,6 @@ local node_kind = {
 local function node_kind_of(node_type)
    return node_kind[node_type] or "other"
 end
-
 
 local function fill_completion_trigger(out, leaf, parent)
    local prev = leaf:prev_sibling()
@@ -121,7 +127,6 @@ local function fill_completion_trigger(out, leaf, parent)
       out.bypos_y, out.bypos_x, out.bypos_ret_depth = bypos_key.for_node(prev)
    end
 end
-
 
 local function fill_signature_trigger(out, leaf, parent, cursor)
    if parent:type() == "args" then
@@ -197,6 +202,7 @@ local function token_at(cursor, y, x)
       _parent_type = parent_type,
       parent_source = parent:source(),
       in_declaration_position = declaration_parent_types[parent_type] == true,
+      in_type_position = type_position_parent_types[parent_type] == true,
       start_y = leaf_start.row,
       start_x = leaf_start.column,
       end_y = leaf_end.row,
@@ -281,8 +287,6 @@ function NodeInfo.name_at_cursor(cursor, y, x)
    end
    return out
 end
-
-
 
 
 
