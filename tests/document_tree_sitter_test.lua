@@ -490,6 +490,50 @@ end]])
    tested.assert({ expected = "self", actual = table.concat(node_info.token_chain_raw, ".") })
 end)
 
+-- ts-teal flattens `Outer.Inner:m` into a list of identifiers and sets the
+-- funcname's `base` field to only the first of them, so reading `base` resolved
+-- `self` to `Outer` and `self.` inside such a method completed against the outer
+-- record. The receiver is every identifier up to the `:`, and it has to reach
+-- the chain as separate segments: "Outer.Inner" as one token matches no scope
+-- symbol, global, or type declaration, and a bare "Inner" makes the same-file
+-- type scan refuse to guess as soon as another record nests that name too.
+tested.test("a nested receiver keeps every segment of its name", function()
+   local d = doc([[
+local record Outer
+   record Inner
+      v: number
+   end
+end
+function Outer.Inner:m()
+   local a = self.v
+end]])
+
+   local node_info = d:tree_sitter_token(6, 14)
+   tested.assert({ expected = "self", actual = node_info.source })
+   tested.assert({
+      given = "the cursor on `self` inside a method of a nested record",
+      should = "resolve self_type to the path that reaches the receiver",
+      expected = "Outer.Inner",
+      actual = node_info.self_type,
+   })
+   tested.assert({
+      given = "a resolved chain rooted at a nested receiver",
+      should = "carry one token per segment, not a single dotted token",
+      expected = "Outer|Inner",
+      actual = table.concat(node_info.token_chain, "|"),
+   })
+
+   -- col 18 is the `v`; the line is 19 characters, so 19 is past its end
+   local at_field = d:tree_sitter_token(6, 18)
+   tested.assert({ expected = "v", actual = at_field.source })
+   tested.assert({
+      given = "the cursor on a field reached through a nested receiver",
+      should = "chain through both receiver segments",
+      expected = "Outer|Inner|v",
+      actual = table.concat(at_field.token_chain, "|"),
+   })
+end)
+
 -- In a broken parse the children of an ERROR node are flattened, so a method
 -- call on self recovers as a funcname-shaped node sitting between the cursor and
 -- the real enclosing declaration. The upward walk must not accept it: only a
