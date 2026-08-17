@@ -294,12 +294,20 @@ end
 
 -- Split a dotted/colon source string (e.g. "self.foo.bar") into a token chain,
 -- substituting the enclosing record name for "self". Stops after `stop_at` when given.
+--
+-- A receiver on a nested record arrives dotted ("Outer.Inner"), and expands to
+-- one token per segment for the same reason the rest of the input does: the
+-- chain is resolved a segment at a time, so a token with a dot in it matches no
+-- scope symbol, global, or type declaration. See self_resolution.resolve_chain,
+-- which does this for the chains that arrive already split.
 local function split_by_symbols(input: string, self_type: string, stop_at?: string): {string}
    local t = {}
    if not input then return t end
    for str in string.gmatch(input, "([^%.%:]+)") do
-      if str == "self" then
-         table.insert(t, self_type)
+      if str == "self" and self_type ~= nil then
+         for segment in self_type:gmatch("[^%.]+") do
+            table.insert(t, segment)
+         end
       else
          table.insert(t, str)
       end

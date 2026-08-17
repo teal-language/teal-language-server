@@ -11,10 +11,29 @@ local ltreesitter <const> = require("ltreesitter")
 local record self_resolution
 end
 
--- Receiver type named by a `funcname` (the `R` in `function R:m()`).
+-- Receiver type named by a `funcname` (the `R` in `function R:m()`), written as
+-- the path that reaches it from scope: `Outer.Inner` for a method on a nested
+-- record, not `Inner`.
+--
+-- ts-teal flattens a funcname into a list of identifiers separated by `.`/`:`
+-- tokens, and its `base` field is only the *first* of them. Reading `base` gave
+-- `Outer` for `function Outer.Inner:m()`, so `self.` inside such a method
+-- completed against the outer record. The receiver is every identifier up to
+-- the `:`.
 local function receiver_of(funcname: ltreesitter.Node): string
-   local base_name = funcname:child_by_field_name("base")
-   return base_name and base_name:source()
+   local segments: {string} = {}
+   for child in funcname:children() do
+      local child_type = child:type()
+      if child_type == ":" then
+         break
+      elseif child_type == "identifier" then
+         table.insert(segments, child:source())
+      end
+   end
+   if #segments == 0 then
+      return nil
+   end
+   return table.concat(segments, ".")
 end
 
 -- Name of the record `node` declares a method on, if it declares one at all.
@@ -103,6 +122,11 @@ end
 -- `self` only becomes a usable type name once the enclosing method is known, so
 -- the resolved chain is derived after the enclosing_receiver walk rather than at
 -- build time. Returns nil for a nil chain: a trigger token has no chain at all.
+--
+-- A dotted receiver expands to one segment per token rather than replacing
+-- `self` with the whole path: the chain is resolved segment by segment against
+-- scope symbols and then `fields`, so `Outer.Inner` as a single token matches
+-- nothing at all.
 function self_resolution.resolve_chain(token_chain_raw: {string}, self_type: string): {string}
    if token_chain_raw == nil then
       return nil
@@ -111,8 +135,11 @@ function self_resolution.resolve_chain(token_chain_raw: {string}, self_type: str
       return token_chain_raw
    end
    local resolved: {string} = {}
-   for i, segment in ipairs(token_chain_raw) do
-      resolved[i] = i == 1 and self_type or segment
+   for segment in self_type:gmatch("[^%.]+") do
+      table.insert(resolved, segment)
+   end
+   for i = 2, #token_chain_raw do
+      table.insert(resolved, token_chain_raw[i])
    end
    return resolved
 end

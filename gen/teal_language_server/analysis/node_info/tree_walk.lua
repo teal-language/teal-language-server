@@ -37,8 +37,6 @@ end
 
 
 
-
-
 function tree_walk.unwrap_prefixexp(node)
    while node ~= nil and node:type() == "prefixexp" and node:child_count() == 1 do
       node = node:child(0)

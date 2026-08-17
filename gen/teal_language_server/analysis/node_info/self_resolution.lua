@@ -1,4 +1,4 @@
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local string = _tl_compat and _tl_compat.string or string
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
 
 
 
@@ -12,9 +12,28 @@ local self_resolution = {}
 
 
 
+
+
+
+
+
+
+
+
 local function receiver_of(funcname)
-   local base_name = funcname:child_by_field_name("base")
-   return base_name and base_name:source()
+   local segments = {}
+   for child in funcname:children() do
+      local child_type = child:type()
+      if child_type == ":" then
+         break
+      elseif child_type == "identifier" then
+         table.insert(segments, child:source())
+      end
+   end
+   if #segments == 0 then
+      return nil
+   end
+   return table.concat(segments, ".")
 end
 
 
@@ -103,6 +122,11 @@ end
 
 
 
+
+
+
+
+
 function self_resolution.resolve_chain(token_chain_raw, self_type)
    if token_chain_raw == nil then
       return nil
@@ -111,8 +135,11 @@ function self_resolution.resolve_chain(token_chain_raw, self_type)
       return token_chain_raw
    end
    local resolved = {}
-   for i, segment in ipairs(token_chain_raw) do
-      resolved[i] = i == 1 and self_type or segment
+   for segment in self_type:gmatch("[^%.]+") do
+      table.insert(resolved, segment)
+   end
+   for i = 2, #token_chain_raw do
+      table.insert(resolved, token_chain_raw[i])
    end
    return resolved
 end

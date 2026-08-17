@@ -36,9 +36,7 @@ function tree_walk.descend_to_leaf(cursor: ltreesitter.Cursor, y: integer, x: in
 end
 
 -- ts-teal wraps every expression link in a `prefixexp`, so a node reached via
--- prev_sibling or a field is usually one or more wrappers away from the thing we
--- actually want to dispatch on. Failing to unwrap does not error -- it silently
--- falls through to "the node's own start" and returns a wrong by_pos key.
+-- prev_sibling or a field is usually needs to be unwrapped before use
 function tree_walk.unwrap_prefixexp(node: ltreesitter.Node): ltreesitter.Node
    while node ~= nil and node:type() == "prefixexp" and node:child_count() == 1 do
       node = node:child(0)

@@ -77,6 +77,9 @@ local NodeInfo = {}
 
 
 
+
+
+
 local declaration_parent_types = {
    ["attnamelist"] = true,
    ["attrib"] = true,

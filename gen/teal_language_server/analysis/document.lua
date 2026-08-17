@@ -294,12 +294,20 @@ end
 
 
 
+
+
+
+
+
+
 local function split_by_symbols(input, self_type, stop_at)
    local t = {}
    if not input then return t end
    for str in string.gmatch(input, "([^%.%:]+)") do
-      if str == "self" then
-         table.insert(t, self_type)
+      if str == "self" and self_type ~= nil then
+         for segment in self_type:gmatch("[^%.]+") do
+            table.insert(t, segment)
+         end
       else
          table.insert(t, str)
       end

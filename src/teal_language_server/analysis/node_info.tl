@@ -56,6 +56,9 @@ local record NodeInfo
    -- like "string") is exactly what's wanted
    in_type_position: boolean
    preceded_by: string
+
+   -- The receiver of the method enclosing the cursor -- what `self` denotes --
+   -- written as the path that reaches it from scope
    self_type: string
 
    -- the (1-indexed) position to look this request's type up in by_pos:
