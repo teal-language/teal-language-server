@@ -47,6 +47,10 @@ build = {
       ["teal_language_server.analysis.env_updater"] = "gen/teal_language_server/analysis/env_updater.lua",
       ["teal_language_server.analysis.lua_env"] = "gen/teal_language_server/analysis/lua_env.lua",
       ["teal_language_server.analysis.node_info"] = "gen/teal_language_server/analysis/node_info.lua",
+      ["teal_language_server.analysis.node_info.bypos_key"] = "gen/teal_language_server/analysis/node_info/bypos_key.lua",
+      ["teal_language_server.analysis.node_info.self_resolution"] = "gen/teal_language_server/analysis/node_info/self_resolution.lua",
+      ["teal_language_server.analysis.node_info.token_chain"] = "gen/teal_language_server/analysis/node_info/token_chain.lua",
+      ["teal_language_server.analysis.node_info.tree_walk"] = "gen/teal_language_server/analysis/node_info/tree_walk.lua",
 
       -- handler
       ["teal_language_server.handlers.definitions"] = "gen/teal_language_server/handlers/definitions.lua",
