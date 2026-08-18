@@ -78,4 +78,4 @@ Note:
 
 ## Licences
 Apart from dependencies listed in the rockspec and their respective licences, teal-language-server includes the following:
-- Modified logger to save to files and print to stderroriginally based on [tested](https://github.com/FourierTransformer/tested)'s logger - MIT
+- Modified logger to save to files and print to stderr originally based on [tested](https://github.com/FourierTransformer/tested)'s logger - MIT
