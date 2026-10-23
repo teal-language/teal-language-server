@@ -165,6 +165,17 @@ end
 
 
 
+
+function Document:ensure_type_report()
+   local tks = self:_get_tokens()
+   local ast = self:_get_ast(tks)
+   self:_get_result(ast)
+end
+
+
+
+
+
 function Document:list_type_names()
    local names, seen = {}, {}
    for _, type_info in pairs(self:get_type_report().types) do
@@ -587,6 +598,65 @@ local function bypos_key_for(node)
    end
    local start_point = node:start_point()
    return start_point.row + 1, start_point.column + 1
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function covering_table_constructor(node, y, x, decl_y, decl_x)
+   local a, b = node:start_point(), node:end_point()
+   if not ((y > a.row or (y == a.row and x >= a.column)) and
+      (y < b.row or (y == b.row and x < b.column))) then
+      return nil
+   end
+
+   local closest_decl_y, closest_decl_x = decl_y, decl_x
+   if node:type() == "var_declaration" then
+      for child in node:children() do
+         if child:type() == "var_declarators" then
+            for declarator in child:children() do
+               local sp = declarator:start_point()
+               closest_decl_y, closest_decl_x = sp.row + 1, sp.column + 1
+               break
+            end
+         end
+      end
+   end
+
+
+   for child in node:children() do
+      local cy, cx, dy, dx = covering_table_constructor(child, y, x, closest_decl_y, closest_decl_x)
+      if cy ~= nil then
+         return cy, cx, dy, dx
+      end
+   end
+
+   if node:type() == "table_constructor" then
+      return a.row + 1, a.column + 1, closest_decl_y, closest_decl_x
+   end
+
+   return nil
+end
+
+function Document:table_constructor_bypos(y, x)
+   return covering_table_constructor(self._tree:root(), y, x)
 end
 
 function Document:_tree_sitter_token(y, x)

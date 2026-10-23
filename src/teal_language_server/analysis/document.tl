@@ -160,6 +160,17 @@ function Document:get_type_report(): tl.TypeReport
    return env.reporter:get_report()
 end
 
+-- Run the type check even when the document currently fails to lex or parse.
+-- process_and_publish_results skips tl.check for such inputs (it publishes the
+-- syntax errors and returns), so a completion request sent while the user is
+-- mid-edit would otherwise find an empty type report. tl.check tolerates parse
+-- errors and still fills by_pos from the surviving AST. Like any check, the
+-- result is cached, so this is a no-op while the document text is unchanged.
+function Document:ensure_type_report()
+   local tks <const> = self:_get_tokens()
+   local ast <const> = self:_get_ast(tks)
+   self:_get_result(ast)
+end
 -- Every name usable in a type annotation position: the named types recorded
 -- in the type report (records, enums, aliases, nominals from any loaded
 -- file) plus the builtin primitives. Report entries also carry non-name
@@ -587,6 +598,65 @@ local function bypos_key_for(node: ltreesitter.Node): integer, integer, integer
    end
    local start_point = node:start_point()
    return start_point.row + 1, start_point.column + 1
+end
+
+-- Find the innermost tree-sitter table_constructor whose range contains the
+-- (0-indexed) position y/x and return its 1-indexed start; while descending,
+-- also track the 1-indexed start of the first declarator of the nearest
+-- enclosing var_declaration (only the first declarator is tracked: a table
+-- constructor assigned in a multi-declarator local like
+-- `local a, b: T = 1, {}` cannot be mapped to its declarator reliably, and
+-- those are rare enough not to warrant order-matching logic).
+--
+-- Caret positions inside a table constructor often have no tree-sitter leaf of
+-- their own (a fresh line inside `{ }`), since the whitespace between entries
+-- is covered by no leaf node, so completion walks the nodes whose range
+-- contains the point down the tree spine instead.
+--
+-- tl records the declarator's type at the declarator name and the
+-- constructor's own (annotated or inferred) type at the constructor start.
+-- The declarator's entry is the more stable one: half-typed, unknown fields in
+-- the constructor (a very mid-typing situation) degrade the constructor's
+-- inferred type to `{<invalid type>}` with no fields, while the declarator
+-- keeps the annotation's record. Returns nil outside table-constructor
+-- regions.
+local function covering_table_constructor(node: ltreesitter.Node, y: integer, x: integer, decl_y?: integer, decl_x?: integer): integer, integer, integer, integer
+   local a, b = node:start_point(), node:end_point()
+   if not ((y > a.row or (y == a.row and x >= a.column)) and
+      (y < b.row or (y == b.row and x < b.column))) then
+      return nil
+   end
+
+   local closest_decl_y, closest_decl_x = decl_y, decl_x
+   if node:type() == "var_declaration" then
+      for child in node:children() do
+         if child:type() == "var_declarators" then
+            for declarator in child:children() do
+               local sp = declarator:start_point()
+               closest_decl_y, closest_decl_x = sp.row + 1, sp.column + 1
+               break
+            end
+         end
+      end
+   end
+
+   -- children first, so a constructor nested inside another one wins
+   for child in node:children() do
+      local cy, cx, dy, dx = covering_table_constructor(child, y, x, closest_decl_y, closest_decl_x)
+      if cy ~= nil then
+         return cy, cx, dy, dx
+      end
+   end
+
+   if node:type() == "table_constructor" then
+      return a.row + 1, a.column + 1, closest_decl_y, closest_decl_x
+   end
+
+   return nil
+end
+
+function Document:table_constructor_bypos(y: integer, x: integer): integer, integer, integer, integer
+   return covering_table_constructor(self._tree:root(), y, x)
 end
 
 function Document:_tree_sitter_token(y: integer, x: integer): Document.NodeInfo

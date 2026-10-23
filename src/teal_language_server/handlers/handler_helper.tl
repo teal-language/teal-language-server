@@ -18,6 +18,17 @@ handler_helper.indexable_parent_types = {
    ["function_name"] = true,
 }
 
+-- An explicit completion invocation, as opposed to a trigger-character-driven
+-- one: either the client sent no context at all (never carries a trigger
+-- character; older clients and simple integrations omit the field entirely) or
+-- it used the LSP "Invoked" kind (e.g. Zed, which sends triggerKind=Invoked for
+-- typed text and explicit requests alike).
+function handler_helper.is_invoked_completion(params: lsp.Method.Params): boolean
+   local context = params.context as lsp.CompletionContext
+   return context == nil
+      or context.triggerKind == lsp.completion_trigger_kind.Invoked
+end
+
 function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 
@@ -39,7 +50,9 @@ function handler_helper.get_node_info(document_manager: DocumentManager, params:
    local node_info = doc:tree_sitter_token(pos.line, pos.character)
    if node_info == nil then
       logger:info("Unable to retrieve node info from tree-sitter parser")
-      return nil
+      -- hand the document back so callers can retry with a different lookup
+      -- strategy where no tree-sitter leaf covers the position
+      return nil, doc
    end
    logger:debug("Found node info: %s", node_info)
    return node_info, doc

@@ -36,62 +36,120 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
    pos.character = pos.character - 1
 
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
-   if node_info == nil then
-      logger:trace("No node found at given position")
+   -- No document at all: get_node_info returns (nil, nil) in that case
+   if node_info == nil and doc == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   logger:debug("Found node info: %s", node_info)
+   -- Lex/parse-broken docs never get a type check from the diagnostics
+   -- pipeline, but completion still needs a (best-effort) type report;
+   -- tl.check tolerates parse errors and fills by_pos from the surviving
+   -- AST. Cached, so it is free while the document text is unchanged.
+   doc:ensure_type_report()
 
    local type_info: tl.TypeInfo
 
-   -- literally at the . or : and are trying to autocomplete
-   -- preceded_by should have everything we need in it.
-   if node_info.type == "." or node_info.type == ":" then
-      type_info = doc:resolve_preceded_type(node_info, pos)
-
-   -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
-   elseif node_info.type == "identifier" then
-      local tks: {string}
-      -- the types that we would need to index into to get type info from
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
-      else
-         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
-      end
-
-      -- takes it back to the just after the first dot, then does completion
-      -- if there's only one symbol, will return an empty list and type_information_for_tokens will just
-      -- show what's in scope
-      tks[#tks] = nil
-
-      -- completing a type name in an annotation position: offer the named
-      -- types recorded in the type report (records, enums, aliases, builtin
-      -- primitives). No prefix filtering here; the client filters by the
-      -- already-typed characters.
-      if node_info.parent_type == "simple_type" then
-         local type_items: {any} = { }
-         for _, name in ipairs(doc:list_type_names()) do
-            table.insert(type_items, {label = name, kind = lsp.completion_item_kind.Reference})
-         end
-         logger:debug("Sending %d type names back to client", #type_items)
-         self._lsp_reader_writer:send_rpc(id, {
-            isIncomplete = false,
-            items = type_items
-         })
-         return
-      end
-
-      -- trying to define something new, probably don't want the in-scope thing to popup
-      -- we could probably help complete simple types
-      if node_info.parent_type == "var" or
-         node_info.parent_type == "table_type" then
+   -- No tree-sitter leaf at the caret: the usual case is a bare line inside a
+   -- table constructor (`local r: T = { \n }`), where the whitespace between
+   -- entries is covered by no leaf node. Resolve the enclosing constructor's
+   -- type and offer its record fields (issue #18).
+   if node_info == nil then
+      local cons_y, cons_x, decl_y, decl_x = doc:table_constructor_bypos(pos.line, pos.character)
+      logger:debug("No node found; table constructor bypos: %s:%s, declarator bypos: %s:%s",
+         tostring(cons_y), tostring(cons_x), tostring(decl_y), tostring(decl_x))
+      if cons_y == nil then
+         logger:trace("No node found at given position")
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
 
-      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+      type_info = doc:type_information_for_position(cons_y, cons_x)
+      -- half-typed, unknown fields degrade the constructor's inferred type to
+      -- `{<invalid type>}` with no fields; the declarator's annotated type
+      -- survives that, so fall back to it
+      if (type_info == nil or (type_info.fields == nil and type_info.keys == nil))
+         and decl_y ~= nil then
+         type_info = doc:type_information_for_position(decl_y, decl_x) or type_info
+      end
+      if type_info == nil then
+         self._lsp_reader_writer:send_rpc(id, nil)
+         return
+      end
+
+   -- literally at the . or : and are trying to autocomplete
+   -- preceded_by should have everything we need in it.
+   elseif node_info.type == "." or node_info.type == ":" then
+      type_info = doc:resolve_preceded_type(node_info, pos)
+
+   -- completion request in the middle of a word like in "node_info.par" while typing "parent_source"
+   elseif node_info.type == "identifier" then
+      if node_info.parent_type == "table_entry" then
+         -- completing a (possibly partial) field name inside a table
+         -- constructor: offer the constructor's record fields (annotation wins
+         -- over a half-typed entry) rather than in-scope globals (issue #18)
+         local cons_y, cons_x, decl_y, decl_x = doc:table_constructor_bypos(pos.line, pos.character)
+         logger:debug("In table entry; table constructor bypos: %s:%s, declarator bypos: %s:%s",
+            tostring(cons_y), tostring(cons_x), tostring(decl_y), tostring(decl_x))
+         if cons_y == nil then
+            self._lsp_reader_writer:send_rpc(id, nil)
+            return
+         end
+
+         type_info = doc:type_information_for_position(cons_y, cons_x)
+         -- half-typed, unknown fields degrade the constructor's inferred type
+         -- to `{<invalid type>}` with no fields; the declarator's annotated
+         -- type survives that, so fall back to it
+         if (type_info == nil or (type_info.fields == nil and type_info.keys == nil))
+            and decl_y ~= nil then
+            type_info = doc:type_information_for_position(decl_y, decl_x) or type_info
+         end
+         if type_info == nil then
+            self._lsp_reader_writer:send_rpc(id, nil)
+            return
+         end
+      else
+         local tks: {string}
+         -- the types that we would need to index into to get type info from
+         if handler_helper.indexable_parent_types[node_info.parent_type] then
+            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
+         else
+            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
+         end
+
+         -- takes it back to the just after the first dot, then does completion
+         -- if there's only one symbol, will return an empty list and type_information_for_tokens will just
+         -- show what's in scope
+         tks[#tks] = nil
+
+         -- completing a type name in an annotation position: offer the named
+         -- types recorded in the type report (records, enums, aliases, builtin
+         -- primitives). No prefix filtering here; the client filters by the
+         -- already-typed characters.
+         if node_info.parent_type == "simple_type" then
+            local type_items: {any} = { }
+            for _, name in ipairs(doc:list_type_names()) do
+               table.insert(type_items, {label = name, kind = lsp.completion_item_kind.Reference})
+            end
+            logger:debug("Sending %d type names back to client", #type_items)
+            self._lsp_reader_writer:send_rpc(id, {
+               isIncomplete = false,
+               items = type_items
+            })
+            return
+         end
+
+         -- trying to define something new, probably don't want the in-scope thing to popup
+         -- unless the user explicitly invoked completion
+         if (node_info.parent_type == "var" or
+            node_info.parent_type == "table_type")
+            and not handler_helper.is_invoked_completion(params) then
+            self._lsp_reader_writer:send_rpc(id, nil)
+            return
+         end
+
+         type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+      end
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -138,8 +196,10 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
             local was_added:boolean
-            -- self based access should only show functions
-            if node_info.type == ":" then
+            -- self based access should only show functions; node_info may be
+            -- absent when the caret sits in whitespace inside a table
+            -- constructor
+            if node_info ~= nil and node_info.type == ":" then
                -- overloaded methods (e.g. FILE:read) arrive as POLY, so check each
                -- overload and keep the method if any is a self-callable function
                local self_method = false
