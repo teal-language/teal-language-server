@@ -752,6 +752,128 @@ tested.test("dot completion on a top-level generic call result returns the infer
     })
 end)
 
+tested.test("dot completion on a document with parse errors resolves fields", function()
+    -- A dangling 's.' is a parse error, so the diagnostics pipeline skips the
+    -- type check; completion must still resolve fields from the surviving AST
+    local uri = "file:///tmp/tls_complete_parse_err.tl"
+    client:open_document(uri, "local s = { x = 1 }\ns.\n")
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- cursor at col 2 (just after 's.'); server subtracts 1 -> col 1 (the '.' node)
+    local response = client:get_completions_triggered(uri, 1, 2, ".")
+
+    tested.assert({
+        given = "dot completion on parse-error document",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "dot completion items on parse-error document",
+        should = "include 'x'",
+        expected = true,
+        actual = has_label(items, "x"),
+    })
+end)
+
+tested.test("invoked completion (triggerKind=1) for partial identifier 'ma' includes 'math'", function()
+    local uri = "file:///tmp/tls_complete_invoked.tl"
+    client:open_document(uri, "ma")
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- cursor at col 2 (just after "ma"); server subtracts 1 -> col 1 (inside "ma")
+    local response = client:get_completions_invoked(uri, 0, 2)
+
+    tested.assert({
+        given = "invoked completion response for 'ma'",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "invoked completion items for 'ma'",
+        should = "include 'math'",
+        expected = true,
+        actual = has_label(items, "math"),
+    })
+end)
+
+tested.test("completion on a bare line inside a table constructor offers the annotated record's fields", function()
+    local uri = "file:///tmp/tls_complete_table.tl"
+    local doc = table.concat({
+        "local record Payload",
+        "  amount: number",
+        "  rate: number",
+        "end",
+        "",
+        "local payload: Payload = {",
+        "  ",
+        "}",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "  " is a bare line inside `{ }`: no tree-sitter leaf covers the
+    -- whitespace, so completion resolves the enclosing constructor's record
+    -- (cursor at col 2 -> server subtracts 1 -> col 1 of line 6)
+    local response = client:get_completions_invoked(uri, 6, 2)
+
+    tested.assert({
+        given = "table constructor completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    for _, label in ipairs({ "amount", "rate" }) do
+        tested.assert({
+            given = "table constructor completion items",
+            should = "include '" .. label .. "'",
+            expected = true,
+            actual = has_label(items, label),
+        })
+    end
+end)
+
+tested.test("partial field names inside a table constructor offer the record's fields", function()
+    local uri = "file:///tmp/tls_complete_table_partial.tl"
+    local doc = table.concat({
+        "local record Payload",
+        "  amount: number",
+        "end",
+        "",
+        "local payload: Payload = {",
+        "  amo",
+        "}",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 5 "  amo": cursor at col 5 (just after "amo"); server subtracts 1 ->
+    -- col 4 (inside "amo")
+    local response = client:get_completions_invoked(uri, 5, 5)
+
+    tested.assert({
+        given = "partial field name completion response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "partial field name completion items",
+        should = "include 'amount'",
+        expected = true,
+        actual = has_label(items, "amount"),
+    })
+end)
+
 tested.test("completion at a type annotation includes locally declared record and enum names", function()
     local uri = "file:///tmp/tls_type_completes.tl"
     local doc = table.concat({
