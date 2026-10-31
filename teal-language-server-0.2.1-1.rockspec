@@ -25,7 +25,7 @@ dependencies = {
    "ltreesitter == 0.3.0",
 }
 
-test_dependencies = { "tested >= 0.3.0", "luacov", "inspect" }
+test_dependencies = { "tested == 0.3.0", "luacov", "inspect" }
 
 test = {
    type = "tested",
