@@ -10,7 +10,7 @@ local class <const> = require("teal_language_server.util.class")
 local logger = logging.get_logger(_module_name)
 
 local record StdinReader
-   _stdin: uv.Pipe
+   _stdin: uv.Stream
    _buffer: string
    _chunk_added_event: lusc.PulseEvent
    _disposed: boolean
@@ -25,9 +25,16 @@ function StdinReader:__init()
 end
 
 function StdinReader:initialize()
-   self._stdin = uv.new_pipe(false)
+   local handle_type = uv.guess_handle(0)
+   if handle_type == "tty" then
+      self._stdin = uv.new_tty(0, true) as uv.Stream
+   elseif handle_type == "pipe" or handle_type == "named_pipe" then
+      self._stdin = uv.new_pipe(false) as uv.Stream
+      assert((self._stdin as uv.Pipe):open(0))
+   else
+      error("Unable to utilize handle type: " .. handle_type)
+   end
    asserts.that(self._stdin ~= nil)
-   assert(self._stdin:open(0))
    logger:trace("Opened pipe for stdin.  Now waiting to receive data...")
 
    assert(self._stdin:read_start(function(err:string, chunk:string)

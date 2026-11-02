@@ -12,7 +12,7 @@ local logger = logging.get_logger(_module_name)
 
 local record LspReaderWriter
    _stdin_reader:StdinReader
-   _stdout: uv.Pipe
+   _stdout: uv.Stream
    _disposed: boolean
 
    metamethod __call: function(self: LspReaderWriter, stdin_reader: StdinReader): LspReaderWriter
@@ -75,9 +75,16 @@ function LspReaderWriter:_parse_header(lines:{string}):HeaderInfo
 end
 
 function LspReaderWriter:initialize()
-   self._stdout = uv.new_pipe(false)
+   local handle_type = uv.guess_handle(1)
+   if handle_type == "tty" then
+      self._stdout = uv.new_tty(1, false) as uv.Stream
+   elseif handle_type == "pipe" or handle_type == "named_pipe" then
+      self._stdout = uv.new_pipe(false) as uv.Stream
+      assert((self._stdout as uv.Pipe):open(1))
+   else
+
+   end
    asserts.that(self._stdout ~= nil)
-   assert(self._stdout:open(1))
    logger:trace("Opened pipe for stdout")
 end
 
@@ -126,7 +133,7 @@ function LspReaderWriter:_encode(t: {string:any})
    local msg = json.encode(t)
 
    local content = "Content-Length: " .. tostring(#msg) .. "\r\n\r\n" .. msg
-   assert(self._stdout:write(content))
+   assert(self._stdout:write(content, nil))
 
    logger:trace("Sending data: %s", content)
 end
