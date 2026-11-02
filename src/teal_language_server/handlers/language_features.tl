@@ -66,10 +66,26 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
       -- show what's in scope
       tks[#tks] = nil
 
+      -- completing a type name in an annotation position: offer the named
+      -- types recorded in the type report (records, enums, aliases, builtin
+      -- primitives). No prefix filtering here; the client filters by the
+      -- already-typed characters.
+      if node_info.parent_type == "simple_type" then
+         local type_items: {any} = { }
+         for _, name in ipairs(doc:list_type_names()) do
+            table.insert(type_items, {label = name, kind = lsp.completion_item_kind.Reference})
+         end
+         logger:debug("Sending %d type names back to client", #type_items)
+         self._lsp_reader_writer:send_rpc(id, {
+            isIncomplete = false,
+            items = type_items
+         })
+         return
+      end
+
       -- trying to define something new, probably don't want the in-scope thing to popup
       -- we could probably help complete simple types
       if node_info.parent_type == "var" or
-         node_info.parent_type == "simple_type" or
          node_info.parent_type == "table_type" then
          self._lsp_reader_writer:send_rpc(id, nil)
          return

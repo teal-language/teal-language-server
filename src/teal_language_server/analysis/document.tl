@@ -160,6 +160,27 @@ function Document:get_type_report(): tl.TypeReport
    return env.reporter:get_report()
 end
 
+-- Every name usable in a type annotation position: the named types recorded
+-- in the type report (records, enums, aliases, nominals from any loaded
+-- file) plus the builtin primitives. Report entries also carry non-name
+-- type strings (full signatures, type unions), so entries are filtered by
+-- shape. Sorting keeps the response stable.
+function Document:list_type_names(): {string}
+   local names, seen = {}, { }
+   for _, type_info in pairs(self:get_type_report().types) do
+      local name = type_info.str
+      if name ~= nil
+         and name ~= "self"
+         and name:match("^[%a_][%w_]*$") ~= nil
+         and not seen[name] then
+         seen[name] = true
+         names[#names + 1] = name
+      end
+   end
+   table.sort(names)
+   return names
+end
+
 local function _get_node_at(ast: tl.Node, y: integer, x: integer): tl.Node
    for _, node in ipairs(ast) do
       if node.y == y and node.x == x then

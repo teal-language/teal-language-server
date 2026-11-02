@@ -68,8 +68,24 @@ function LanguageFeatureHandlers:_on_completion(params, id)
 
 
 
+
+
+      if node_info.parent_type == "simple_type" then
+         local type_items = {}
+         for _, name in ipairs(doc:list_type_names()) do
+            table.insert(type_items, { label = name, kind = lsp.completion_item_kind.Reference })
+         end
+         logger:debug("Sending %d type names back to client", #type_items)
+         self._lsp_reader_writer:send_rpc(id, {
+            isIncomplete = false,
+            items = type_items,
+         })
+         return
+      end
+
+
+
       if node_info.parent_type == "var" or
-         node_info.parent_type == "simple_type" or
          node_info.parent_type == "table_type" then
          self._lsp_reader_writer:send_rpc(id, nil)
          return

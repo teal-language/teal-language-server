@@ -160,6 +160,27 @@ function Document:get_type_report()
    return env.reporter:get_report()
 end
 
+
+
+
+
+
+function Document:list_type_names()
+   local names, seen = {}, {}
+   for _, type_info in pairs(self:get_type_report().types) do
+      local name = type_info.str
+      if name ~= nil and
+         name ~= "self" and
+         name:match("^[%a_][%w_]*$") ~= nil and
+         not seen[name] then
+         seen[name] = true
+         names[#names + 1] = name
+      end
+   end
+   table.sort(names)
+   return names
+end
+
 local function _get_node_at(ast, y, x)
    for _, node in ipairs(ast) do
       if node.y == y and node.x == x then

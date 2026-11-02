@@ -21,7 +21,8 @@ handler_helper.indexable_parent_types = {
 function handler_helper.get_node_info(document_manager: DocumentManager, params: lsp.Method.Params, pos: lsp.Position): Document.NodeInfo, Document
    local context = params.context as lsp.CompletionContext
 
-   if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter then
+   if context and context.triggerKind ~= lsp.completion_trigger_kind.TriggerCharacter
+      and context.triggerKind ~= lsp.completion_trigger_kind.Invoked then
       logger:info("Ignoring completion request given kind: %s", context.triggerKind)
       return nil
    end

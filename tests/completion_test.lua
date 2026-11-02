@@ -752,4 +752,64 @@ tested.test("dot completion on a top-level generic call result returns the infer
     })
 end)
 
+tested.test("completion at a type annotation includes locally declared record and enum names", function()
+    local uri = "file:///tmp/tls_type_completes.tl"
+    local doc = table.concat({
+        "local enum Direction",
+        "  \"n\"",
+        "  \"s\"",
+        "end",
+        "",
+        "local record Point",
+        "  x: number",
+        "end",
+        "",
+        "local p: Poin",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- "local p: Poin" is 13 chars wide; cursor at col 13 is right after the
+    -- final 'n', so the server's -1 lands inside the identifier like the
+    -- existing partial-identifier test
+    local response = client:get_completions_invoked(uri, 9, 13)
+
+    tested.assert({
+        given = "completion response at a type annotation",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "type annotation completion items",
+        should = "include 'Point'",
+        expected = true,
+        actual = has_label(items, "Point"),
+    })
+    tested.assert({
+        given = "type annotation completion items",
+        should = "include 'Direction'",
+        expected = true,
+        actual = has_label(items, "Direction"),
+    })
+end)
+
+tested.test("completion at a type annotation includes builtin primitives", function()
+    local uri = "file:///tmp/tls_type_completes_prim.tl"
+    client:open_document(uri, "local n: num")
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    local response = client:get_completions_invoked(uri, 0, 12)
+
+    local items = response.result and response.result.items or {}
+    tested.assert({
+        given = "type annotation completion items",
+        should = "include 'number'",
+        expected = true,
+        actual = has_label(items, "number"),
+    })
+end)
+
 return tested
