@@ -281,4 +281,82 @@ tested.test("hover over a variable initialized from a call returns the call's re
     })
 end)
 
+tested.test("hover over a top-level function call named after a defined local function", function()
+    local uri = "file:///tmp/tls_hover_topfn.tl"
+    local doc = table.concat({
+        "local function greet(name: string): string",
+        "  return name",
+        "end",
+        "",
+        "local _ = greet(\"bob\")",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 4 "local _ = greet(...)": 'greet' at col 10 (1-based); hover does
+    -- not subtract 1
+    local response = client:get_hover(uri, 4, 10)
+
+    tested.assert({
+        given = "hover over top-level function call response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+end)
+
+tested.test("hover over a top-level macroexp declaration does not crash", function()
+    local uri = "file:///tmp/tls_hover_macroexp_decl.tl"
+    local doc = table.concat({
+        "local macroexp add(self: SB, line: string): nil",
+        "  return nil",
+        "end",
+        "",
+        "local sb: SB = { strings = {} }",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 0 "local macroexp add(...)": 'add' starts at col 16 (1-based); hover
+    -- does not subtract 1. The macroexp name's node matches a top-level
+    -- statement node without an arg list, so args lookup must degrade
+    -- gracefully instead of crashing the handler.
+    local response = client:get_hover(uri, 0, 17)
+
+    tested.assert({
+        given = "hover over macroexp declaration response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+end)
+
+tested.test("hover over a macroexp method call does not crash", function()
+    local uri = "file:///tmp/tls_hover_macroexp.tl"
+    local doc = table.concat({
+        "local record SB",
+        "  strings: {string}",
+        "  add: function(self: SB, line: string): nil = macroexp(self: SB, line: string): nil",
+        "    return nil",
+        "  end",
+        "end",
+        "",
+        "local sb: SB = { strings = {} }",
+        "local _ = sb:add(\"x\")",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 8 "local _ = sb:add(...)": 'add' starts at col 10 (1-based); hover
+    -- does not subtract 1
+    local response = client:get_hover(uri, 8, 10)
+
+    tested.assert({
+        given = "hover over macroexp method response",
+        should = "have a result",
+        expected = true,
+        actual = response ~= nil and response.result ~= nil,
+    })
+end)
+
 return tested

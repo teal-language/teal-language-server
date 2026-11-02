@@ -201,7 +201,9 @@ end
 
 function Document:get_function_args_string(type_info: tl.TypeInfo): {string}
    local node = self:get_ast_node_at(type_info) as ArgListNode
-   if node == nil then return nil end
+   -- top-level statements (e.g. a `local macroexp` declaration) can occupy the
+   -- exact position the type report points at without carrying an arg list
+   if node == nil or node.args == nil then return nil end
    local output: {string} = {}
    for _, arg_info in ipairs(node.args) do
       table.insert(output, arg_info.tk)
