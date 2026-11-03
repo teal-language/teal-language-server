@@ -36,62 +36,120 @@ function LanguageFeatureHandlers:_on_completion(params, id)
    pos.character = pos.character - 1
 
    local node_info, doc = handler_helper.get_node_info(self._document_manager, params, pos)
-   if node_info == nil then
-      logger:trace("No node found at given position")
+
+   if node_info == nil and doc == nil then
       self._lsp_reader_writer:send_rpc(id, nil)
       return
    end
 
-   logger:debug("Found node info: %s", node_info)
+
+
+
+
+   doc:ensure_type_report()
 
    local type_info
 
 
 
-   if node_info.type == "." or node_info.type == ":" then
-      type_info = doc:resolve_preceded_type(node_info, pos)
 
 
-   elseif node_info.type == "identifier" then
-      local tks
-
-      if handler_helper.indexable_parent_types[node_info.parent_type] then
-         tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
-      else
-         tks = Document.split_by_symbols(node_info.source, node_info.self_type)
-      end
-
-
-
-
-      tks[#tks] = nil
-
-
-
-
-
-      if node_info.parent_type == "simple_type" then
-         local type_items = {}
-         for _, name in ipairs(doc:list_type_names()) do
-            table.insert(type_items, { label = name, kind = lsp.completion_item_kind.Reference })
-         end
-         logger:debug("Sending %d type names back to client", #type_items)
-         self._lsp_reader_writer:send_rpc(id, {
-            isIncomplete = false,
-            items = type_items,
-         })
-         return
-      end
-
-
-
-      if node_info.parent_type == "var" or
-         node_info.parent_type == "table_type" then
+   if node_info == nil then
+      local cons_y, cons_x, decl_y, decl_x = doc:table_constructor_bypos(pos.line, pos.character)
+      logger:debug("No node found; table constructor bypos: %s:%s, declarator bypos: %s:%s",
+      tostring(cons_y), tostring(cons_x), tostring(decl_y), tostring(decl_x))
+      if cons_y == nil then
+         logger:trace("No node found at given position")
          self._lsp_reader_writer:send_rpc(id, nil)
          return
       end
 
-      type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+      type_info = doc:type_information_for_position(cons_y, cons_x)
+
+
+
+      if (type_info == nil or (type_info.fields == nil and type_info.keys == nil)) and
+         decl_y ~= nil then
+         type_info = doc:type_information_for_position(decl_y, decl_x) or type_info
+      end
+      if type_info == nil then
+         self._lsp_reader_writer:send_rpc(id, nil)
+         return
+      end
+
+
+
+   elseif node_info.type == "." or node_info.type == ":" then
+      type_info = doc:resolve_preceded_type(node_info, pos)
+
+
+   elseif node_info.type == "identifier" then
+      if node_info.parent_type == "table_entry" then
+
+
+
+         local cons_y, cons_x, decl_y, decl_x = doc:table_constructor_bypos(pos.line, pos.character)
+         logger:debug("In table entry; table constructor bypos: %s:%s, declarator bypos: %s:%s",
+         tostring(cons_y), tostring(cons_x), tostring(decl_y), tostring(decl_x))
+         if cons_y == nil then
+            self._lsp_reader_writer:send_rpc(id, nil)
+            return
+         end
+
+         type_info = doc:type_information_for_position(cons_y, cons_x)
+
+
+
+         if (type_info == nil or (type_info.fields == nil and type_info.keys == nil)) and
+            decl_y ~= nil then
+            type_info = doc:type_information_for_position(decl_y, decl_x) or type_info
+         end
+         if type_info == nil then
+            self._lsp_reader_writer:send_rpc(id, nil)
+            return
+         end
+      else
+         local tks
+
+         if handler_helper.indexable_parent_types[node_info.parent_type] then
+            tks = Document.split_by_symbols(node_info.parent_source, node_info.self_type)
+         else
+            tks = Document.split_by_symbols(node_info.source, node_info.self_type)
+         end
+
+
+
+
+         tks[#tks] = nil
+
+
+
+
+
+         if node_info.parent_type == "simple_type" then
+            local type_items = {}
+            for _, name in ipairs(doc:list_type_names()) do
+               table.insert(type_items, { label = name, kind = lsp.completion_item_kind.Reference })
+            end
+            logger:debug("Sending %d type names back to client", #type_items)
+            self._lsp_reader_writer:send_rpc(id, {
+               isIncomplete = false,
+               items = type_items,
+            })
+            return
+         end
+
+
+
+         if (node_info.parent_type == "var" or
+            node_info.parent_type == "table_type") and
+            not handler_helper.is_invoked_completion(params) then
+            self._lsp_reader_writer:send_rpc(id, nil)
+            return
+         end
+
+         type_info = doc:type_information_for_tokens(tks, pos.line, pos.character)
+      end
    else
       self._lsp_reader_writer:send_rpc(id, nil)
       return
@@ -139,7 +197,9 @@ function LanguageFeatureHandlers:_on_completion(params, id)
             type_info = doc:resolve_type_ref(v)
             local was_added
 
-            if node_info.type == ":" then
+
+
+            if node_info ~= nil and node_info.type == ":" then
 
 
                local self_method = false
