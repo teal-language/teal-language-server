@@ -1,11 +1,11 @@
 rockspec_format = "3.0"
 
 package = "teal-language-server"
-version = "0.2.1-1"
+version = "0.3.0-1"
 
 source = {
    url = "git+https://github.com/teal-language/teal-language-server.git",
-   tag = "0.2.1"
+   tag = "0.3.0"
 }
 
 description = {
@@ -16,7 +16,6 @@ description = {
 }
 
 dependencies = {
-   "luafilesystem",
    "tl == 0.24.8",
    "lua-cjson",
    "argparse",
