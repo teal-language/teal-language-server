@@ -3,21 +3,23 @@ package.path = "./?.lua;" .. package.path
 local tested = require("tested")
 local LspClient = require("tests.helpers.lsp_client")
 
+local t = tested.new()
+
 local client
 
-tested.before(function()
+t:before(function()
     client = LspClient.new("teal-language-server")
     client:initialize()
 end)
 
-tested.after(function()
+t:after(function()
     if client then
         client:shutdown()
         client = nil
     end
 end)
 
-tested.test("definition of locally defined function jumps to its declaration", function()
+t:test("definition of locally defined function jumps to its declaration", function()
     local uri = "file:///tmp/tls_def_1.tl"
     local doc = table.concat({
         "local function my_func(): number",
@@ -59,7 +61,7 @@ tested.test("definition of locally defined function jumps to its declaration", f
     })
 end)
 
-tested.test("definition of a locally defined record type jumps to its declaration", function()
+t:test("definition of a locally defined record type jumps to its declaration", function()
     local uri = "file:///tmp/tls_def_2.tl"
     local doc = table.concat({
         "local record Point",
@@ -99,4 +101,4 @@ tested.test("definition of a locally defined record type jumps to its declaratio
     })
 end)
 
-return tested
+return t

@@ -3,6 +3,8 @@ package.path = "./?.lua;" .. package.path
 local tested = require("tested")
 local LspClient = require("tests.helpers.lsp_client")
 
+local t = tested.new()
+
 -- Document mirrors test/sample-file.tl exactly.
 -- Line numbers below are 0-indexed (LSP convention).
 --
@@ -83,14 +85,14 @@ end
 local client
 local uri = "file:///tmp/tls_def_sample_file.tl"
 
-tested.before(function()
+t:before(function()
     client = LspClient.new("teal-language-server")
     client:initialize()
     client:open_document(uri, doc)
     client:wait_for_notification("textDocument/publishDiagnostics")
 end)
 
-tested.after(function()
+t:after(function()
     if client then
         client:shutdown()
         client = nil
@@ -100,7 +102,7 @@ end)
 -- Line 11: "TestType_mt = {", TestType_mt at col 0.
 -- Previously jumped to `metatable` in stdlib.d.tl (the type); now goes to the
 -- symbol declaration `local TestType_mt` on line 6.
-tested.test("definition of TestType_mt from usage site jumps to its local declaration", function()
+t:test("definition of TestType_mt from usage site jumps to its local declaration", function()
     local response = client:get_definition(uri, 11, 0)
     local result = response and response.result
 
@@ -122,7 +124,7 @@ end)
 -- Previously returned no result because self_type is nil for function literals (not named
 -- methods), causing split_by_symbols to insert nil as the first token. Now `self` is kept
 -- literal and resolved as an in-scope parameter symbol.
-tested.test("definition of self inside a function literal jumps to its parameter declaration", function()
+t:test("definition of self inside a function literal jumps to its parameter declaration", function()
     local response = client:get_definition(uri, 20, 11)
     local result = response and response.result
 
@@ -145,7 +147,7 @@ end)
 -- tl's type report does not expose record-field positions, and `test_value`'s type
 -- (boolean) is a primitive with no position, so we fall back to the enclosing record's
 -- declaration (line 0, `local record TestType`) rather than the exact field on line 1.
-tested.test("definition of field access test_value in self.test_value jumps to its enclosing record", function()
+t:test("definition of field access test_value in self.test_value jumps to its enclosing record", function()
     local response = client:get_definition(uri, 20, 16)
     local result = response and response.result
 
@@ -166,7 +168,7 @@ end)
 -- Line 31: "local a: TestType = setmetatable(...)", a at col 6 (the declaration itself).
 -- Previously jumped to `local record TestType` (the type, line 0); now resolves to the
 -- symbol declaration, which is `a` itself on line 31.
-tested.test("definition of a at its own declaration jumps to itself", function()
+t:test("definition of a at its own declaration jumps to itself", function()
     local response = client:get_definition(uri, 31, 6)
     local result = response and response.result
 
@@ -188,7 +190,7 @@ end)
 -- Known limitation: table-literal keys are not tracked as symbols by tl, and the table's
 -- target type is not readily available at this node, so no result is returned. Ideally this
 -- would jump to `test_value: boolean` in TestType (line 1). Kept as an expected failure.
-tested.test("definition of test_value key in table literal jumps to its record field declaration", {expected="FAIL"}, function()
+t:test("definition of test_value key in table literal jumps to its record field declaration", {expected="FAIL"}, function()
     local response = client:get_definition(uri, 31, 34)
     local result = response and response.result
 
@@ -209,7 +211,7 @@ end)
 -- Line 37: "a()", a at col 0 (the call site).
 -- Previously jumped to `local record TestType` (the type, line 0); now resolves to the
 -- symbol declaration `local a` on line 31.
-tested.test("definition of a at a call site jumps to its local declaration", function()
+t:test("definition of a at a call site jumps to its local declaration", function()
     local response = client:get_definition(uri, 37, 0)
     local result = response and response.result
 
@@ -232,7 +234,7 @@ end)
 
 -- Line 37: "a()", a at col 0. typeDefinition resolves the type of `a` (TestType)
 -- and jumps to where that record is declared (line 0).
-tested.test("type definition of a jumps to its record type declaration", function()
+t:test("type definition of a jumps to its record type declaration", function()
     local response = client:get_type_definition(uri, 37, 0)
     local result = response and response.result
 
@@ -252,7 +254,7 @@ end)
 
 -- Line 11: "TestType_mt = {", TestType_mt at col 0. typeDefinition resolves the
 -- type `metatable<TestType>` and jumps into the stdlib definition (a different file).
-tested.test("type definition of TestType_mt jumps to the metatable type in stdlib", function()
+t:test("type definition of TestType_mt jumps to the metatable type in stdlib", function()
     local response = client:get_type_definition(uri, 11, 0)
     local result = response and response.result
 
@@ -270,4 +272,4 @@ tested.test("type definition of TestType_mt jumps to the metatable type in stdli
     })
 end)
 
-return tested
+return t

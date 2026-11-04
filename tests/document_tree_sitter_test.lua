@@ -29,11 +29,13 @@ local tested = require("tested")
 local Document = require("teal_language_server.analysis.document")
 local ServerState = require("teal_language_server.server_state")
 
+local t = tested.new()
+
 local function doc(content)
    return Document("test-uri", content, 1, {}, ServerState())
 end
 
-tested.test("should analyze basic function definitions", function()
+t:test("should analyze basic function definitions", function()
    local d = doc([[local function a() end]])
 
    local node_info = d:tree_sitter_token(0, 2)
@@ -44,14 +46,14 @@ tested.test("should analyze basic function definitions", function()
    tested.assert({ expected = "function", actual = node_info.type })
 end)
 
-tested.test("returns nil on empty char", function()
+t:test("returns nil on empty char", function()
    local d = doc([[local  ]])
 
    local node_info = d:tree_sitter_token(0, 6)
    tested.assert({ given = "node_info at empty char", should = "be nil", expected = true, actual = node_info == nil })
 end)
 
-tested.test("returns program node on empty content", function()
+t:test("returns program node on empty content", function()
    local d = doc([[]])
 
    local node_info = d:tree_sitter_token(0, 0)
@@ -61,7 +63,7 @@ tested.test("returns program node on empty content", function()
    tested.assert({ expected = "program", actual = node_info.type })
 end)
 
-tested.test("identifies function calls and vars", function()
+t:test("identifies function calls and vars", function()
    local d = doc([[local dir = require("pl.dir")]])
 
    local node_info = d:tree_sitter_token(0, 16)
@@ -74,7 +76,7 @@ tested.test("identifies function calls and vars", function()
    tested.assert({ expected = "var_declaration",  actual = node_info.parent_type })
 end)
 
-tested.test("should recognize when at a .", function()
+t:test("should recognize when at a .", function()
    local d = doc([[
 local dir = require("pl.dir")
 dir.
@@ -86,7 +88,7 @@ dir.
    tested.assert({ expected = "dir",   actual = node_info.preceded_by })
 end)
 
-tested.test("should recognize when at a :", function()
+t:test("should recognize when at a :", function()
    local d = doc([[
 local t = "fruit"
 t:
@@ -98,7 +100,7 @@ t:
    tested.assert({ expected = "t",     actual = node_info.preceded_by })
 end)
 
-tested.test("should recognize a nested .", function()
+t:test("should recognize a nested .", function()
    local d = doc([[string.byte(t.,]])
 
    local node_info = d:tree_sitter_token(0, 13)
@@ -112,7 +114,7 @@ tested.test("should recognize a nested .", function()
    tested.assert({ expected = "string", actual = node_info.preceded_by })
 end)
 
-tested.test("should handle chained .", function()
+t:test("should handle chained .", function()
    local d = doc([[lsp.completion_context.]])
 
    local node_info = d:tree_sitter_token(0, 22)
@@ -132,7 +134,7 @@ tested.test("should handle chained .", function()
    tested.assert({ expected = "lsp",   actual = node_info.preceded_by })
 end)
 
-tested.test("should handle a variable definition", function()
+t:test("should handle a variable definition", function()
    local d = doc([[local fruit: string = "thing"]])
 
    local node_info = d:tree_sitter_token(0, 9)
@@ -148,7 +150,7 @@ tested.test("should handle a variable definition", function()
    tested.assert({ expected = "thing",  actual = node_info.source })
 end)
 
-tested.test("should handle a basic self function", function()
+t:test("should handle a basic self function", function()
    local d = doc([[
 function Point:move(dx: number, dy: number)
    self.x = self.x + dx
@@ -173,7 +175,7 @@ end
    tested.assert({ expected = "Point", actual = node_info.self_type })
 end)
 
-tested.test("should resolve self_type through nested function definitions", function()
+t:test("should resolve self_type through nested function definitions", function()
    local d = doc([[
 function Document:thing()
 function fruit()
@@ -205,7 +207,7 @@ end
    tested.assert({ expected = "Document",                actual = node_info.self_type })
 end)
 
-tested.test("should handle even more nested .'s", function()
+t:test("should handle even more nested .'s", function()
    local d = doc([[lsp.orange.depot.box]])
 
    local node_info = d:tree_sitter_token(0, 6)
@@ -228,7 +230,7 @@ tested.test("should handle even more nested .'s", function()
    tested.assert({ expected = "lsp.orange.depot",     actual = node_info.preceded_by })
 end)
 
-tested.test("should handle partial method chains", function()
+t:test("should handle partial method chains", function()
    local d = doc([[string.byte(t:fruit():,]])
 
    local node_info = d:tree_sitter_token(0, 21)
@@ -239,7 +241,7 @@ tested.test("should handle partial method chains", function()
    tested.assert({ expected = "t:fruit()",                actual = node_info.preceded_by })
 end)
 
-tested.test("should handle real code pulling out self", function()
+t:test("should handle real code pulling out self", function()
    local d = doc([[
 function MiscHandlers:initialize()
    self:_add_handler("initialize", self._on_initialize)
@@ -264,7 +266,7 @@ end
    tested.assert({ expected = "MiscHandlers",   actual = node_info.self_type })
 end)
 
-tested.test("should work with more real use cases", function()
+t:test("should work with more real use cases", function()
    local d = doc([[
 function MiscHandlers:_on_hover(params:lsp.Method.Params, id:integer):nil
    local pos <const> = params.position as lsp.Position
@@ -307,7 +309,7 @@ end]])
    tested.assert({ expected = "pos.character", actual = node_info.parent_source })
 end)
 
-tested.test("should handle getting function signatures with valid syntax", function()
+t:test("should handle getting function signatures with valid syntax", function()
    local d = doc([[tracing.warning()]])
 
    local node_info = d:tree_sitter_token(0, 15)
@@ -318,7 +320,7 @@ tested.test("should handle getting function signatures with valid syntax", funct
    tested.assert({ expected = "tracing.warning",  actual = node_info.preceded_by })
 end)
 
-tested.test("should handle getting function signatures with invalid syntax", function()
+t:test("should handle getting function signatures with invalid syntax", function()
    local d = doc([[tracing.warning(]])
 
    local node_info = d:tree_sitter_token(0, 15)
@@ -329,7 +331,7 @@ tested.test("should handle getting function signatures with invalid syntax", fun
    tested.assert({ expected = "tracing.warning",      actual = node_info.preceded_by })
 end)
 
-tested.test("should handle table index access with bracket notation", function()
+t:test("should handle table index access with bracket notation", function()
    local d = doc([[
 if indexable_parent_types[node_info.parent_type] then
  tks = split_by_symbols(node_info.parent_source, node_info.self_type)
@@ -344,4 +346,4 @@ end]])
    tested.assert({ expected = "indexable_parent_types[node_info.parent_type]", actual = node_info.parent_source })
 end)
 
-return tested
+return t
