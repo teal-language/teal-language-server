@@ -3,6 +3,8 @@ package.path = "./?.lua;" .. package.path
 local tested = require("tested")
 local LspClient = require("tests.helpers.lsp_client")
 
+local t = tested.new()
+
 local function has_label(items, label)
     for _, item in ipairs(items) do
         if item.label == label then
@@ -14,19 +16,19 @@ end
 
 local client
 
-tested.before(function()
+t:before(function()
     client = LspClient.new("teal-language-server")
     client:initialize()
 end)
 
-tested.after(function()
+t:after(function()
     if client then
         client:shutdown()
         client = nil
     end
 end)
 
-tested.test("didChange updates document so completions reflect new content", function()
+t:test("didChange updates document so completions reflect new content", function()
     local uri = "file:///tmp/tls_change_1.tl"
 
     -- Open with a document that has a record with field 'alpha'
@@ -77,4 +79,4 @@ tested.test("didChange updates document so completions reflect new content", fun
     })
 end)
 
-return tested
+return t

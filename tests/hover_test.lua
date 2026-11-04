@@ -3,21 +3,23 @@ package.path = "./?.lua;" .. package.path
 local tested = require("tested")
 local LspClient = require("tests.helpers.lsp_client")
 
+local t = tested.new()
+
 local client
 
-tested.before(function()
+t:before(function()
     client = LspClient.new("teal-language-server")
     client:initialize()
 end)
 
-tested.after(function()
+t:after(function()
     if client then
         client:shutdown()
         client = nil
     end
 end)
 
-tested.test("hover over 'math.abs' returns type info", function()
+t:test("hover over 'math.abs' returns type info", function()
     local uri = "file:///tmp/tls_hover_1.tl"
     client:open_document(uri, "math.abs")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -49,7 +51,7 @@ tested.test("hover over 'math.abs' returns type info", function()
 end)
 
 -- currently failing, because Teal now sees number=42 and thinks it's an integer
-tested.test("hover over a local variable with explicit type annotation returns type info", {expected="FAIL"}, function()
+t:test("hover over a local variable with explicit type annotation returns type info", {expected="FAIL"}, function()
     local uri = "file:///tmp/tls_hover_2.tl"
     local doc = table.concat({
         "local x: number = 42",
@@ -84,7 +86,7 @@ tested.test("hover over a local variable with explicit type annotation returns t
     })
 end)
 
-tested.test("hover over a record field access returns the field's type", function()
+t:test("hover over a record field access returns the field's type", function()
     local uri = "file:///tmp/tls_hover_3.tl"
     local doc = table.concat({
         "local record T",
@@ -116,7 +118,7 @@ tested.test("hover over a record field access returns the field's type", functio
     })
 end)
 
-tested.test("hover over a colon method name returns the method's function type", function()
+t:test("hover over a colon method name returns the method's function type", function()
     local uri = "file:///tmp/tls_hover_5.tl"
     -- the method identifier is preceded by ':', so by_pos resolves at the ':'
     local doc = table.concat({
@@ -149,7 +151,7 @@ tested.test("hover over a colon method name returns the method's function type",
     })
 end)
 
-tested.test("hover over a bare global function returns type info", function()
+t:test("hover over a bare global function returns type info", function()
     local uri = "file:///tmp/tls_hover_6.tl"
     -- a plain global identifier with no preceding '.'/':' resolves at its own position
     client:open_document(uri, "local _ = print")
@@ -175,7 +177,7 @@ tested.test("hover over a bare global function returns type info", function()
     })
 end)
 
-tested.test("hover over 'self' returns the enclosing record type", function()
+t:test("hover over 'self' returns the enclosing record type", function()
     local uri = "file:///tmp/tls_hover_7.tl"
     local doc = table.concat({
         "local record T",
@@ -208,7 +210,7 @@ tested.test("hover over 'self' returns the enclosing record type", function()
     })
 end)
 
-tested.test("hover over the middle token of a dotted chain returns that token's type", function()
+t:test("hover over the middle token of a dotted chain returns that token's type", function()
     local uri = "file:///tmp/tls_hover_8.tl"
     local doc = table.concat({
         "local record Inner",
@@ -246,7 +248,7 @@ tested.test("hover over the middle token of a dotted chain returns that token's 
     })
 end)
 
-tested.test("hover over a variable initialized from a call returns the call's return type", function()
+t:test("hover over a variable initialized from a call returns the call's return type", function()
     local uri = "file:///tmp/tls_hover_4.tl"
     local doc = table.concat({
         "local record Config",
@@ -281,7 +283,7 @@ tested.test("hover over a variable initialized from a call returns the call's re
     })
 end)
 
-tested.test("hover over a top-level function call named after a defined local function", function()
+t:test("hover over a top-level function call named after a defined local function", function()
     local uri = "file:///tmp/tls_hover_topfn.tl"
     local doc = table.concat({
         "local function greet(name: string): string",
@@ -305,7 +307,7 @@ tested.test("hover over a top-level function call named after a defined local fu
     })
 end)
 
-tested.test("hover over a top-level macroexp declaration does not crash", function()
+t:test("hover over a top-level macroexp declaration does not crash", function()
     local uri = "file:///tmp/tls_hover_macroexp_decl.tl"
     local doc = table.concat({
         "local macroexp add(self: SB, line: string): nil",
@@ -331,7 +333,7 @@ tested.test("hover over a top-level macroexp declaration does not crash", functi
     })
 end)
 
-tested.test("hover over a macroexp method call does not crash", function()
+t:test("hover over a macroexp method call does not crash", function()
     local uri = "file:///tmp/tls_hover_macroexp.tl"
     local doc = table.concat({
         "local record SB",
@@ -359,4 +361,4 @@ tested.test("hover over a macroexp method call does not crash", function()
     })
 end)
 
-return tested
+return t

@@ -3,6 +3,8 @@ package.path = "./?.lua;" .. package.path
 local tested = require("tested")
 local LspClient = require("tests.helpers.lsp_client")
 
+local t = tested.new()
+
 local function has_label(items, label)
     for _, item in ipairs(items) do
         if item.label == label then
@@ -14,19 +16,19 @@ end
 
 local client
 
-tested.before(function()
+t:before(function()
     client = LspClient.new("teal-language-server")
     client:initialize()
 end)
 
-tested.after(function()
+t:after(function()
     if client then
         client:shutdown()
         client = nil
     end
 end)
 
-tested.test("completion for partial identifier 'ma' includes 'math'", function()
+t:test("completion for partial identifier 'ma' includes 'math'", function()
     local uri = "file:///tmp/tls_complete_1.tl"
     client:open_document(uri, "ma")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -50,7 +52,7 @@ tested.test("completion for partial identifier 'ma' includes 'math'", function()
     })
 end)
 
-tested.test("completion for 'math.' includes abs, acos, asin", function()
+t:test("completion for 'math.' includes abs, acos, asin", function()
     local uri = "file:///tmp/tls_complete_2.tl"
     client:open_document(uri, "math.")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -76,7 +78,7 @@ tested.test("completion for 'math.' includes abs, acos, asin", function()
     end
 end)
 
-tested.test("completion for 'table.' includes insert, remove, sort", function()
+t:test("completion for 'table.' includes insert, remove, sort", function()
     local uri = "file:///tmp/tls_complete_3.tl"
     client:open_document(uri, "table.")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -102,7 +104,7 @@ tested.test("completion for 'table.' includes insert, remove, sort", function()
     end
 end)
 
-tested.test("colon completion on local string variable returns string methods", function()
+t:test("colon completion on local string variable returns string methods", function()
     local uri = "file:///tmp/tls_complete_4.tl"
     -- Valid document so tl.check runs and types 's' as string
     client:open_document(uri, "local s = \"hello\"\nlocal _ = s:sub(1, 1)")
@@ -129,7 +131,7 @@ tested.test("colon completion on local string variable returns string methods", 
     end
 end)
 
-tested.test("colon completion on self returns record methods", function()
+t:test("colon completion on self returns record methods", function()
     local uri = "file:///tmp/tls_complete_5.tl"
     local doc = table.concat({
         "local record Point",
@@ -164,7 +166,7 @@ tested.test("colon completion on self returns record methods", function()
     })
 end)
 
-tested.test("dot completion three levels deep returns innermost record fields", function()
+t:test("dot completion three levels deep returns innermost record fields", function()
     local uri = "file:///tmp/tls_complete_6.tl"
     -- Three nested record types; valid document so tl.check types 's' as Scene
     local doc = table.concat({
@@ -208,7 +210,7 @@ tested.test("dot completion three levels deep returns innermost record fields", 
     end
 end)
 
-tested.test("dot completion on enum-keyed table returns enum values", function()
+t:test("dot completion on enum-keyed table returns enum values", function()
     local uri = "file:///tmp/tls_complete_7.tl"
     local doc = table.concat({
         "local enum Color",
@@ -246,7 +248,7 @@ end)
 -- stock tl skips storing "tuple" typed results in by_pos, so a function call's own
 -- position (b:foo()'s "(") has no entry. Instead we look up the *called object*
 -- (b:foo, whose function type tl does record) and follow rets[1] to reach Builder.
-tested.test("colon completion after a chained method call returns the return type's methods", function()
+t:test("colon completion after a chained method call returns the return type's methods", function()
     local uri = "file:///tmp/tls_complete_8.tl"
     -- Builder-pattern record whose methods return the record itself.
     -- Valid document so tl.check populates by_pos for the chain.
@@ -284,7 +286,7 @@ tested.test("colon completion after a chained method call returns the return typ
     end
 end)
 
-tested.test("colon completion on a narrowed variable returns the narrowed type's methods", function()
+t:test("colon completion on a narrowed variable returns the narrowed type's methods", function()
     local uri = "file:///tmp/tls_complete_9.tl"
     -- 'z' is number|string at declaration but narrowed to string inside the branch.
     -- by_pos reflects the narrowing; the old declared-type walk would not.
@@ -314,7 +316,7 @@ end)
 
 -- same by_pos gap as the chained-call test above: getConfig()'s own "(" position
 -- is never recorded, so we resolve via the called object getConfig and rets[1].
-tested.test("dot completion on a function call result returns the return record's fields", function()
+t:test("dot completion on a function call result returns the return record's fields", function()
     local uri = "file:///tmp/tls_complete_10.tl"
     local doc = table.concat({
         "local record Config",
@@ -343,7 +345,7 @@ tested.test("dot completion on a function call result returns the return record'
     end
 end)
 
-tested.test("colon completion on a call that returns a string returns string methods", function()
+t:test("colon completion on a call that returns a string returns string methods", function()
     local uri = "file:///tmp/tls_complete_14.tl"
     -- getName() returns a plain string; following rets[1] reaches the string type,
     -- which the completion handler expands to the string library's methods.
@@ -370,7 +372,7 @@ tested.test("colon completion on a call that returns a string returns string met
     end
 end)
 
-tested.test("dot completion on a dot-called function field's result returns the return record's fields", function()
+t:test("dot completion on a dot-called function field's result returns the return record's fields", function()
     local uri = "file:///tmp/tls_complete_15.tl"
     -- a.make() calls a *field* function via dot access, so the called object is an
     -- `index` node (not an identifier or method_index); its '.' operator holds
@@ -403,7 +405,7 @@ tested.test("dot completion on a dot-called function field's result returns the 
     end
 end)
 
-tested.test("dot completion continues through field access after a call result", function()
+t:test("dot completion continues through field access after a call result", function()
     local uri = "file:///tmp/tls_complete_16.tl"
     -- getConfig().sub is a field access *after* a call; the '.' before sub records
     -- Sub directly (no rets-following needed), so completing '.name' resolves as a
@@ -438,7 +440,7 @@ tested.test("dot completion continues through field access after a call result",
     end
 end)
 
-tested.test("colon completion on a call result filters to the record's methods", function()
+t:test("colon completion on a call result filters to the record's methods", function()
     local uri = "file:///tmp/tls_complete_17.tl"
     -- getPoint() returns a record via a plain identifier call; the ':' after it
     -- should list only self-methods (dist, len) and exclude the data field x.
@@ -476,7 +478,7 @@ tested.test("colon completion on a call result filters to the record's methods",
     })
 end)
 
-tested.test("colon completion on a three-level method chain resolves each call's return type", function()
+t:test("colon completion on a three-level method chain resolves each call's return type", function()
     local uri = "file:///tmp/tls_complete_18.tl"
     -- b:foo():bar():baz(): completing the third ':' requires following rets through
     -- the second call (b:foo():bar()) back to Builder. Guards chain depth > 2.
@@ -512,7 +514,7 @@ end)
 -- the row where that multi-row node *ends*, the scan wrongly recursed into the
 -- already-finished node and returned no NodeInfo. Splitting the chain across
 -- lines (as method-chaining style commonly does) was enough to trigger it.
-tested.test("colon completion after a multi-line chained call still resolves the return type's methods", function()
+t:test("colon completion after a multi-line chained call still resolves the return type's methods", function()
     local uri = "file:///tmp/tls_complete_19.tl"
     local doc = table.concat({
         "local record Builder",
@@ -553,7 +555,7 @@ end)
 -- still failing on stock tl: following rets[1] reaches first's declared return
 -- type, a bare unconstrained type variable `T`. tl's report records `T` with no
 -- constraint and no fields, so R is not recoverable from the report alone...
-tested.test("dot completion on a constrained type parameter returns the constraint's fields", {expected="FAIL"}, function()
+t:test("dot completion on a constrained type parameter returns the constraint's fields", {expected="FAIL"}, function()
     local uri = "file:///tmp/tls_complete_11.tl"
     -- inside the generic body, first(items) has type "T is R" (a type argument);
     -- its result should expose R's fields via the constraint.
@@ -583,7 +585,7 @@ tested.test("dot completion on a constrained type parameter returns the constrai
     })
 end)
 
-tested.test("dot completion after bracket (map) indexing returns the value type's fields", function()
+t:test("dot completion after bracket (map) indexing returns the value type's fields", function()
     local uri = "file:///tmp/tls_complete_12.tl"
     local doc = table.concat({
         "local record Foo",
@@ -610,7 +612,7 @@ tested.test("dot completion after bracket (map) indexing returns the value type'
     end
 end)
 
-tested.test("colon completion after bracket (array) indexing returns the element's methods", function()
+t:test("colon completion after bracket (array) indexing returns the element's methods", function()
     local uri = "file:///tmp/tls_complete_13.tl"
     local doc = table.concat({
         "local record Foo",
@@ -634,7 +636,7 @@ tested.test("colon completion after bracket (array) indexing returns the element
     })
 end)
 
-tested.test("colon completion includes overloaded (POLY) methods like FILE:read", function()
+t:test("colon completion includes overloaded (POLY) methods like FILE:read", function()
     local uri = "file:///tmp/tls_complete_19.tl"
     -- io.open returns a FILE whose read/lines methods are overloaded (POLY in the
     -- type report). The ':' self-method filter must still surface them, not just
@@ -660,7 +662,7 @@ tested.test("colon completion includes overloaded (POLY) methods like FILE:read"
     end
 end)
 
-tested.test("dot completion on a double (curried) call result returns the innermost return type's fields", function()
+t:test("dot completion on a double (curried) call result returns the innermost return type's fields", function()
     local uri = "file:///tmp/tls_complete_20.tl"
     -- makeInner() returns a function that returns Inner, so makeInner()() is Inner.
     -- bypos_key_for recurses through the nested function_call for the called object,
@@ -689,7 +691,7 @@ tested.test("dot completion on a double (curried) call result returns the innerm
     })
 end)
 
-tested.test("dot completion on an overloaded (POLY) function call result returns the return record's fields", function()
+t:test("dot completion on an overloaded (POLY) function call result returns the return record's fields", function()
     local uri = "file:///tmp/tls_complete_21.tl"
     -- lib.make is overloaded (two signatures -> POLY). follow_rets bails on the
     -- POLY callee, so this must resolve through the token-chain fallback.
@@ -723,7 +725,7 @@ end)
 -- unconstrained type variable at the callee's position, so follow_rets hits the
 -- TYPE_VARIABLE guard and bails, and the token-chain fallback can't resolve a call
 -- either. Requires the tl-side fix (PR #74) to resolve.
-tested.test("dot completion on a top-level generic call result returns the inferred type's fields", {expected="FAIL"}, function()
+t:test("dot completion on a top-level generic call result returns the inferred type's fields", {expected="FAIL"}, function()
     local uri = "file:///tmp/tls_complete_22.tl"
     -- at a top-level call site T is inferred to the concrete element type (Item),
     -- so following rets[1] should reach a real record; today it stays a type var.
@@ -752,7 +754,7 @@ tested.test("dot completion on a top-level generic call result returns the infer
     })
 end)
 
-tested.test("dot completion on a document with parse errors resolves fields", function()
+t:test("dot completion on a document with parse errors resolves fields", function()
     -- A dangling 's.' is a parse error, so the diagnostics pipeline skips the
     -- type check; completion must still resolve fields from the surviving AST
     local uri = "file:///tmp/tls_complete_parse_err.tl"
@@ -778,7 +780,7 @@ tested.test("dot completion on a document with parse errors resolves fields", fu
     })
 end)
 
-tested.test("invoked completion (triggerKind=1) for partial identifier 'ma' includes 'math'", function()
+t:test("invoked completion (triggerKind=1) for partial identifier 'ma' includes 'math'", function()
     local uri = "file:///tmp/tls_complete_invoked.tl"
     client:open_document(uri, "ma")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -802,7 +804,7 @@ tested.test("invoked completion (triggerKind=1) for partial identifier 'ma' incl
     })
 end)
 
-tested.test("completion on a bare line inside a table constructor offers the annotated record's fields", function()
+t:test("completion on a bare line inside a table constructor offers the annotated record's fields", function()
     local uri = "file:///tmp/tls_complete_table.tl"
     local doc = table.concat({
         "local record Payload",
@@ -840,7 +842,7 @@ tested.test("completion on a bare line inside a table constructor offers the ann
     end
 end)
 
-tested.test("partial field names inside a table constructor offer the record's fields", function()
+t:test("partial field names inside a table constructor offer the record's fields", function()
     local uri = "file:///tmp/tls_complete_table_partial.tl"
     local doc = table.concat({
         "local record Payload",
@@ -874,7 +876,7 @@ tested.test("partial field names inside a table constructor offer the record's f
     })
 end)
 
-tested.test("completion at a type annotation includes locally declared record and enum names", function()
+t:test("completion at a type annotation includes locally declared record and enum names", function()
     local uri = "file:///tmp/tls_type_completes.tl"
     local doc = table.concat({
         "local enum Direction",
@@ -918,7 +920,7 @@ tested.test("completion at a type annotation includes locally declared record an
     })
 end)
 
-tested.test("completion at a type annotation includes builtin primitives", function()
+t:test("completion at a type annotation includes builtin primitives", function()
     local uri = "file:///tmp/tls_type_completes_prim.tl"
     client:open_document(uri, "local n: num")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -934,4 +936,4 @@ tested.test("completion at a type annotation includes builtin primitives", funct
     })
 end)
 
-return tested
+return t

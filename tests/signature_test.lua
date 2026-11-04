@@ -3,21 +3,23 @@ package.path = "./?.lua;" .. package.path
 local tested = require("tested")
 local LspClient = require("tests.helpers.lsp_client")
 
+local t = tested.new()
+
 local client
 
-tested.before(function()
+t:before(function()
     client = LspClient.new("teal-language-server")
     client:initialize()
 end)
 
-tested.after(function()
+t:after(function()
     if client then
         client:shutdown()
         client = nil
     end
 end)
 
-tested.test("signatureHelp for 'math.sqrt(' returns a signature with parameter types", function()
+t:test("signatureHelp for 'math.sqrt(' returns a signature with parameter types", function()
     local uri = "file:///tmp/tls_signature_1.tl"
     client:open_document(uri, "math.sqrt(")
     client:wait_for_notification("textDocument/publishDiagnostics")
@@ -47,7 +49,7 @@ tested.test("signatureHelp for 'math.sqrt(' returns a signature with parameter t
     })
 end)
 
-tested.test("signatureHelp on a chained method call resolves the prior call's return type", function()
+t:test("signatureHelp on a chained method call resolves the prior call's return type", function()
     local uri = "file:///tmp/tls_signature_2.tl"
     -- ("hello"):rep(2) returns string, so the second :rep( must resolve through
     -- the first call's return type.
@@ -79,7 +81,7 @@ tested.test("signatureHelp on a chained method call resolves the prior call's re
     })
 end)
 
-tested.test("signatureHelp on a bare local function resolves its parameter types", function()
+t:test("signatureHelp on a bare local function resolves its parameter types", function()
     local uri = "file:///tmp/tls_signature_3.tl"
     -- the callee is a plain local identifier (not a field access), so bypos_key_for
     -- falls through to the node's own start position.
@@ -117,4 +119,4 @@ tested.test("signatureHelp on a bare local function resolves its parameter types
     })
 end)
 
-return tested
+return t
