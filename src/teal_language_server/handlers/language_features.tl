@@ -195,6 +195,8 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
       if type_info.fields then
          for key, v in pairs(type_info.fields) do
             type_info = doc:resolve_type_ref(v)
+            -- the resolved field's type string: rendered inline next to the label
+            local field_detail: string = type_info.str
             local was_added:boolean
             -- self based access should only show functions; node_info may be
             -- absent when the caret sits in whitespace inside a table
@@ -216,14 +218,14 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
 
                if self_method then
                   logger:debug("Adding self method %s", key)
-                  table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+                  table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t], detail = field_detail})
                   was_added = true
                else
                   logger:debug("Ignoring method %s with type 0x%08x for type info str %s",
                      key, type_info.t, original_str)
                end
             else
-               table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t]})
+               table.insert(items, {label = key, kind = lsp.typecodes_to_kind[type_info.t], detail = field_detail})
                was_added = true
             end
 
@@ -235,10 +237,11 @@ function LanguageFeatureHandlers:_on_completion(params: lsp.Method.Params, id: i
       -- at a table, we might be able to help resolve the keys!
       elseif type_info.keys then
          type_info = doc:resolve_type_ref(type_info.keys)
+         local enum_detail: string = type_info.str
 
          if type_info.enums then
             for _, enum_value in ipairs(type_info.enums) do
-               table.insert(items, {label = enum_value, kind = lsp.typecodes_to_kind[type_info.t]})
+               table.insert(items, {label = enum_value, kind = lsp.typecodes_to_kind[type_info.t], detail = enum_detail})
             end
          end
       else

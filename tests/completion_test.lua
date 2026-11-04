@@ -14,6 +14,15 @@ local function has_label(items, label)
     return false
 end
 
+local function find_item(items, label)
+    for _, item in ipairs(items) do
+        if item.label == label then
+            return item
+        end
+    end
+    return nil
+end
+
 local client
 
 t:before(function()
@@ -933,6 +942,89 @@ t:test("completion at a type annotation includes builtin primitives", function()
         should = "include 'number'",
         expected = true,
         actual = has_label(items, "number"),
+    })
+end)
+
+t:test("record field completion items include a detail with the field type", function()
+    local uri = "file:///tmp/tls_detail_fields.tl"
+    local doc = table.concat({
+        "local record Config",
+        "  name: string",
+        "  total: number",
+        "end",
+        "local config: Config",
+        "local _ = config.",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 5 "local _ = config.": '.' at col 16; cursor at col 17 → server uses col 16
+    local response = client:get_completions_triggered(uri, 5, 17, ".")
+
+    local items = response.result and response.result.items or {}
+    for _, pair in ipairs({ { "name", "string" }, { "total", "number" } }) do
+        local item = find_item(items, pair[1])
+        tested.assert({
+            given = "record field completion item '" .. pair[1] .. "'",
+            should = "carry detail '" .. pair[2] .. "'",
+            expected = pair[2],
+            actual = item and item.detail,
+        })
+    end
+end)
+
+t:test("method completion item detail carries the function signature", function()
+    local uri = "file:///tmp/tls_detail_method.tl"
+    local doc = table.concat({
+        "local record Point",
+        "  x: number",
+        "end",
+        "function Point:get_x(): number",
+        "  return self.x",
+        "end",
+        "local point: Point",
+        "local _ = point:get_",
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 7 "local _ = point:get_": ':' at col 14; cursor at col 15 → server uses col 14
+    local response = client:get_completions_triggered(uri, 7, 15, ":")
+
+    local items = response.result and response.result.items or {}
+    local item = find_item(items, "get_x")
+    tested.assert({
+        given = "method completion item 'get_x'",
+        should = "carry a function-signature detail",
+        expected = true,
+        actual = item ~= nil and item.detail ~= nil and item.detail:match("^function%(") ~= nil,
+    })
+end)
+
+t:test("enum-keyed table completion items include a detail with the enum name", function()
+    local uri = "file:///tmp/tls_detail_enum.tl"
+    local doc = table.concat({
+        "local enum Color",
+        '  "red"',
+        '  "green"',
+        '  "blue"',
+        "end",
+        "local t: {Color:string} = {}",
+        'local _ = t.red',
+    }, "\n")
+    client:open_document(uri, doc)
+    client:wait_for_notification("textDocument/publishDiagnostics")
+
+    -- line 6 "local _ = t.red": '.' at col 11; cursor at col 12 → server uses col 11
+    local response = client:get_completions_triggered(uri, 6, 12, ".")
+
+    local items = response.result and response.result.items or {}
+    local item = find_item(items, "red")
+    tested.assert({
+        given = "enum-keyed table completion item 'red'",
+        should = "carry detail 'Color'",
+        expected = "Color",
+        actual = item and item.detail,
     })
 end)
 
